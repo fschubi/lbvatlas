@@ -28,7 +28,10 @@ import {
   Settings as SettingsIcon,
   ExpandLess,
   ExpandMore,
-  Person as UsersIcon
+  Person as UsersIcon,
+  AccountCircle as ProfileIcon,
+  AdminPanelSettings as AdminIcon,
+  Security as SecurityIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
@@ -59,10 +62,15 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [openSubMenu, setOpenSubMenu] = useState<string | null>(null);
 
   const handleNavigate = (path: string) => {
     navigate(path);
     onClose();
+  };
+
+  const handleSubMenuToggle = (text: string) => {
+    setOpenSubMenu(openSubMenu === text ? null : text);
   };
 
   const menuItems: MenuItem[] = [
@@ -77,6 +85,17 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
     { text: 'Aufgaben', icon: <TodosIcon />, path: '/todos' },
     { text: 'Berichte', icon: <ReportsIcon />, path: '/reports' },
     { text: 'Benutzer', icon: <UsersIcon />, path: '/users' },
+    {
+      text: 'Administration',
+      icon: <AdminIcon />,
+      path: '/admin',
+      expandable: true,
+      adminOnly: true,
+      subItems: [
+        { text: 'Rollen & Berechtigungen', path: '/admin/roles', icon: <SecurityIcon /> },
+        { text: 'Systemeinstellungen', path: '/admin/settings', icon: <SettingsIcon /> }
+      ]
+    },
     { text: 'Einstellungen', icon: <SettingsIcon />, path: '/settings' },
   ];
 
@@ -103,8 +122,122 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       }}
     >
       <List>
+        {/* Benutzer-Profil als erster Eintrag */}
+        <Tooltip title={!open ? 'Mein Profil' : ''} placement="right">
+          <ListItem disablePadding sx={{ display: 'block' }}>
+            <ListItemButton
+              selected={location.pathname === '/profile'}
+              sx={{
+                minHeight: 48,
+                justifyContent: open ? 'initial' : 'center',
+                px: 2.5,
+                '&.Mui-selected': {
+                  backgroundColor: 'primary.dark',
+                  '&:hover': { backgroundColor: 'primary.dark' },
+                },
+              }}
+              onClick={() => handleNavigate('/profile')}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: open ? 3 : 'auto',
+                  justifyContent: 'center',
+                  color: 'inherit',
+                }}
+              >
+                <ProfileIcon />
+              </ListItemIcon>
+              <ListItemText primary="Mein Profil" sx={{ opacity: open ? 1 : 0 }} />
+            </ListItemButton>
+          </ListItem>
+        </Tooltip>
+        <Divider sx={{ my: 1 }} />
+
+        {/* Hauptmenü */}
         {menuItems.map((item) => {
           if (item.adminOnly && user?.role !== 'admin') return null;
+
+          if (item.expandable && open) {
+            const isSubMenuOpen = openSubMenu === item.text;
+            const isSubItemSelected = item.subItems?.some(subItem =>
+              location.pathname.startsWith(subItem.path)
+            );
+
+            return (
+              <React.Fragment key={item.text}>
+                <Tooltip title={!open ? item.text : ''} placement="right">
+                  <ListItem disablePadding sx={{ display: 'block' }}>
+                    <ListItemButton
+                      selected={isSubItemSelected}
+                      onClick={() => handleSubMenuToggle(item.text)}
+                      sx={{
+                        minHeight: 48,
+                        justifyContent: open ? 'initial' : 'center',
+                        px: 2.5,
+                        '&.Mui-selected': {
+                          backgroundColor: 'primary.dark',
+                          '&:hover': { backgroundColor: 'primary.dark' },
+                        },
+                      }}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 0,
+                          mr: open ? 3 : 'auto',
+                          justifyContent: 'center',
+                          color: 'inherit',
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                      {open && (isSubMenuOpen ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                  </ListItem>
+                </Tooltip>
+
+                {open && (
+                  <Collapse in={isSubMenuOpen} timeout="auto" unmountOnExit>
+                    <List component="div" disablePadding>
+                      {item.subItems?.map(subItem => {
+                        const selected = location.pathname.startsWith(subItem.path);
+                        return (
+                          <ListItemButton
+                            key={subItem.text}
+                            selected={selected}
+                            sx={{
+                              pl: 4,
+                              '&.Mui-selected': {
+                                backgroundColor: 'primary.dark',
+                                '&:hover': { backgroundColor: 'primary.dark' },
+                              },
+                            }}
+                            onClick={() => handleNavigate(subItem.path)}
+                          >
+                            {subItem.icon && (
+                              <ListItemIcon
+                                sx={{
+                                  minWidth: 0,
+                                  mr: 3,
+                                  justifyContent: 'center',
+                                  color: 'inherit',
+                                }}
+                              >
+                                {subItem.icon}
+                              </ListItemIcon>
+                            )}
+                            <ListItemText primary={subItem.text} />
+                          </ListItemButton>
+                        );
+                      })}
+                    </List>
+                  </Collapse>
+                )}
+              </React.Fragment>
+            );
+          }
+
           const selected = location.pathname.startsWith(item.path);
           return (
             <Tooltip key={item.text} title={!open ? item.text : ''} placement="right">
@@ -120,7 +253,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                       '&:hover': { backgroundColor: 'primary.dark' },
                     },
                   }}
-                  onClick={() => handleNavigate(item.path)}
+                  onClick={() => {
+                    if (item.expandable && !open) {
+                      handleSubMenuToggle(item.text);
+                    } else {
+                      handleNavigate(item.path);
+                    }
+                  }}
                 >
                   <ListItemIcon
                     sx={{

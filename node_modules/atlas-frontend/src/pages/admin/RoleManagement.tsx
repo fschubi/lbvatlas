@@ -22,7 +22,14 @@ import {
   ListItem,
   ListItemText,
   List,
-  Chip
+  Chip,
+  CircularProgress,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -30,7 +37,8 @@ import {
   Delete as DeleteIcon,
   SecurityRounded as SecurityIcon,
   Check as CheckIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import MainLayout from '../../layout/MainLayout';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
@@ -41,20 +49,23 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 
 // Typen
 interface Role {
-  id: number;
+  id: string;
   name: string;
   description: string;
   is_system: boolean;
   created_at: string;
   updated_at: string;
+  permissions: string[];
+  userCount: number;
 }
 
 interface Permission {
-  id: number;
+  id: string;
   name: string;
   description: string;
   module: string;
   action: string;
+  category: string;
 }
 
 interface Module {
@@ -91,7 +102,7 @@ const RoleManagement: React.FC = () => {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [rolePermissions, setRolePermissions] = useState<number[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [openDialog, setOpenDialog] = useState<boolean>(false);
   const [dialogType, setDialogType] = useState<'create' | 'edit'>('create');
@@ -218,7 +229,7 @@ const RoleManagement: React.FC = () => {
   };
 
   // Rollenberechtigungen laden
-  const fetchRolePermissions = async (roleId: number) => {
+  const fetchRolePermissions = async (roleId: string) => {
     try {
       const response = await axios.get<ApiResponse<Permission[]>>(
         `${API_BASE_URL}/roles/${roleId}/permissions`,
@@ -324,7 +335,7 @@ const RoleManagement: React.FC = () => {
   };
 
   // Rolle löschen
-  const handleDeleteRole = async (roleId: number) => {
+  const handleDeleteRole = async (roleId: string) => {
     if (!window.confirm('Möchten Sie diese Rolle wirklich löschen?')) {
       return;
     }
@@ -352,7 +363,7 @@ const RoleManagement: React.FC = () => {
   };
 
   // Berechtigung umschalten
-  const handleTogglePermission = async (permissionId: number) => {
+  const handleTogglePermission = async (permissionId: string) => {
     if (!selectedRole) return;
 
     const isPermissionAssigned = rolePermissions.includes(permissionId);
@@ -415,9 +426,19 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <MainLayout>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
+          <CircularProgress />
+        </Box>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ p: 3, height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4">Rollenverwaltung</Typography>
           <Button
@@ -430,7 +451,7 @@ const RoleManagement: React.FC = () => {
           </Button>
         </Box>
 
-        <Paper sx={{ mb: 3 }}>
+        <Paper sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Tabs
             value={tabValue}
             onChange={handleTabChange}
@@ -446,17 +467,87 @@ const RoleManagement: React.FC = () => {
 
           {/* Rollenliste anzeigen */}
           {tabValue === 0 && (
-            <Box sx={{ p: 2 }}>
-              <AtlasTable
-                columns={roleColumns}
-                rows={roles}
-              />
+            <Box sx={{ p: 2, flexGrow: 1, height: 'calc(100% - 48px)', overflow: 'hidden' }}>
+              {/* Standard Tabelle verwenden anstatt AtlasTable, da diese besser mit Flexbox funktioniert */}
+              <TableContainer sx={{ height: '100%', overflow: 'auto' }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Beschreibung</TableCell>
+                      <TableCell>Systemrolle</TableCell>
+                      <TableCell>Erstellt am</TableCell>
+                      <TableCell>Aktionen</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {roles.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          Keine Rollen gefunden
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      roles.map((role) => (
+                        <TableRow key={role.id} hover>
+                          <TableCell>{role.id}</TableCell>
+                          <TableCell>{role.name}</TableCell>
+                          <TableCell>{role.description}</TableCell>
+                          <TableCell>
+                            <Chip
+                              icon={role.is_system ? <CheckIcon /> : <ClearIcon />}
+                              label={role.is_system ? 'Ja' : 'Nein'}
+                              color={role.is_system ? 'primary' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{role.created_at}</TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Tooltip title="Berechtigungen bearbeiten">
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleSelectRole(role)}
+                                >
+                                  <SecurityIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Rolle bearbeiten">
+                                <IconButton
+                                  size="small"
+                                  color="secondary"
+                                  onClick={() => handleOpenDialog('edit', role)}
+                                  disabled={role.is_system}
+                                >
+                                  <EditIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Rolle löschen">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDeleteRole(role.id)}
+                                  disabled={role.is_system}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
           )}
 
           {/* Berechtigungen anzeigen */}
           {tabValue === 1 && selectedRole && (
-            <Box sx={{ p: 2 }}>
+            <Box sx={{ p: 2, flexGrow: 1, overflow: 'auto' }}>
               <Typography variant="h6" gutterBottom>
                 Berechtigungen für Rolle: {selectedRole.name}
               </Typography>

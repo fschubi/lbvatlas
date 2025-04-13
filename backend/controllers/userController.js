@@ -114,15 +114,21 @@ const getUserRoles = async (req, res) => {
 };
 
 /**
- * Alle Abteilungen abrufen
+ * Abteilungen abrufen
  */
 const getDepartments = async (req, res) => {
   try {
     const departments = await getDepartmentsModel();
-    res.json(departments);
+    res.json({
+      success: true,
+      data: departments
+    });
   } catch (error) {
     logger.error('Fehler beim Abrufen der Abteilungen:', error);
-    res.status(500).json({ message: 'Serverfehler beim Abrufen der Abteilungen' });
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Abrufen der Abteilungen'
+    });
   }
 };
 
@@ -131,24 +137,32 @@ const getDepartments = async (req, res) => {
  */
 const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
-    const sortBy = req.query.sortBy || 'id';
-    const sortOrder = req.query.sortOrder || 'asc';
+    const sortBy = req.query.sortBy || 'username';
+    const sortOrder = req.query.sortOrder || 'ASC';
 
     const filters = {
-      name: req.query.name,
+      name: req.query.name || req.query.search,
       department: req.query.department,
+      location: req.query.location,
+      room: req.query.room,
       role: req.query.role,
-      email: req.query.email
+      active: req.query.active !== undefined ?
+        (req.query.active === 'true' || req.query.active === '1') : undefined
     };
 
-    const result = await getAllUsersModel(filters, page, limit, sortBy, sortOrder, search);
-    res.json(result);
+    // Abrufen aller Benutzer mit den angegebenen Filtern und der Sortierung
+    const users = await getAllUsersModel(filters, sortBy, sortOrder);
+
+    res.json({
+      success: true,
+      data: users
+    });
   } catch (error) {
     logger.error('Fehler beim Abrufen der Benutzer:', error);
-    res.status(500).json({ message: 'Serverfehler beim Abrufen der Benutzer' });
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Abrufen der Benutzer'
+    });
   }
 };
 

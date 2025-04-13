@@ -12,6 +12,11 @@ import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import RequestPasswordReset from './pages/RequestPasswordReset';
 
+// Admin-Routen importieren
+import AdminRoutes from './pages/admin/AdminRoutes';
+import UserProfile from './pages/UserProfile';
+
+// Einstellungsseiten
 import Departments from './pages/settings/Departments';
 import Categories from './pages/settings/Categories';
 import Manufacturers from './pages/settings/Manufacturers';
@@ -67,6 +72,10 @@ const App = () => {
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/todos" element={<Todos />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/profile" element={<UserProfile />} />
+
+        {/* Admin-Routen als verschachtelte Struktur */}
+        <Route path="/admin/*" element={<AdminRoutes />} />
 
         {/* Unterseiten von Einstellungen */}
         <Route path="/settings/departments" element={<Departments />} />

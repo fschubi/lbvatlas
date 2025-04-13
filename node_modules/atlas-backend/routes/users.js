@@ -6,6 +6,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { checkRole } = require('../middleware/auth');
 const { pool } = require('../db');
 const logger = require('../utils/logger');
+const { getLocations, getRoomsByLocation } = require('../models/userModel');
 
 /**
  * @route   POST /api/users/login
@@ -52,6 +53,55 @@ router.get('/roles', [authMiddleware, checkRole(['admin'])], UserController.getU
  * @access  Private
  */
 router.get('/departments', authMiddleware, UserController.getDepartments);
+
+/**
+ * @route   GET /api/users/locations
+ * @desc    Alle verfügbaren Standorte für Benutzer abrufen
+ * @access  Private
+ */
+router.get('/locations', authMiddleware, async (req, res) => {
+  try {
+    // Verwenden der getLocations-Funktion aus dem userModel
+    const locations = await getLocations();
+
+    res.json({
+      success: true,
+      data: locations
+    });
+  } catch (error) {
+    logger.error('Fehler beim Abrufen der Standorte:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Abrufen der Standorte',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route   GET /api/users/locations/:locationId/rooms
+ * @desc    Räume für einen bestimmten Standort abrufen
+ * @access  Private
+ */
+router.get('/locations/:locationId/rooms', authMiddleware, async (req, res) => {
+  try {
+    const { locationId } = req.params;
+    // Verwenden der getRoomsByLocation-Funktion aus dem userModel
+    const rooms = await getRoomsByLocation(locationId);
+
+    res.json({
+      success: true,
+      data: rooms
+    });
+  } catch (error) {
+    logger.error(`Fehler beim Abrufen der Räume für Standort ${req.params.locationId}:`, error);
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Abrufen der Räume',
+      error: error.message
+    });
+  }
+});
 
 /**
  * @route   GET /api/users
@@ -120,54 +170,5 @@ router.put('/:id', [
  * @access  Private (Admin)
  */
 router.delete('/:id', [authMiddleware, checkRole(['admin'])], UserController.deleteUser);
-
-/**
- * @route   GET /api/users/locations
- * @desc    Alle verfügbaren Standorte für Benutzer abrufen
- * @access  Private
- */
-router.get('/locations', authMiddleware, async (req, res) => {
-  try {
-    const query = 'SELECT id, name, address, city FROM locations ORDER BY name ASC';
-    const { rows } = await pool.query(query);
-
-    res.json({
-      success: true,
-      data: rows
-    });
-  } catch (error) {
-    logger.error('Fehler beim Abrufen der Standorte:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Serverfehler beim Abrufen der Standorte',
-      error: error.message
-    });
-  }
-});
-
-/**
- * @route   GET /api/users/locations/:locationId/rooms
- * @desc    Räume für einen bestimmten Standort abrufen
- * @access  Private
- */
-router.get('/locations/:locationId/rooms', authMiddleware, async (req, res) => {
-  try {
-    const { locationId } = req.params;
-    const query = 'SELECT id, name, floor, room_number FROM rooms WHERE location_id = $1 ORDER BY name ASC';
-    const { rows } = await pool.query(query, [locationId]);
-
-    res.json({
-      success: true,
-      data: rows
-    });
-  } catch (error) {
-    logger.error(`Fehler beim Abrufen der Räume für Standort ${req.params.locationId}:`, error);
-    res.status(500).json({
-      success: false,
-      message: 'Serverfehler beim Abrufen der Räume',
-      error: error.message
-    });
-  }
-});
 
 module.exports = router;

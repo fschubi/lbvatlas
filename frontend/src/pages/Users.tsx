@@ -364,14 +364,27 @@ const Users: React.FC = () => {
         getAuthConfig()
       );
 
-      setUsers([...users, response.data.data]);
-      setSnackbar({
-        open: true,
-        message: 'Benutzer erfolgreich erstellt',
-        severity: 'success'
-      });
-      handleCloseDialog();
+      // Sicherstellen, dass wir ein vollständiges Benutzerobjekt mit ID haben
+      if (response.data && response.data.data) {
+        // Vollständigen Benutzer neu laden, um alle Daten für die Tabelle zu haben
+        await fetchUsers();
+
+        setSnackbar({
+          open: true,
+          message: 'Benutzer erfolgreich erstellt',
+          severity: 'success'
+        });
+        handleCloseDialog();
+      } else {
+        console.error('Unerwartete API-Antwort:', response);
+        setSnackbar({
+          open: true,
+          message: 'Unerwartete Serverantwort beim Erstellen des Benutzers',
+          severity: 'error'
+        });
+      }
     } catch (err: unknown) {
+      console.error('Fehler beim Erstellen des Benutzers:', err);
       setSnackbar({
         open: true,
         message: 'Fehler beim Erstellen des Benutzers',
@@ -407,9 +420,9 @@ const Users: React.FC = () => {
         getAuthConfig()
       );
 
-      setUsers(users.map(user =>
-        user.id === currentUser.id ? response.data.data : user
-      ));
+      // Nach dem Update alle Benutzer neu laden statt lokale Manipulation
+      await fetchUsers();
+
       setSnackbar({
         open: true,
         message: 'Benutzer erfolgreich aktualisiert',
@@ -417,6 +430,7 @@ const Users: React.FC = () => {
       });
       handleCloseDialog();
     } catch (err: unknown) {
+      console.error('Fehler beim Aktualisieren des Benutzers:', err);
       setSnackbar({
         open: true,
         message: 'Fehler beim Aktualisieren des Benutzers',
@@ -436,13 +450,16 @@ const Users: React.FC = () => {
         getAuthConfig()
       );
 
-      setUsers(users.filter(user => user.id !== userId));
+      // Nach dem Löschen alle Benutzer neu laden
+      await fetchUsers();
+
       setSnackbar({
         open: true,
         message: 'Benutzer erfolgreich gelöscht',
         severity: 'success'
       });
     } catch (err: unknown) {
+      console.error('Fehler beim Löschen des Benutzers:', err);
       setSnackbar({
         open: true,
         message: 'Fehler beim Löschen des Benutzers',
