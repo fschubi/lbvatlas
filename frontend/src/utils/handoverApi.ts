@@ -1,8 +1,9 @@
 import axios from 'axios';
 
-// API-Basis-URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// API-Basis-URL - Verwende import.meta.env statt process.env für Vite
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// Erstelle eine Axios-Instanz (Authentifizierung wird von den Interceptoren übernommen)
 const axiosInstance = axios.create({
   baseURL: API_URL,
   headers: {

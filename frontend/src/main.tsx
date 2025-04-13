@@ -5,6 +5,10 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import theme from './theme';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
+import { setupAxiosInterceptors } from './utils/interceptors';
+
+// Axios-Interceptoren einrichten, bevor die App gerendert wird
+setupAxiosInterceptors();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -54,6 +54,29 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 // Helper-Funktion für Axios-Anfragen mit Authorization Header
 const getAuthConfig = () => {
   const token = localStorage.getItem('token');
+
+  // Token-Validierung
+  if (!token || token.trim() === '') {
+    console.error('Kein Token vorhanden oder Token leer');
+    // Optional: Umleitung zur Login-Seite
+    // window.location.href = '/login';
+    return {};
+  }
+
+  // Prüfe, ob das Token das richtige Format hat (drei Teile, getrennt durch Punkte)
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    console.error('Ungültiges Token-Format:', token);
+    // Entferne ungültiges Token
+    localStorage.removeItem('token');
+    // Optional: Umleitung zur Login-Seite
+    // window.location.href = '/login';
+    return {};
+  }
+
+  // Debug-Ausgabe
+  console.log('Token wird verwendet:', `Bearer ${token.substring(0, 10)}...`);
+
   return {
     headers: {
       'Authorization': `Bearer ${token}`

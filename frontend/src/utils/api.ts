@@ -6,7 +6,8 @@
  */
 
 import { Location } from '../types/settings';
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios from 'axios';
+import type { AxiosInstance, AxiosError } from 'axios';
 import {
   Device,
   DeviceCreate,
@@ -53,6 +54,12 @@ interface SessionDevice {
 
 // API-Basis-URL aus Umgebungsvariablen
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3500/api';
+
+// Setze globale Axios-Defaults für Authorization
+const token = localStorage.getItem('token');
+if (token) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+}
 
 // Standard-Optionen für Fetch-Anfragen
 const defaultOptions: RequestInit = {

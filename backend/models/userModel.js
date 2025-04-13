@@ -26,7 +26,9 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
         u.email,
         u.first_name,
         u.last_name,
-        u.department,
+        d.name AS department,
+        l.name AS location,
+        r.name AS room,
         u.role,
         u.active,
         u.created_at,
@@ -36,6 +38,9 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
           0
         ) as assigned_devices_count
       FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN locations l ON u.location_id = l.id
+      LEFT JOIN rooms r ON u.room_id = r.id
       WHERE 1=1
     `;
 
@@ -63,8 +68,22 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
 
     // Abteilungsfilter
     if (filters.department) {
-      query += ` AND u.department = $${paramCount}`;
+      query += ` AND d.name = $${paramCount}`;
       queryParams.push(filters.department);
+      paramCount++;
+    }
+
+    // Standortfilter
+    if (filters.location) {
+      query += ` AND l.name = $${paramCount}`;
+      queryParams.push(filters.location);
+      paramCount++;
+    }
+
+    // Raumfilter
+    if (filters.room) {
+      query += ` AND r.name = $${paramCount}`;
+      queryParams.push(filters.room);
       paramCount++;
     }
 
@@ -82,8 +101,19 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
       paramCount++;
     }
 
-    // Sortierung
-    query += ` ORDER BY ${sortBy} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}`;
+    // Sortierung - Anpassen für department, location und room
+    let sortColumn = sortBy;
+    if (sortBy === 'department') {
+      sortColumn = 'd.name';
+    } else if (sortBy === 'location') {
+      sortColumn = 'l.name';
+    } else if (sortBy === 'room') {
+      sortColumn = 'r.name';
+    } else {
+      sortColumn = `u.${sortBy}`;
+    }
+
+    query += ` ORDER BY ${sortColumn} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}`;
 
     // Pagination
     query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
@@ -91,7 +121,11 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
 
     // Gesamtanzahl für Pagination
     const countQuery = `
-      SELECT COUNT(*) FROM users u WHERE 1=1
+      SELECT COUNT(*) FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN locations l ON u.location_id = l.id
+      LEFT JOIN rooms r ON u.room_id = r.id
+      WHERE 1=1
     `;
 
     // Filterparameter für Zählung wiederverwenden
@@ -116,8 +150,20 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
     }
 
     if (filters.department) {
-      countQuery += ` AND u.department = $${countParamIdx}`;
+      countQuery += ` AND d.name = $${countParamIdx}`;
       countParams.push(filters.department);
+      countParamIdx++;
+    }
+
+    if (filters.location) {
+      countQuery += ` AND l.name = $${countParamIdx}`;
+      countParams.push(filters.location);
+      countParamIdx++;
+    }
+
+    if (filters.room) {
+      countQuery += ` AND r.name = $${countParamIdx}`;
+      countParams.push(filters.room);
       countParamIdx++;
     }
 
@@ -154,7 +200,7 @@ const getAllUsers = async (filters = {}, page = 1, limit = 10, sortBy = 'id', so
 };
 
 /**
- * Benutzer nach ID abrufen
+ * Benutzer anhand der ID abrufen
  * @param {number} id - Benutzer-ID
  * @returns {Promise<Object>} - Benutzerobjekt
  */
@@ -167,7 +213,9 @@ const getUserById = async (id) => {
         u.email,
         u.first_name,
         u.last_name,
-        u.department,
+        d.name AS department,
+        l.name AS location,
+        r.name AS room,
         u.role,
         u.active,
         u.created_at,
@@ -177,6 +225,9 @@ const getUserById = async (id) => {
           0
         ) as assigned_devices_count
       FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN locations l ON u.location_id = l.id
+      LEFT JOIN rooms r ON u.room_id = r.id
       WHERE u.id = $1
     `;
 

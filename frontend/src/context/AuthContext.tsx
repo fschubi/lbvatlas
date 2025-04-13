@@ -4,6 +4,18 @@ import axios from 'axios';
 // API-Basis-URL aus Umgebungsvariablen
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3500/api';
 
+/**
+ * Prüft, ob ein Token-String das erwartete Format hat
+ */
+const isValidTokenFormat = (token: string): boolean => {
+  // Einfache Validierung: Token sollte nicht leer sein und ein JWT-ähnliches Format haben
+  if (!token || token.trim() === '') return false;
+
+  // JWT besteht aus drei Teilen, getrennt durch Punkte
+  const parts = token.split('.');
+  return parts.length === 3;
+};
+
 interface User {
   id: string;
   username: string;
@@ -52,20 +64,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     // Beim Start der App prüfen, ob ein Token existiert
     const token = localStorage.getItem('token');
+
     if (token) {
+      // Prüfe, ob das Token das richtige Format hat
+      if (!isValidTokenFormat(token)) {
+        console.error('Ungültiges Token-Format gefunden, Token wird entfernt');
+        localStorage.removeItem('token');
+        return;
+      }
+
+      console.log('Gültiges Token gefunden, validiere mit Backend...');
       // Token validieren und Benutzerinformationen abrufen
       validateToken(token);
+    } else {
+      console.log('Kein Token gefunden, Benutzer ist nicht authentifiziert');
     }
   }, []);
 
   const validateToken = async (token: string) => {
     try {
+      console.log('Validiere Token mit Backend...');
       const response = await axios.get<ValidateResponse>(`${API_BASE_URL}/auth/validate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      console.log('Token erfolgreich validiert, setze Benutzer:', response.data.user);
       setUser(response.data.user);
+
+      // Axios Default Header setzen
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (err) {
       // Token ungültig - ausloggen
+      console.error('Token-Validierung fehlgeschlagen:', err);
       logout();
     }
   };
@@ -73,24 +103,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (username: string, password: string) => {
     try {
       setError(null);
+      console.log('Versuche Login mit:', username);
+
       const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login`, {
         email: username,
         password
       });
 
       const { token, user } = response.data;
+
+      // Prüfe, ob das erhaltene Token gültig ist
+      if (!isValidTokenFormat(token)) {
+        console.error('Ungültiges Token vom Server erhalten', token);
+        setError('Ungültiges Token vom Server erhalten');
+        throw new Error('Ungültiges Token vom Server erhalten');
+      }
+
+      console.log('Login erfolgreich, Token erhalten:', token.substring(0, 10) + '...');
       localStorage.setItem('token', token);
       setUser(user);
 
       // Axios Default Header setzen
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (err) {
+      console.error('Login fehlgeschlagen:', err);
       setError('Anmeldung fehlgeschlagen');
       throw err;
     }
   };
 
   const logout = () => {
+    console.log('Benutzer wird abgemeldet...');
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     setUser(null);
