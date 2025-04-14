@@ -45,7 +45,7 @@ const authenticate = async (req, res, next) => {
 
     // Benutzer aus der Datenbank abrufen
     const query = `
-      SELECT id, username, email, role_id, is_active, last_login
+      SELECT id, username, email, role, active, last_login
       FROM users
       WHERE id = $1
     `;
@@ -62,7 +62,7 @@ const authenticate = async (req, res, next) => {
 
     const user = rows[0];
 
-    if (!user.is_active) {
+    if (!user.active) {
       return res.status(403).json({
         success: false,
         message: 'Zugriff verweigert: Benutzerkonto ist deaktiviert'
@@ -114,18 +114,8 @@ const isAdmin = async (req, res, next) => {
     // Benutzer-ID aus dem Request-Objekt
     const userId = req.user.id;
 
-    // Admin-Rolle abrufen
-    const query = `
-      SELECT r.name
-      FROM roles r
-      JOIN users u ON u.role_id = r.id
-      WHERE u.id = $1
-    `;
-
-    const { rows } = await db.query(query, [userId]);
-
-    // Prüfen, ob Benutzer die Admin-Rolle hat
-    if (rows.length === 0 || rows[0].name !== 'admin') {
+    // Überprüfung der Admin-Rolle direkt aus dem req.user-Objekt
+    if (req.user.role !== 'admin') {
       logger.warn(`Zugriff verweigert: Benutzer ${userId} ist kein Administrator`);
       return res.status(403).json({
         success: false,
@@ -156,18 +146,8 @@ const isManager = async (req, res, next) => {
     // Benutzer-ID aus dem Request-Objekt
     const userId = req.user.id;
 
-    // Manager-Rolle abrufen
-    const query = `
-      SELECT r.name
-      FROM roles r
-      JOIN users u ON u.role_id = r.id
-      WHERE u.id = $1
-    `;
-
-    const { rows } = await db.query(query, [userId]);
-
-    // Prüfen, ob Benutzer die Manager-Rolle hat
-    if (rows.length === 0 || (rows[0].name !== 'admin' && rows[0].name !== 'manager')) {
+    // Überprüfung der Manager-Rolle direkt aus dem req.user-Objekt
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
       logger.warn(`Zugriff verweigert: Benutzer ${userId} ist kein Manager`);
       return res.status(403).json({
         success: false,

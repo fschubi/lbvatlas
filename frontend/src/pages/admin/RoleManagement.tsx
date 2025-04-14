@@ -553,7 +553,7 @@ const RoleManagement: React.FC = () => {
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Wählen Sie die Berechtigungen aus, die dieser Rolle zugewiesen werden sollen.
-              </Typography>
+        </Typography>
 
               {modules.map((module) => (
                 <Paper key={module.name} sx={{ mb: 2, p: 2 }}>
@@ -589,7 +589,7 @@ const RoleManagement: React.FC = () => {
                               <Typography variant="body2">{permission.action}</Typography>
                               <Typography variant="caption" color="text.secondary">
                                 {permission.description}
-                              </Typography>
+          </Typography>
                             </Box>
                           }
                         />
