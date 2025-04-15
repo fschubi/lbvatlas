@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -14,14 +15,25 @@ import {
   Alert,
   Snackbar,
   InputAdornment,
-  IconButton
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Backup as BackupIcon,
   Restore as RestoreIcon,
   Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon
+  VisibilityOff as VisibilityOffIcon,
+  Security as SecurityIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import MainLayout from '../../layout/MainLayout';
 
@@ -59,6 +71,7 @@ const a11yProps = (index: number) => {
 };
 
 const SystemSettings: React.FC = () => {
+  const location = useLocation();
   const [tabValue, setTabValue] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({
@@ -67,6 +80,18 @@ const SystemSettings: React.FC = () => {
     severity: 'success' as 'success' | 'error'
   });
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+
+  // URL-Parameter für den Tab auslesen
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      const tabIndex = parseInt(tabParam);
+      if (!isNaN(tabIndex) && tabIndex >= 0 && tabIndex <= 3) {
+        setTabValue(tabIndex);
+      }
+    }
+  }, [location]);
 
   // Allgemeine Einstellungen
   const [generalSettings, setGeneralSettings] = useState({
@@ -102,6 +127,79 @@ const SystemSettings: React.FC = () => {
     backupLocation: '/backups',
     includeAttachments: true
   });
+
+  // Rollen-Einstellungen
+  const [roleSettings, setRoleSettings] = useState({
+    roles: [
+      { id: 1, name: 'admin', description: 'Administrator mit vollen Rechten', permissions: 36 },
+      { id: 2, name: 'manager', description: 'Manager mit erweiterten Rechten', permissions: 24 },
+      { id: 3, name: 'support', description: 'Support-Mitarbeiter', permissions: 12 },
+      { id: 4, name: 'user', description: 'Standardbenutzer', permissions: 8 }
+    ],
+    permissions: [],
+    selectedRoleId: 1 // Admin ist standardmäßig ausgewählt
+  });
+
+  // Berechtigungsmodule und Aktionen basierend auf der Datenbankstruktur
+  const permissionModules = [
+    { name: 'users', label: 'Benutzer', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'roles', label: 'Rollen', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'devices', label: 'Geräte', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'licenses', label: 'Lizenzen', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'certificates', label: 'Zertifikate', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'accessories', label: 'Zubehör', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'inventory', label: 'Inventar', actions: ['create', 'read', 'update', 'delete'] },
+    { name: 'settings', label: 'Einstellungen', actions: ['read', 'update'] },
+    { name: 'audit', label: 'Audit-Logs', actions: ['read'] }
+  ];
+
+  // Simulierte Rollenstatus (in Echtumgebung würden diese von der API abgerufen)
+  const rolePermissions = {
+    1: {
+      users: ['create', 'read', 'update', 'delete'],
+      roles: ['create', 'read', 'update', 'delete'],
+      devices: ['create', 'read', 'update', 'delete'],
+      licenses: ['create', 'read', 'update', 'delete'],
+      certificates: ['create', 'read', 'update', 'delete'],
+      accessories: ['create', 'read', 'update', 'delete'],
+      inventory: ['create', 'read', 'update', 'delete'],
+      settings: ['read', 'update'],
+      audit: ['read']
+    },
+    2: {
+      users: ['create', 'read', 'update'],
+      roles: [],
+      devices: ['create', 'read', 'update'],
+      licenses: ['create', 'read', 'update'],
+      certificates: ['create', 'read', 'update'],
+      accessories: ['create', 'read', 'update'],
+      inventory: ['create', 'read', 'update'],
+      settings: [],
+      audit: []
+    },
+    3: {
+      users: [],
+      roles: [],
+      devices: ['read', 'update'],
+      licenses: ['read', 'update'],
+      certificates: ['read', 'update'],
+      accessories: ['read', 'update'],
+      inventory: [],
+      settings: [],
+      audit: []
+    },
+    4: {
+      users: [],
+      roles: [],
+      devices: ['read'],
+      licenses: ['read'],
+      certificates: ['read'],
+      accessories: ['read'],
+      inventory: [],
+      settings: [],
+      audit: []
+    }
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -216,8 +314,46 @@ const SystemSettings: React.FC = () => {
     }
   };
 
+  const saveRoleSettings = async () => {
+    setIsLoading(true);
+    try {
+      // Simuliere API-Aufruf
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setSnackbar({
+        open: true,
+        message: 'Rollen und Berechtigungen wurden erfolgreich gespeichert.',
+        severity: 'success'
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Speichern der Rollen und Berechtigungen.',
+        severity: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleRoleSelect = (roleId: number) => {
+    setRoleSettings({
+      ...roleSettings,
+      selectedRoleId: roleId
+    });
+  };
+
+  const getSelectedRolePermissions = () => {
+    return rolePermissions[roleSettings.selectedRoleId as keyof typeof rolePermissions] || {};
+  };
+
+  const hasPermission = (module: string, action: string) => {
+    const permissions = getSelectedRolePermissions();
+    const modulePermissions = permissions[module as keyof typeof permissions];
+    return modulePermissions ? (modulePermissions as string[]).includes(action) : false;
   };
 
   return (
@@ -238,6 +374,7 @@ const SystemSettings: React.FC = () => {
             <Tab label="Allgemeine Einstellungen" {...a11yProps(0)} />
             <Tab label="E-Mail-Konfiguration" {...a11yProps(1)} />
             <Tab label="Backup & Wiederherstellung" {...a11yProps(2)} />
+            <Tab label="Rollen & Berechtigungen" {...a11yProps(3)} />
           </Tabs>
 
           {/* Allgemeine Einstellungen */}
@@ -620,7 +757,7 @@ const SystemSettings: React.FC = () => {
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="h6" gutterBottom>
                   Manuelles Backup
-          </Typography>
+                </Typography>
               </Grid>
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
@@ -653,6 +790,176 @@ const SystemSettings: React.FC = () => {
                     disabled={isLoading}
                   >
                     Backup-Einstellungen speichern
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </TabPanel>
+
+          {/* Rollen & Berechtigungen */}
+          <TabPanel value={tabValue} index={3}>
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Hier können Sie die Benutzerrollen und deren Berechtigungen im System verwalten.
+            </Alert>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Benutzerrollen</Typography>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<AddIcon />}
+                    size="small"
+                  >
+                    Neue Rolle erstellen
+                  </Button>
+                </Box>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Beschreibung</TableCell>
+                        <TableCell align="center">Berechtigungen</TableCell>
+                        <TableCell align="center">Aktionen</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {roleSettings.roles.map((role) => (
+                        <TableRow
+                          key={role.id}
+                          onClick={() => handleRoleSelect(role.id)}
+                          sx={{
+                            cursor: 'pointer',
+                            bgcolor: roleSettings.selectedRoleId === role.id ? 'action.selected' : 'inherit'
+                          }}
+                        >
+                          <TableCell>
+                            <Chip
+                              label={role.name}
+                              color={role.name === 'admin' ? 'primary' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{role.description}</TableCell>
+                          <TableCell align="center">{role.permissions}</TableCell>
+                          <TableCell align="center">
+                            <IconButton size="small" color="primary">
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              disabled={role.name === 'admin'}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  Berechtigungsmatrix für {roleSettings.roles.find(r => r.id === roleSettings.selectedRoleId)?.name}
+                </Typography>
+                <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Modul</TableCell>
+                        <TableCell align="center">Erstellen</TableCell>
+                        <TableCell align="center">Lesen</TableCell>
+                        <TableCell align="center">Bearbeiten</TableCell>
+                        <TableCell align="center">Löschen</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {permissionModules.map((module) => (
+                        <TableRow key={module.name}>
+                          <TableCell component="th" scope="row">
+                            <Typography variant="body2" fontWeight="medium">
+                              {module.label}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            {module.actions.includes('create') ? (
+                              <Chip
+                                label={hasPermission(module.name, 'create') ? "Ja" : "Nein"}
+                                color={hasPermission(module.name, 'create') ? "success" : "default"}
+                                size="small"
+                                variant={hasPermission(module.name, 'create') ? "filled" : "outlined"}
+                              />
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {module.actions.includes('read') ? (
+                              <Chip
+                                label={hasPermission(module.name, 'read') ? "Ja" : "Nein"}
+                                color={hasPermission(module.name, 'read') ? "success" : "default"}
+                                size="small"
+                                variant={hasPermission(module.name, 'read') ? "filled" : "outlined"}
+                              />
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {module.actions.includes('update') ? (
+                              <Chip
+                                label={hasPermission(module.name, 'update') ? "Ja" : "Nein"}
+                                color={hasPermission(module.name, 'update') ? "success" : "default"}
+                                size="small"
+                                variant={hasPermission(module.name, 'update') ? "filled" : "outlined"}
+                              />
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {module.actions.includes('delete') ? (
+                              <Chip
+                                label={hasPermission(module.name, 'delete') ? "Ja" : "Nein"}
+                                color={hasPermission(module.name, 'delete') ? "success" : "default"}
+                                size="small"
+                                variant={hasPermission(module.name, 'delete') ? "filled" : "outlined"}
+                              />
+                            ) : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Die Berechtigungen werden über die Datenbank verwaltet und beeinflussen die Zugriffsebenen im System.
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  Vererbung und Hierarchie
+                </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Im ATLAS-System ist eine hierarchische Berechtigungsstruktur implementiert:
+                  Admin → Manager → Support → User
+                </Alert>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Höhere Rollen erben automatisch alle Berechtigungen der untergeordneten Rollen.
+                  Die Vererbungshierarchie kann bei Bedarf in der Datenbank angepasst werden.
+                </Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<SecurityIcon />}
+                    onClick={saveRoleSettings}
+                    disabled={isLoading}
+                  >
+                    Rolleneinstellungen speichern
                   </Button>
                 </Box>
               </Grid>

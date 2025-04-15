@@ -88,11 +88,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       text: 'Administration',
       icon: <AdminIcon />,
       path: '/admin',
-      expandable: true,
-      adminOnly: true,
-      subItems: [
-        { text: 'Rollen & Berechtigungen', path: '/admin/roles', icon: <SecurityIcon /> }
-      ]
+      expandable: false,
+      adminOnly: true
     },
     { text: 'Einstellungen', icon: <SettingsIcon />, path: '/settings' },
   ];

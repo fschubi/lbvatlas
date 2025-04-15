@@ -17,7 +17,8 @@ import {
   AdminPanelSettings as SystemIcon,
   QrCode2 as AssetTagIcon,
   LocalPrintshop as PrintIcon,
-  Storage as BasicDataIcon
+  Storage as BasicDataIcon,
+  Security as SecurityIcon
 } from '@mui/icons-material';
 
 interface SettingsCard {
@@ -60,6 +61,13 @@ const Settings: React.FC = () => {
       icon: <PrintIcon />,
       path: '/settings/labels',
       color: '#5c6bc0'
+    },
+    {
+      title: 'Rollen & Berechtigungen',
+      description: 'Benutzerrollen und Zugriffsberechtigungen im System verwalten',
+      icon: <SecurityIcon />,
+      path: '/admin/system-settings?tab=3',
+      color: '#d32f2f'
     },
     {
       title: 'Systemeinstellungen',

@@ -25,6 +25,7 @@ const AdminRoutes: React.FC = () => {
       <Route path="users" element={<UserManagement />} />
       <Route path="roles" element={<RoleManagement />} />
       <Route path="settings" element={<SystemSettings />} />
+      <Route path="system-settings" element={<SystemSettings />} />
       <Route path="audit-logs" element={<AuditLogs />} />
       <Route path="backup-restore" element={<BackupRestore />} />
 
