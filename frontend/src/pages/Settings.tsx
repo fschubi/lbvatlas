@@ -13,20 +13,11 @@ import {
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
-  Business as BusinessIcon,
-  Category as CategoryIcon,
-  Factory as ManufacturerIcon,
-  Store as SupplierIcon,
-  Room as RoomIcon,
-  Place as LocationIcon,
-  Devices as DeviceModelIcon,
-  Router as SwitchIcon,
-  WifiTethering as NetworkOutletIcon,
-  SettingsEthernet as PortIcon,
   Email as EmailIcon,
   AdminPanelSettings as SystemIcon,
   QrCode2 as AssetTagIcon,
-  LocalPrintshop as PrintIcon
+  LocalPrintshop as PrintIcon,
+  Storage as BasicDataIcon
 } from '@mui/icons-material';
 
 interface SettingsCard {
@@ -43,74 +34,11 @@ const Settings: React.FC = () => {
   // Alle Einstellungskarten definieren
   const settingsCards: SettingsCard[] = [
     {
-      title: 'Abteilungen',
-      description: 'Abteilungen und Organisationsstruktur verwalten',
-      icon: <BusinessIcon />,
-      path: '/settings/departments',
+      title: 'Grunddaten',
+      description: 'Verwalten Sie grundlegende Stammdaten wie Abteilungen, Standorte, Kategorien und Netzwerkkomponenten',
+      icon: <BasicDataIcon />,
+      path: '/settings/basic',
       color: '#1976d2'
-    },
-    {
-      title: 'Kategorien',
-      description: 'Gerätekategorien und deren Hierarchie verwalten',
-      icon: <CategoryIcon />,
-      path: '/settings/categories',
-      color: '#2196f3'
-    },
-    {
-      title: 'Hersteller',
-      description: 'Hersteller von Geräten und Komponenten verwalten',
-      icon: <ManufacturerIcon />,
-      path: '/settings/manufacturers',
-      color: '#0d47a1'
-    },
-    {
-      title: 'Lieferanten',
-      description: 'Lieferanten und Vertriebspartner verwalten',
-      icon: <SupplierIcon />,
-      path: '/settings/suppliers',
-      color: '#283593'
-    },
-    {
-      title: 'Räume',
-      description: 'Räume und deren Zuordnung zu Standorten verwalten',
-      icon: <RoomIcon />,
-      path: '/settings/rooms',
-      color: '#4527a0'
-    },
-    {
-      title: 'Standorte',
-      description: 'Standorte und Niederlassungen verwalten',
-      icon: <LocationIcon />,
-      path: '/settings/locations',
-      color: '#311b92'
-    },
-    {
-      title: 'Gerätemodelle',
-      description: 'Modelle und Typen von Geräten verwalten',
-      icon: <DeviceModelIcon />,
-      path: '/settings/device-models',
-      color: '#512da8'
-    },
-    {
-      title: 'Switches',
-      description: 'Netzwerk-Switches und deren Konfiguration verwalten',
-      icon: <SwitchIcon />,
-      path: '/settings/switches',
-      color: '#673ab7'
-    },
-    {
-      title: 'Netzwerkdosen',
-      description: 'Netzwerkdosen und deren Zuordnung verwalten',
-      icon: <NetworkOutletIcon />,
-      path: '/settings/network-outlets',
-      color: '#7e57c2'
-    },
-    {
-      title: 'Ports',
-      description: 'Netzwerk-Ports und deren Konfiguration verwalten',
-      icon: <PortIcon />,
-      path: '/settings/ports',
-      color: '#9575cd'
     },
     {
       title: 'E-Mail-Benachrichtigungen',

@@ -30,6 +30,7 @@ import Ports from './pages/settings/Ports';
 import EmailNotifications from './pages/settings/EmailNotifications';
 import AssetTags from './pages/settings/AssetTags';
 import LabelPrinting from './pages/settings/LabelPrinting';
+import BasicSettings from './pages/settings/BasicSettings';
 import DocumentManager from './pages/DocumentManager';
 import Tickets from './pages/Tickets';
 import Todos from './pages/Todos';
@@ -92,6 +93,7 @@ const App = () => {
         <Route path="/settings/asset-tags" element={<AssetTags />} />
         <Route path="/settings/labels" element={<LabelPrinting />} />
         <Route path="/settings/system" element={<AdminRoutes />} />
+        <Route path="/settings/basic" element={<BasicSettings />} />
       </Route>
 
       {/* Auth-Seiten ohne Layout */}
