@@ -91,6 +91,7 @@ const App = () => {
         <Route path="/settings/email-notifications" element={<EmailNotifications />} />
         <Route path="/settings/asset-tags" element={<AssetTags />} />
         <Route path="/settings/labels" element={<LabelPrinting />} />
+        <Route path="/settings/system" element={<AdminRoutes />} />
       </Route>
 
       {/* Auth-Seiten ohne Layout */}

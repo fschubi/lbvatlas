@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 // Admin Pages
 import UserManagement from './UserManagement';
@@ -9,6 +9,13 @@ import AuditLogs from './AuditLogs';
 import BackupRestore from './BackupRestore';
 
 const AdminRoutes: React.FC = () => {
+  const location = useLocation();
+
+  // Wenn die Route von /settings/system kommt, direkt zu SystemSettings weiterleiten
+  if (location.pathname === '/settings/system') {
+    return <SystemSettings />;
+  }
+
   return (
     <Routes>
       {/* Wenn /admin aufgerufen wird, Umleitung zu /admin/users */}

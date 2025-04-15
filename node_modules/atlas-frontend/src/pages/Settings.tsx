@@ -137,7 +137,7 @@ const Settings: React.FC = () => {
       title: 'Systemeinstellungen',
       description: 'Allgemeine Systemkonfiguration und Wartung',
       icon: <SystemIcon />,
-      path: '/settings/System',
+      path: '/settings/system',
       color: '#3949ab'
     }
   ];
