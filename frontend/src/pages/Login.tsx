@@ -8,9 +8,64 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Link
+  Link,
+  IconButton,
+  InputAdornment
 } from '@mui/material';
+import {
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import { styled } from '@mui/material/styles';
+
+// Versuche, das Logo zu importieren (kann zur Laufzeit fehlschlagen)
+let logoPath = '';
+try {
+  // Korrekter Pfad zum Logo im public-Verzeichnis
+  logoPath = '/ATLAS_Logo_schmal.png';
+} catch (error) {
+  console.error('Logo konnte nicht geladen werden', error);
+}
+
+// Benutzerdefiniertes TextField mit immer dunklem Hintergrund
+const DarkTextField = styled(TextField)(({ theme }) => ({
+  '& .MuiOutlinedInput-root': {
+    backgroundColor: '#121212',
+    '&.Mui-focused': {
+      backgroundColor: '#121212',
+    },
+    '&:hover': {
+      backgroundColor: '#121212',
+    },
+    '&.Mui-error': {
+      backgroundColor: '#121212',
+    },
+    '& fieldset': {
+      borderColor: 'rgba(255, 255, 255, 0.23)',
+    },
+    '&:hover fieldset': {
+      borderColor: 'rgba(255, 255, 255, 0.23)',
+    },
+    '&.Mui-focused fieldset': {
+      borderColor: theme.palette.primary.main,
+    },
+    '& input, & textarea': {
+      backgroundColor: '#121212',
+      color: theme.palette.text.primary,
+    },
+    '& input:-webkit-autofill': {
+      WebkitBoxShadow: '0 0 0 1000px #121212 inset',
+      WebkitTextFillColor: theme.palette.text.primary,
+    },
+  },
+  '& .MuiInputLabel-root': {
+    color: theme.palette.text.secondary,
+  },
+  '& .MuiIconButton-root': {
+    color: theme.palette.text.secondary,
+  }
+}));
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -19,6 +74,8 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +90,18 @@ const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogoError = () => {
+    setLogoError(true);
+  };
+
+  const handleClickShowPassword = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const handleMouseDownPassword = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
   };
 
   return (
@@ -53,15 +122,24 @@ const Login: React.FC = () => {
           maxWidth: 400,
           display: 'flex',
           flexDirection: 'column',
-          gap: 3
+          gap: 3,
+          bgcolor: 'background.paper'
         }}
       >
-        <Typography variant="h4" component="h1" align="center" gutterBottom>
-          ATLAS
-        </Typography>
-        <Typography variant="subtitle1" align="center" color="text.secondary" gutterBottom>
-          Advanced Tracking and Logistics Asset System
-        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
+          {!logoError && logoPath ? (
+            <img
+              src={logoPath}
+              alt="ATLAS Logo"
+              style={{ width: '100%', maxWidth: '100%', marginBottom: '16px' }}
+              onError={handleLogoError}
+            />
+          ) : (
+            <Typography variant="h4" component="h1" align="center" gutterBottom fontWeight="bold">
+              ATLAS
+            </Typography>
+          )}
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -70,7 +148,7 @@ const Login: React.FC = () => {
         )}
 
         <form onSubmit={handleSubmit}>
-          <TextField
+          <DarkTextField
             fullWidth
             label="Benutzername"
             variant="outlined"
@@ -80,15 +158,29 @@ const Login: React.FC = () => {
             autoFocus
             sx={{ mb: 2 }}
           />
-          <TextField
+          <DarkTextField
             fullWidth
             label="Passwort"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             sx={{ mb: 2 }}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="Passwort anzeigen"
+                    onClick={handleClickShowPassword}
+                    onMouseDown={handleMouseDownPassword}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
           />
           <Link
             component={RouterLink}

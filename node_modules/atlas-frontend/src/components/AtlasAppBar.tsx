@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   AppBar,
   Toolbar,
@@ -11,6 +12,8 @@ import {
   Box,
   styled,
   alpha,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -19,6 +22,8 @@ import {
   Mail as MailIcon,
   Notifications as NotificationsIcon,
   AccountCircle,
+  Person as PersonIcon,
+  Logout as LogoutIcon
 } from '@mui/icons-material'
 
 interface AtlasAppBarProps {
@@ -65,6 +70,7 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
 }))
 
 const AtlasAppBar = ({ onMenuClick }: AtlasAppBarProps) => {
+  const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -73,6 +79,21 @@ const AtlasAppBar = ({ onMenuClick }: AtlasAppBarProps) => {
 
   const handleMenuClose = () => {
     setAnchorEl(null)
+  }
+
+  const handleProfileClick = () => {
+    console.log('Profil wird geöffnet')
+    handleMenuClose()
+    window.location.href = '/profile'
+  }
+
+  const handleLogoutClick = () => {
+    console.log('Benutzer wird abgemeldet')
+    handleMenuClose()
+    // Token entfernen
+    localStorage.removeItem('token')
+    // Zur Login-Seite navigieren
+    window.location.href = '/login'
   }
 
   const isMenuOpen = Boolean(anchorEl)
@@ -171,8 +192,18 @@ const AtlasAppBar = ({ onMenuClick }: AtlasAppBarProps) => {
         open={isMenuOpen}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={handleMenuClose}>Profil</MenuItem>
-        <MenuItem onClick={handleMenuClose}>Abmelden</MenuItem>
+        <MenuItem onClick={handleProfileClick}>
+          <ListItemIcon>
+            <PersonIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Profil" />
+        </MenuItem>
+        <MenuItem onClick={handleLogoutClick}>
+          <ListItemIcon>
+            <LogoutIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Abmelden" />
+        </MenuItem>
       </Menu>
     </AppBar>
   )

@@ -9,6 +9,8 @@ import {
   Menu,
   MenuItem,
   Box,
+  ListItemIcon,
+  ListItemText,
   styled,
   alpha
 } from '@mui/material';
@@ -19,7 +21,9 @@ import {
   Mail as MailIcon,
   Notifications as NotificationsIcon,
   AccountCircle,
-  MoreVert as MoreIcon
+  MoreVert as MoreIcon,
+  Logout as LogoutIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 
 // Styled components für die Suchleiste
@@ -93,18 +97,27 @@ const AtlasAppBar: React.FC<AtlasAppBarProps> = ({ onMenuClick, onScannerClick, 
     setMobileMoreAnchorEl(event.currentTarget);
   };
 
-  const handleScannerClick = () => {
-    if (onScannerClick) {
-      onScannerClick();
-    }
-  };
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchText(value);
     if (onSearchChange) {
       onSearchChange(value);
     }
+  };
+
+  const handleProfileClick = () => {
+    console.log('Profil-Button geklickt');
+    handleMenuClose();
+    // Verwende direkte Browser-Navigation
+    window.location.href = '/profile';
+  };
+
+  const handleLogoutClick = () => {
+    console.log('Logout-Button geklickt');
+    handleMenuClose();
+    // Anmeldetoken entfernen und zum Login navigieren
+    localStorage.removeItem('token');
+    window.location.href = '/login';
   };
 
   const menuId = 'primary-search-account-menu';
@@ -116,8 +129,18 @@ const AtlasAppBar: React.FC<AtlasAppBarProps> = ({ onMenuClick, onScannerClick, 
       open={isMenuOpen}
       onClose={handleMenuClose}
     >
-      <MenuItem onClick={handleMenuClose}>Profil</MenuItem>
-      <MenuItem onClick={handleMenuClose}>Abmelden</MenuItem>
+      <MenuItem onClick={handleProfileClick}>
+        <ListItemIcon>
+          <PersonIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Profil" />
+      </MenuItem>
+      <MenuItem onClick={handleLogoutClick}>
+        <ListItemIcon>
+          <LogoutIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Abmelden" />
+      </MenuItem>
     </Menu>
   );
 
@@ -130,37 +153,17 @@ const AtlasAppBar: React.FC<AtlasAppBarProps> = ({ onMenuClick, onScannerClick, 
       open={isMobileMenuOpen}
       onClose={handleMobileMenuClose}
     >
-      <MenuItem>
-        <IconButton size="large" aria-label="E-Mail-Benachrichtigungen" color="inherit">
-          <Badge badgeContent={4} color="error">
-            <MailIcon />
-          </Badge>
-        </IconButton>
-        <p>E-Mails</p>
+      <MenuItem onClick={handleProfileClick}>
+        <ListItemIcon>
+          <PersonIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Profil" />
       </MenuItem>
-      <MenuItem>
-        <IconButton
-          size="large"
-          aria-label="Systembenachrichtigungen"
-          color="inherit"
-        >
-          <Badge badgeContent={11} color="error">
-            <NotificationsIcon />
-          </Badge>
-        </IconButton>
-        <p>Benachrichtigungen</p>
-      </MenuItem>
-      <MenuItem onClick={handleProfileMenuOpen}>
-        <IconButton
-          size="large"
-          aria-label="Benutzerkonto"
-          aria-controls="primary-search-account-menu"
-          aria-haspopup="true"
-          color="inherit"
-        >
-          <AccountCircle />
-        </IconButton>
-        <p>Profil</p>
+      <MenuItem onClick={handleLogoutClick}>
+        <ListItemIcon>
+          <LogoutIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Abmelden" />
       </MenuItem>
     </Menu>
   );
@@ -185,7 +188,7 @@ const AtlasAppBar: React.FC<AtlasAppBarProps> = ({ onMenuClick, onScannerClick, 
             component="div"
             sx={{ display: { xs: 'none', sm: 'block' }, fontWeight: 'bold' }}
           >
-            ATLAS Menu
+            ATLAS
           </Typography>
           <Search>
             <SearchIconWrapper>
@@ -202,7 +205,7 @@ const AtlasAppBar: React.FC<AtlasAppBarProps> = ({ onMenuClick, onScannerClick, 
             size="large"
             aria-label="QR-Code scannen"
             color="inherit"
-            onClick={handleScannerClick}
+            onClick={onScannerClick}
           >
             <QrCodeScannerIcon />
           </IconButton>

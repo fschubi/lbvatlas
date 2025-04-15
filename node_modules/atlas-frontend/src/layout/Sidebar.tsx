@@ -29,7 +29,6 @@ import {
   ExpandLess,
   ExpandMore,
   Person as UsersIcon,
-  AccountCircle as ProfileIcon,
   AdminPanelSettings as AdminIcon,
   Security as SecurityIcon
 } from '@mui/icons-material';
@@ -122,38 +121,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       }}
     >
       <List>
-        {/* Benutzer-Profil als erster Eintrag */}
-        <Tooltip title={!open ? 'Mein Profil' : ''} placement="right">
-          <ListItem disablePadding sx={{ display: 'block' }}>
-            <ListItemButton
-              selected={location.pathname === '/profile'}
-              sx={{
-                minHeight: 48,
-                justifyContent: open ? 'initial' : 'center',
-                px: 2.5,
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.dark',
-                  '&:hover': { backgroundColor: 'primary.dark' },
-                },
-              }}
-              onClick={() => handleNavigate('/profile')}
-            >
-              <ListItemIcon
-                sx={{
-                  minWidth: 0,
-                  mr: open ? 3 : 'auto',
-                  justifyContent: 'center',
-                  color: 'inherit',
-                }}
-              >
-                <ProfileIcon />
-              </ListItemIcon>
-              <ListItemText primary="Mein Profil" sx={{ opacity: open ? 1 : 0 }} />
-            </ListItemButton>
-          </ListItem>
-        </Tooltip>
-        <Divider sx={{ my: 1 }} />
-
         {/* Hauptmenü */}
         {menuItems.map((item) => {
           if (item.adminOnly && user?.role !== 'admin') return null;
