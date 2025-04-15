@@ -30,10 +30,10 @@ const MainLayout = ({ children }: MainLayoutProps) => {
         sx={{
           flexGrow: 1,
           width: '100%',
-          pl: `${sidebarWidth}px`,
+          ml: `${sidebarWidth}px`,
           pt: '64px',
           transition: (theme) =>
-            theme.transitions.create(['padding'], {
+            theme.transitions.create(['margin'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.standard,
             }),

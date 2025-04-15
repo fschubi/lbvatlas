@@ -84,13 +84,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
     { text: 'Aufgaben', icon: <TodosIcon />, path: '/todos' },
     { text: 'Berichte', icon: <ReportsIcon />, path: '/reports' },
     { text: 'Benutzer', icon: <UsersIcon />, path: '/users' },
-    {
-      text: 'Administration',
-      icon: <AdminIcon />,
-      path: '/admin',
-      expandable: false,
-      adminOnly: true
-    },
     { text: 'Einstellungen', icon: <SettingsIcon />, path: '/settings' },
   ];
 
@@ -154,7 +147,17 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                       >
                         {item.icon}
                       </ListItemIcon>
-                      <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                      <ListItemText
+                        primary={item.text}
+                        sx={{
+                          opacity: open ? 1 : 0,
+                          visibility: open ? 'visible' : 'hidden',
+                          transition: theme => theme.transitions.create(['opacity', 'visibility'], {
+                            easing: theme.transitions.easing.sharp,
+                            duration: theme.transitions.duration.standard,
+                          }),
+                        }}
+                      />
                       {open && (isSubMenuOpen ? <ExpandLess /> : <ExpandMore />)}
                     </ListItemButton>
                   </ListItem>
@@ -234,7 +237,19 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                   >
                     {item.icon}
                   </ListItemIcon>
-                  <ListItemText primary={item.text} sx={{ opacity: open ? 1 : 0 }} />
+                  <ListItemText
+                    primary={item.text}
+                    sx={{
+                      opacity: open ? 1 : 0,
+                      visibility: open ? 'visible' : 'hidden',
+                      transition: theme => theme.transitions.create(['opacity', 'visibility'], {
+                        easing: theme.transitions.easing.sharp,
+                        duration: theme.transitions.duration.standard,
+                      }),
+                      ml: open ? 0 : -20, // Verhindert sichtbare Verschiebung
+                      display: open ? 'block' : 'none',
+                    }}
+                  />
                 </ListItemButton>
               </ListItem>
             </Tooltip>

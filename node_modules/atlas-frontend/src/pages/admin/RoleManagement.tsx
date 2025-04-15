@@ -426,6 +426,42 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  // Alle Berechtigungen speichern
+  const saveRolePermissions = async () => {
+    if (!selectedRole) return;
+
+    setLoading(true);
+    try {
+      // Hier kann je nach API-Design ein PUT-Request an den Server gesendet werden,
+      // um alle Berechtigungen für die Rolle zu aktualisieren
+      // Als Alternative könnte man auch einen Batch-Request senden
+
+      // Beispiel-Implementation (angepasst an die API):
+      const response = await axios.put<ApiResponse<any>>(
+        `${API_BASE_URL}/roles/${selectedRole.id}/permissions`,
+        { permissionIds: rolePermissions },
+        getAuthConfig()
+      );
+
+      if (response.data.success) {
+        setSnackbar({
+          open: true,
+          message: 'Berechtigungen wurden erfolgreich gespeichert',
+          severity: 'success'
+        });
+      }
+    } catch (error) {
+      console.error('Fehler beim Speichern der Berechtigungen:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Speichern der Berechtigungen',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <MainLayout>
@@ -438,7 +474,7 @@ const RoleManagement: React.FC = () => {
 
   return (
     <MainLayout>
-      <Box sx={{ p: 3, height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4">Rollenverwaltung</Typography>
           <Button
@@ -447,223 +483,293 @@ const RoleManagement: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => handleOpenDialog('create')}
           >
-            Neue Rolle
+            Neue Rolle erstellen
           </Button>
         </Box>
 
-        <Paper sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            sx={{ borderBottom: 1, borderColor: 'divider' }}
-          >
-            <Tab label="Rollen" id="tab-0" />
-            <Tab
-              label="Berechtigungen"
-              id="tab-1"
-              disabled={!selectedRole}
-            />
-          </Tabs>
-
-          {/* Rollenliste anzeigen */}
-          {tabValue === 0 && (
-            <Box sx={{ p: 2, flexGrow: 1, height: 'calc(100% - 48px)', overflow: 'hidden' }}>
-              {/* Standard Tabelle verwenden anstatt AtlasTable, da diese besser mit Flexbox funktioniert */}
-              <TableContainer sx={{ height: '100%', overflow: 'auto' }}>
-                <Table stickyHeader size="small">
-                  <TableHead>
+        <Box>
+          <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+            Benutzerrollen
+          </Typography>
+          <Paper variant="outlined">
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Beschreibung</TableCell>
+                    <TableCell align="center">Berechtigungen</TableCell>
+                    <TableCell align="center">Aktionen</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {roles.length === 0 ? (
                     <TableRow>
-                      <TableCell>ID</TableCell>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Beschreibung</TableCell>
-                      <TableCell>Systemrolle</TableCell>
-                      <TableCell>Erstellt am</TableCell>
-                      <TableCell>Aktionen</TableCell>
+                      <TableCell colSpan={4} align="center">
+                        Keine Rollen gefunden
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {roles.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} align="center">
-                          Keine Rollen gefunden
+                  ) : (
+                    roles.map((role) => (
+                      <TableRow
+                        key={role.id}
+                        hover
+                        onClick={() => handleSelectRole(role)}
+                        sx={{
+                          cursor: 'pointer',
+                          bgcolor: selectedRole?.id === role.id ? 'action.selected' : 'inherit'
+                        }}
+                      >
+                        <TableCell>
+                          <Chip
+                            label={role.name}
+                            color={role.name === 'admin' ? 'primary' : 'default'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{role.description}</TableCell>
+                        <TableCell align="center">{role.permissions?.length || 0}</TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDialog('edit', role);
+                            }}
+                            disabled={role.is_system}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteRole(role.id);
+                            }}
+                            disabled={role.is_system}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      roles.map((role) => (
-                        <TableRow key={role.id} hover>
-                          <TableCell>{role.id}</TableCell>
-                          <TableCell>{role.name}</TableCell>
-                          <TableCell>{role.description}</TableCell>
-                          <TableCell>
-                            <Chip
-                              icon={role.is_system ? <CheckIcon /> : <ClearIcon />}
-                              label={role.is_system ? 'Ja' : 'Nein'}
-                              color={role.is_system ? 'primary' : 'default'}
-                              size="small"
-                            />
-                          </TableCell>
-                          <TableCell>{role.created_at}</TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Tooltip title="Berechtigungen bearbeiten">
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={() => handleSelectRole(role)}
-                                >
-                                  <SecurityIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Rolle bearbeiten">
-                                <IconButton
-                                  size="small"
-                                  color="secondary"
-                                  onClick={() => handleOpenDialog('edit', role)}
-                                  disabled={role.is_system}
-                                >
-                                  <EditIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Rolle löschen">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => handleDeleteRole(role.id)}
-                                  disabled={role.is_system}
-                                >
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Box>
-          )}
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </Box>
 
-          {/* Berechtigungen anzeigen */}
-          {tabValue === 1 && selectedRole && (
-            <Box sx={{ p: 2, flexGrow: 1, overflow: 'auto' }}>
+        {selectedRole && (
+          <Box sx={{ mt: 4 }}>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Berechtigungsmatrix für {selectedRole.name}
+            </Typography>
+            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400, overflow: 'auto' }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Modul</TableCell>
+                    <TableCell align="center">Erstellen</TableCell>
+                    <TableCell align="center">Lesen</TableCell>
+                    <TableCell align="center">Bearbeiten</TableCell>
+                    <TableCell align="center">Löschen</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {modules.map((module) => (
+                    <TableRow key={module.name}>
+                      <TableCell component="th" scope="row">
+                        <Typography variant="body2" fontWeight="medium">
+                          {module.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        {module.permissions.find(p => p.action === 'create') ? (
+                          <Chip
+                            label={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'create')?.id || ''
+                            ) ? "Ja" : "Nein"}
+                            color={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'create')?.id || ''
+                            ) ? "success" : "default"}
+                            size="small"
+                            variant={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'create')?.id || ''
+                            ) ? "filled" : "outlined"}
+                            onClick={() => {
+                              const permission = module.permissions.find(p => p.action === 'create');
+                              if (permission) handleTogglePermission(permission.id);
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {module.permissions.find(p => p.action === 'read') ? (
+                          <Chip
+                            label={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'read')?.id || ''
+                            ) ? "Ja" : "Nein"}
+                            color={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'read')?.id || ''
+                            ) ? "success" : "default"}
+                            size="small"
+                            variant={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'read')?.id || ''
+                            ) ? "filled" : "outlined"}
+                            onClick={() => {
+                              const permission = module.permissions.find(p => p.action === 'read');
+                              if (permission) handleTogglePermission(permission.id);
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {module.permissions.find(p => p.action === 'update') ? (
+                          <Chip
+                            label={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'update')?.id || ''
+                            ) ? "Ja" : "Nein"}
+                            color={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'update')?.id || ''
+                            ) ? "success" : "default"}
+                            size="small"
+                            variant={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'update')?.id || ''
+                            ) ? "filled" : "outlined"}
+                            onClick={() => {
+                              const permission = module.permissions.find(p => p.action === 'update');
+                              if (permission) handleTogglePermission(permission.id);
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {module.permissions.find(p => p.action === 'delete') ? (
+                          <Chip
+                            label={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'delete')?.id || ''
+                            ) ? "Ja" : "Nein"}
+                            color={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'delete')?.id || ''
+                            ) ? "success" : "default"}
+                            size="small"
+                            variant={rolePermissions.includes(
+                              module.permissions.find(p => p.action === 'delete')?.id || ''
+                            ) ? "filled" : "outlined"}
+                            onClick={() => {
+                              const permission = module.permissions.find(p => p.action === 'delete');
+                              if (permission) handleTogglePermission(permission.id);
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Die Berechtigungen werden über die Datenbank verwaltet und beeinflussen die Zugriffsebenen im System.
+            </Typography>
+
+            <Box sx={{ mt: 3 }}>
+              <Divider sx={{ my: 2 }} />
               <Typography variant="h6" gutterBottom>
-                Berechtigungen für Rolle: {selectedRole.name}
+                Vererbung und Hierarchie
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Wählen Sie die Berechtigungen aus, die dieser Rolle zugewiesen werden sollen.
-        </Typography>
-
-              {modules.map((module) => (
-                <Paper key={module.name} sx={{ mb: 2, p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="subtitle1">{module.name}</Typography>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={module.permissions.every(p => rolePermissions.includes(p.id))}
-                          indeterminate={
-                            module.permissions.some(p => rolePermissions.includes(p.id)) &&
-                            !module.permissions.every(p => rolePermissions.includes(p.id))
-                          }
-                          onChange={() => handleToggleModulePermissions(module.permissions)}
-                        />
-                      }
-                      label="Alle"
-                    />
-                  </Box>
-                  <Divider sx={{ mb: 2 }} />
-                  <Grid container spacing={2}>
-                    {module.permissions.map((permission) => (
-                      <Grid item xs={12} sm={6} md={4} key={permission.id}>
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={rolePermissions.includes(permission.id)}
-                              onChange={() => handleTogglePermission(permission.id)}
-                            />
-                          }
-                          label={
-                            <Box>
-                              <Typography variant="body2">{permission.action}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {permission.description}
-          </Typography>
-                            </Box>
-                          }
-                        />
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Paper>
-              ))}
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Im ATLAS-System ist eine hierarchische Berechtigungsstruktur implementiert:
+                Admin → Manager → Support → User
+              </Alert>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Höhere Rollen erben automatisch alle Berechtigungen der untergeordneten Rollen.
+                Die Vererbungshierarchie kann bei Bedarf in der Datenbank angepasst werden.
+              </Typography>
             </Box>
-          )}
-        </Paper>
-      </Box>
 
-      {/* Dialog für Rolle erstellen/bearbeiten */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {dialogType === 'create' ? 'Neue Rolle erstellen' : 'Rolle bearbeiten'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              autoFocus
-              margin="dense"
-              id="name"
-              label="Rollenname"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={roleName}
-              onChange={(e) => setRoleName(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              margin="dense"
-              id="description"
-              label="Beschreibung"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={roleDescription}
-              onChange={(e) => setRoleDescription(e.target.value)}
-              multiline
-              rows={3}
-            />
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<SaveIcon />}
+                onClick={saveRolePermissions}
+              >
+                Berechtigungen speichern
+              </Button>
+            </Box>
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Abbrechen</Button>
-          <Button
-            onClick={handleDialogAction}
-            variant="contained"
-            color="primary"
-            disabled={!roleName.trim()}
-          >
-            {dialogType === 'create' ? 'Erstellen' : 'Speichern'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        )}
 
-      {/* Benachrichtigungen */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert
+        {/* Dialog für Rolle erstellen/bearbeiten */}
+        <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {dialogType === 'create' ? 'Neue Rolle erstellen' : 'Rolle bearbeiten'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 2 }}>
+              <TextField
+                autoFocus
+                margin="dense"
+                id="name"
+                label="Rollenname"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={roleName}
+                onChange={(e) => setRoleName(e.target.value)}
+                required
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                margin="dense"
+                id="description"
+                label="Beschreibung"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={roleDescription}
+                onChange={(e) => setRoleDescription(e.target.value)}
+                multiline
+                rows={3}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog}>Abbrechen</Button>
+            <Button
+              onClick={handleDialogAction}
+              variant="contained"
+              color="primary"
+              disabled={!roleName.trim()}
+            >
+              {dialogType === 'create' ? 'Erstellen' : 'Speichern'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Benachrichtigungen */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={5000}
           onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+          <Alert
+            onClose={handleCloseSnackbar}
+            severity={snackbar.severity}
+            sx={{ width: '100%' }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Box>
     </MainLayout>
   );
 };

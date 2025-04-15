@@ -16,8 +16,9 @@ import Users from './pages/Users';
 import Settings from './pages/Settings';
 import UserProfile from './pages/UserProfile';
 
-// Admin-Routen importieren
+// Admin- und Settings-Routen importieren
 import AdminRoutes from './pages/admin/AdminRoutes';
+import SettingsRoutes from './pages/settings/SettingsRoutes';
 
 // Bestehende Lazy-Loading-Imports beibehalten
 // ...
@@ -48,6 +49,9 @@ const AppRoutes: React.FC = () => {
 
       {/* Admin-Routen als verschachtelte Struktur */}
       <Route path="/admin/*" element={<AdminRoutes />} />
+
+      {/* Settings-Routen als verschachtelte Struktur */}
+      <Route path="/settings/*" element={<SettingsRoutes />} />
 
       {/* Fallback-Route */}
       <Route path="*" element={<NotFound />} />

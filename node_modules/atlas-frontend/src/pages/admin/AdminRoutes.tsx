@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 // Admin Pages
 import UserManagement from './UserManagement';
-import RoleManagement from './RoleManagement';
 import SystemSettings from './SystemSettings';
 import AuditLogs from './AuditLogs';
 import BackupRestore from './BackupRestore';
@@ -16,6 +15,11 @@ const AdminRoutes: React.FC = () => {
     return <SystemSettings />;
   }
 
+  // Weiterleitung von /admin/roles zu /settings/roles
+  if (location.pathname === '/admin/roles') {
+    return <Navigate to="/settings/roles" replace />;
+  }
+
   return (
     <Routes>
       {/* Wenn /admin aufgerufen wird, Umleitung zu /admin/users */}
@@ -23,7 +27,6 @@ const AdminRoutes: React.FC = () => {
 
       {/* Admin-Unterseiten */}
       <Route path="users" element={<UserManagement />} />
-      <Route path="roles" element={<RoleManagement />} />
       <Route path="settings" element={<SystemSettings />} />
       <Route path="system-settings" element={<SystemSettings />} />
       <Route path="audit-logs" element={<AuditLogs />} />

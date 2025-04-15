@@ -2,34 +2,30 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Paper,
   Typography,
+  Paper,
   Grid,
   Card,
   CardContent,
   CardActionArea,
   Divider,
-  Avatar,
-  Breadcrumbs,
-  Link
+  Avatar
 } from '@mui/material';
 import {
-  Settings as SettingsIcon,
-  Business as BusinessIcon,
-  Category as CategoryIcon,
-  Factory as ManufacturerIcon,
-  Store as SupplierIcon,
-  Room as RoomIcon,
-  Place as LocationIcon,
-  Devices as DeviceModelIcon,
-  Router as SwitchIcon,
-  WifiTethering as NetworkOutletIcon,
-  SettingsEthernet as PortIcon,
-  Home as HomeIcon,
-  Storage as BasicDataIcon
+  Storage as BasicDataIcon,
+  Business as DepartmentsIcon,
+  Category as CategoriesIcon,
+  LocationOn as LocationsIcon,
+  MeetingRoom as RoomsIcon,
+  Laptop as DeviceModelsIcon,
+  Factory as ManufacturersIcon,
+  LocalShipping as SuppliersIcon,
+  Router as SwitchesIcon,
+  NetworkWifi as PortsIcon,
+  Cable as NetworkOutletsIcon
 } from '@mui/icons-material';
 
-interface SettingsCard {
+interface BasicSettingCard {
   title: string;
   description: string;
   icon: React.ReactNode;
@@ -40,142 +36,97 @@ interface SettingsCard {
 const BasicSettings: React.FC = () => {
   const navigate = useNavigate();
 
-  // Grunddaten-Karten definieren (alphabetisch sortiert)
-  const basicSettingsCards: SettingsCard[] = [
+  // Alle Grunddaten-Karten definieren
+  const basicSettingsCards: BasicSettingCard[] = [
     {
       title: 'Abteilungen',
-      description: 'Abteilungen und Organisationsstruktur verwalten',
-      icon: <BusinessIcon />,
+      description: 'Organisationsstrukturen und Abteilungen verwalten',
+      icon: <DepartmentsIcon />,
       path: '/settings/departments',
       color: '#1976d2'
     },
     {
-      title: 'Gerätemodelle',
-      description: 'Modelle und Typen von Geräten verwalten',
-      icon: <DeviceModelIcon />,
-      path: '/settings/device-models',
-      color: '#512da8'
-    },
-    {
-      title: 'Hersteller',
-      description: 'Hersteller von Geräten und Komponenten verwalten',
-      icon: <ManufacturerIcon />,
-      path: '/settings/manufacturers',
-      color: '#0d47a1'
-    },
-    {
       title: 'Kategorien',
-      description: 'Gerätekategorien und deren Hierarchie verwalten',
-      icon: <CategoryIcon />,
+      description: 'Gerätekategorien, Lizenztypen und Zubehörkategorien verwalten',
+      icon: <CategoriesIcon />,
       path: '/settings/categories',
-      color: '#2196f3'
-    },
-    {
-      title: 'Lieferanten',
-      description: 'Lieferanten und Vertriebspartner verwalten',
-      icon: <SupplierIcon />,
-      path: '/settings/suppliers',
-      color: '#283593'
-    },
-    {
-      title: 'Netzwerkdosen',
-      description: 'Netzwerkdosen und deren Zuordnung verwalten',
-      icon: <NetworkOutletIcon />,
-      path: '/settings/network-outlets',
-      color: '#7e57c2'
-    },
-    {
-      title: 'Ports',
-      description: 'Netzwerk-Ports und deren Konfiguration verwalten',
-      icon: <PortIcon />,
-      path: '/settings/ports',
-      color: '#9575cd'
-    },
-    {
-      title: 'Räume',
-      description: 'Räume und deren Zuordnung zu Standorten verwalten',
-      icon: <RoomIcon />,
-      path: '/settings/rooms',
-      color: '#4527a0'
+      color: '#7b1fa2'
     },
     {
       title: 'Standorte',
-      description: 'Standorte und Niederlassungen verwalten',
-      icon: <LocationIcon />,
+      description: 'Niederlassungen und geografische Standorte verwalten',
+      icon: <LocationsIcon />,
       path: '/settings/locations',
-      color: '#311b92'
+      color: '#388e3c'
+    },
+    {
+      title: 'Räume',
+      description: 'Raumverwaltung und Raumzuordnungen konfigurieren',
+      icon: <RoomsIcon />,
+      path: '/settings/rooms',
+      color: '#d32f2f'
+    },
+    {
+      title: 'Gerätemodelle',
+      description: 'Hardware-Modelle und Spezifikationen definieren',
+      icon: <DeviceModelsIcon />,
+      path: '/settings/device-models',
+      color: '#0288d1'
+    },
+    {
+      title: 'Hersteller',
+      description: 'Hersteller von Geräten, Software und Zubehör verwalten',
+      icon: <ManufacturersIcon />,
+      path: '/settings/manufacturers',
+      color: '#558b2f'
+    },
+    {
+      title: 'Lieferanten',
+      description: 'Lieferanten und Händler für Beschaffungen verwalten',
+      icon: <SuppliersIcon />,
+      path: '/settings/suppliers',
+      color: '#5c6bc0'
     },
     {
       title: 'Switches',
       description: 'Netzwerk-Switches und deren Konfiguration verwalten',
-      icon: <SwitchIcon />,
+      icon: <SwitchesIcon />,
       path: '/settings/switches',
-      color: '#673ab7'
+      color: '#ef6c00'
+    },
+    {
+      title: 'Ports',
+      description: 'Netzwerk-Ports und deren Zuordnungen konfigurieren',
+      icon: <PortsIcon />,
+      path: '/settings/ports',
+      color: '#00796b'
+    },
+    {
+      title: 'Netzwerkdosen',
+      description: 'Physische Netzwerkanschlüsse und deren Zuordnungen verwalten',
+      icon: <NetworkOutletsIcon />,
+      path: '/settings/network-outlets',
+      color: '#303f9f'
     }
   ];
 
   return (
-    <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh' }}>
+    <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          bgcolor: '#1976d2',
-          color: 'white',
-          p: 2,
-          borderRadius: '4px 4px 0 0',
-          mb: 3,
-          display: 'flex',
-          alignItems: 'center'
-        }}
-      >
-        <BasicDataIcon sx={{ fontSize: 28, mr: 2 }} />
-        <Typography variant="h5" component="h1">
-          Grunddaten
-        </Typography>
+      <Paper sx={{ p: 3, mb: 3, display: 'flex', alignItems: 'center' }}>
+        <BasicDataIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
+        <Typography variant="h4">Grunddaten verwalten</Typography>
       </Paper>
-
-      {/* Breadcrumbs */}
-      <Breadcrumbs sx={{ mb: 3, color: 'text.secondary' }}>
-        <Link
-          color="inherit"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('/dashboard');
-          }}
-          sx={{ display: 'flex', alignItems: 'center' }}
-        >
-          <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />
-          Dashboard
-        </Link>
-        <Link
-          color="inherit"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('/settings');
-          }}
-          sx={{ display: 'flex', alignItems: 'center' }}
-        >
-          <SettingsIcon sx={{ mr: 0.5, fontSize: 18 }} />
-          Einstellungen
-        </Link>
-        <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
-          <BasicDataIcon sx={{ mr: 0.5, fontSize: 18 }} />
-          Grunddaten
-        </Typography>
-      </Breadcrumbs>
 
       {/* Beschreibung */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Typography variant="body1">
-          Verwalten Sie hier alle grundlegenden Stammdaten des Systems wie Abteilungen, Kategorien, Standorte und Netzwerkkomponenten.
-          Diese Daten bilden die Basis für die Verwaltung aller anderen Elemente im System.
+          Hier können Sie grundlegende Stammdaten wie Abteilungen, Standorte, Kategorien und Netzwerkkomponenten verwalten.
+          Wählen Sie eine der Kategorien, um die entsprechenden Einstellungen vorzunehmen.
         </Typography>
       </Paper>
 
-      {/* Einstellungskarten */}
+      {/* Grunddaten-Karten */}
       <Grid container spacing={2}>
         {basicSettingsCards.map((card, index) => (
           <Grid item key={index} xs={12} sm={6} md={4} lg={3}>

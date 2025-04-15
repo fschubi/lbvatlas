@@ -66,7 +66,7 @@ const Settings: React.FC = () => {
       title: 'Rollen & Berechtigungen',
       description: 'Benutzerrollen und Zugriffsberechtigungen im System verwalten',
       icon: <SecurityIcon />,
-      path: '/admin/system-settings?tab=3',
+      path: '/settings/roles',
       color: '#d32f2f'
     },
     {

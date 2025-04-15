@@ -7,30 +7,16 @@ import Accessories from './pages/Accessories';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
 import Inventory from './pages/Inventory';
-import Settings from './pages/Settings';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import RequestPasswordReset from './pages/RequestPasswordReset';
 
 // Admin-Routen importieren
 import AdminRoutes from './pages/admin/AdminRoutes';
+// Settings-Routen importieren
+import SettingsRoutes from './pages/settings/SettingsRoutes';
 import UserProfile from './pages/UserProfile';
 
-// Einstellungsseiten
-import Departments from './pages/settings/Departments';
-import Categories from './pages/settings/Categories';
-import Manufacturers from './pages/settings/Manufacturers';
-import Suppliers from './pages/settings/Suppliers';
-import Rooms from './pages/settings/Rooms';
-import Locations from './pages/settings/Locations';
-import DeviceModels from './pages/settings/DeviceModels';
-import Switches from './pages/settings/Switches';
-import NetworkOutlets from './pages/settings/NetworkOutlets';
-import Ports from './pages/settings/Ports';
-import EmailNotifications from './pages/settings/EmailNotifications';
-import AssetTags from './pages/settings/AssetTags';
-import LabelPrinting from './pages/settings/LabelPrinting';
-import BasicSettings from './pages/settings/BasicSettings';
 import DocumentManager from './pages/DocumentManager';
 import Tickets from './pages/Tickets';
 import Todos from './pages/Todos';
@@ -68,7 +54,6 @@ const App = () => {
         <Route path="/accessories/:accessoryId/edit" element={<AccessoryForm />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/reports" element={<Reports />} />
-        <Route path="/settings" element={<Settings />} />
         <Route path="/documents" element={<DocumentManager />} />
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/todos" element={<Todos />} />
@@ -78,22 +63,8 @@ const App = () => {
         {/* Admin-Routen als verschachtelte Struktur */}
         <Route path="/admin/*" element={<AdminRoutes />} />
 
-        {/* Unterseiten von Einstellungen */}
-        <Route path="/settings/departments" element={<Departments />} />
-        <Route path="/settings/categories" element={<Categories />} />
-        <Route path="/settings/manufacturers" element={<Manufacturers />} />
-        <Route path="/settings/suppliers" element={<Suppliers />} />
-        <Route path="/settings/rooms" element={<Rooms />} />
-        <Route path="/settings/locations" element={<Locations />} />
-        <Route path="/settings/device-models" element={<DeviceModels />} />
-        <Route path="/settings/switches" element={<Switches />} />
-        <Route path="/settings/network-outlets" element={<NetworkOutlets />} />
-        <Route path="/settings/ports" element={<Ports />} />
-        <Route path="/settings/email-notifications" element={<EmailNotifications />} />
-        <Route path="/settings/asset-tags" element={<AssetTags />} />
-        <Route path="/settings/labels" element={<LabelPrinting />} />
-        <Route path="/settings/system" element={<AdminRoutes />} />
-        <Route path="/settings/basic" element={<BasicSettings />} />
+        {/* Settings-Routen als verschachtelte Struktur */}
+        <Route path="/settings/*" element={<SettingsRoutes />} />
       </Route>
 
       {/* Auth-Seiten ohne Layout */}
