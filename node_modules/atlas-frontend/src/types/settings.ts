@@ -147,11 +147,28 @@ export interface Switch {
   name: string;
   description: string;
   model: string;
-  locationId: number;
-  roomId: number;
+  manufacturer_id?: number;
+  manufacturerId?: number;
+  location_id?: number;
+  locationId?: number;
+  room_id?: number;
+  roomId?: number;
+  cabinet_id?: number;
+  cabinetId?: number;
+  rack_position?: string;
+  rackPosition?: string;
+  port_count?: number;
+  portCount?: number;
+  manufacturer_name?: string;
+  location_name?: string;
+  room_name?: string;
+  notes?: string;
+  is_active?: boolean;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
 }
 
 export interface NetworkOutlet {

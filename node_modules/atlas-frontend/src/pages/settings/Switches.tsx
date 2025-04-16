@@ -61,15 +61,11 @@ const Switches: React.FC = () => {
   const [description, setDescription] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [manufacturerId, setManufacturerId] = useState<number | ''>('');
-  const [ipAddress, setIpAddress] = useState<string>('');
-  const [macAddress, setMacAddress] = useState<string>('');
-  const [managementUrl, setManagementUrl] = useState<string>('');
   const [locationId, setLocationId] = useState<number | ''>('');
   const [roomId, setRoomId] = useState<number | ''>('');
   const [cabinetId, setCabinetId] = useState<number | ''>('');
   const [rackPosition, setRackPosition] = useState<string>('');
   const [portCount, setPortCount] = useState<number | ''>('');
-  const [uplinkPort, setUplinkPort] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [isActive, setIsActive] = useState<boolean>(true);
   const [readOnly, setReadOnly] = useState<boolean>(false);
@@ -120,7 +116,6 @@ const Switches: React.FC = () => {
     { dataKey: 'description', label: 'Beschreibung' },
     { dataKey: 'model', label: 'Modell', width: 140 },
     { dataKey: 'manufacturer_name', label: 'Hersteller', width: 140 },
-    { dataKey: 'ip_address', label: 'IP-Adresse', width: 120 },
     { dataKey: 'location_name', label: 'Standort', width: 140 },
     { dataKey: 'room_name', label: 'Raum', width: 140 },
     {
@@ -325,77 +320,52 @@ const Switches: React.FC = () => {
 
   // Speichern des Switches
   const handleSave = async () => {
-    // Validierung
-    if (!name.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie einen Namen ein.',
-        severity: 'error'
-      });
-      return;
-    }
-
-    // MAC-Adresse validieren, wenn angegeben
-    if (macAddress && !validateMacAddress(macAddress)) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie eine gültige MAC-Adresse ein (Format: xx:xx:xx:xx:xx:xx oder xx-xx-xx-xx-xx-xx).',
-        severity: 'error'
-      });
-      return;
-    }
-
-    const switchData = {
-      name,
-      description,
-      model,
-      manufacturerId: manufacturerId || undefined,
-      ipAddress,
-      macAddress,
-      managementUrl,
-      locationId: locationId || undefined,
-      roomId: roomId || undefined,
-      cabinetId: cabinetId || undefined,
-      rackPosition,
-      portCount: portCount || undefined,
-      uplinkPort,
-      notes,
-      isActive
-    };
-
     try {
-      setLoading(true);
-
-      if (editMode && currentSwitch) {
-        // Bestehenden Switch aktualisieren
-        await settingsApi.updateSwitch(currentSwitch.id, switchData);
-
-        // Liste der Switches aktualisieren
-        loadSwitches();
-
+      if (!name) {
         setSnackbar({
           open: true,
-          message: `Switch "${name}" wurde aktualisiert.`,
+          message: 'Bitte geben Sie einen Namen ein',
+          severity: 'error'
+        });
+        return;
+      }
+
+      const switchData = {
+        name,
+        description,
+        model,
+        manufacturer_id: manufacturerId || undefined,
+        location_id: locationId || undefined,
+        room_id: roomId || undefined,
+        cabinet_id: cabinetId || undefined,
+        rack_position: rackPosition,
+        port_count: portCount || undefined,
+        notes,
+        is_active: isActive
+      };
+
+      let response;
+
+      if (editMode && currentSwitch) {
+        response = await settingsApi.updateSwitch(currentSwitch.id, switchData);
+        setSnackbar({
+          open: true,
+          message: `Switch ${name} erfolgreich aktualisiert`,
           severity: 'success'
         });
       } else {
-        // Neuen Switch erstellen
-        await settingsApi.createSwitch(switchData);
-
-        // Liste der Switches aktualisieren
-        loadSwitches();
-
+        response = await settingsApi.createSwitch(switchData);
         setSnackbar({
           open: true,
-          message: `Switch "${name}" wurde erstellt.`,
+          message: `Switch ${name} erfolgreich erstellt`,
           severity: 'success'
         });
       }
 
-      // Dialog schließen
-      setDialogOpen(false);
+      loadSwitches();
+      handleCloseDialog();
     } catch (error) {
-      setLoading(false);
+      console.error('Fehler beim Speichern des Switches:', error);
       const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
@@ -405,30 +375,20 @@ const Switches: React.FC = () => {
     }
   };
 
-  // Validierung für MAC-Adresse
-  const validateMacAddress = (mac: string): boolean => {
-    // Regex für die Formate xx:xx:xx:xx:xx:xx oder xx-xx-xx-xx-xx-xx
-    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-    return macRegex.test(mac);
-  };
-
   // Formular zurücksetzen
   const resetForm = () => {
     setName('');
     setDescription('');
     setModel('');
     setManufacturerId('');
-    setIpAddress('');
-    setMacAddress('');
-    setManagementUrl('');
     setLocationId('');
     setRoomId('');
     setCabinetId('');
     setRackPosition('');
     setPortCount('');
-    setUplinkPort('');
     setNotes('');
     setIsActive(true);
+    setReadOnly(false);
   };
 
   // Formular mit Switch-Daten füllen
@@ -437,15 +397,11 @@ const Switches: React.FC = () => {
     setDescription(switchItem.description || '');
     setModel(switchItem.model || '');
     setManufacturerId(switchItem.manufacturer_id || '');
-    setIpAddress(switchItem.ip_address || '');
-    setMacAddress(switchItem.mac_address || '');
-    setManagementUrl(switchItem.management_url || '');
     setLocationId(switchItem.location_id || '');
     setRoomId(switchItem.room_id || '');
     setCabinetId(switchItem.cabinet_id || '');
     setRackPosition(switchItem.rack_position || '');
     setPortCount(switchItem.port_count || '');
-    setUplinkPort(switchItem.uplink_port || '');
     setNotes(switchItem.notes || '');
     setIsActive(switchItem.is_active !== false);
   };
@@ -793,50 +749,7 @@ const Switches: React.FC = () => {
                 />
               </Grid>
 
-              {/* Netzwerk-Zeile */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="IP-Adresse"
-                  fullWidth
-                  value={ipAddress}
-                  onChange={(e) => setIpAddress(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="MAC-Adresse"
-                  fullWidth
-                  value={macAddress}
-                  onChange={(e) => setMacAddress(e.target.value)}
-                  placeholder="Format: xx:xx:xx:xx:xx:xx"
-                  error={macAddress !== '' && !validateMacAddress(macAddress)}
-                  helperText={
-                    macAddress !== '' && !validateMacAddress(macAddress)
-                      ? "Ungültiges Format (z.B. 00:1A:2B:3C:4D:5E)"
-                      : ""
-                  }
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
               {/* Management-Zeile */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Management URL"
-                  fullWidth
-                  value={managementUrl}
-                  onChange={(e) => setManagementUrl(e.target.value)}
-                  placeholder="https://..."
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
               <Grid item xs={12} md={6}>
                 <TextField
                   label="Anzahl Ports"
@@ -850,21 +763,8 @@ const Switches: React.FC = () => {
                   }}
                 />
               </Grid>
-
-              {/* Uplink-Zeile */}
               <Grid item xs={12} md={6}>
-                <TextField
-                  label="Uplink-Port"
-                  fullWidth
-                  value={uplinkPort}
-                  onChange={(e) => setUplinkPort(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                {/* Platzhalter für Symmetrie */}
+                {/* Platzhalter für Symmetrie - hier war früher das zweite Feld */}
               </Grid>
 
               {/* Beschreibung und Notizen */}

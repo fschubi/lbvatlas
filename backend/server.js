@@ -25,6 +25,8 @@ const userGroupRoutes = require('./routes/userGroups');
 const settingsRoutes = require('./routes/settings');
 const toolsRoutes = require('./routes/tools'); // <- Tools-Route richtig eingebunden
 const userProfileRoutes = require('./routes/userProfiles');
+const roleRoutes = require('./routes/roles'); // Rollen-Routen
+const permissionRoutes = require('./routes/permissions'); // Berechtigungs-Routen
 
 // Middleware
 const { authMiddleware } = require('./middleware/auth');
@@ -91,6 +93,8 @@ app.use('/api/documents', authMiddleware, documentRoutes);
 app.use('/api/user-groups', authMiddleware, userGroupRoutes);
 app.use('/api/settings', settingsRoutes); // authMiddleware temporär entfernt
 app.use('/api', userProfileRoutes); // Benutzerprofilrouten
+app.use('/api/roles', authMiddleware, roleRoutes); // Rollen-Routen
+app.use('/api/permissions', authMiddleware, permissionRoutes); // Berechtigungs-Routen
 
 // Statische Dateien (für Uploads)
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
@@ -200,19 +204,7 @@ const server = app.listen(PORT, () => {
   logger.info(`ATLAS-Server gestartet auf Port ${PORT} im ${process.env.NODE_ENV || 'development'}-Modus`);
   logger.info(`API-Dokumentation verfügbar unter http://localhost:${PORT}/api`);
 }).on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    const altPort = 3501;
-    logger.warn(`Port ${PORT} ist bereits belegt. Versuche Port ${altPort}...`);
-    server.close();
-    app.listen(altPort, () => {
-      logger.info(`ATLAS-Server gestartet auf alternativem Port ${altPort} im ${process.env.NODE_ENV || 'development'}-Modus`);
-      logger.info(`API-Dokumentation verfügbar unter http://localhost:${altPort}/api`);
-    }).on('error', (err) => {
-      logger.error(`Konnte Server nicht starten: ${err.message}`);
-    });
-  } else {
-    logger.error(`Konnte Server nicht starten: ${err.message}`);
-  }
+  logger.error(`Konnte Server nicht starten: ${err.message}`);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -226,7 +218,7 @@ process.on('uncaughtException', (error) => {
 
 process.on('SIGTERM', () => {
   logger.info('SIGTERM-Signal empfangen, Server wird beendet');
-  app.close(() => {
+  server.close(() => {
     logger.info('Server beendet');
     process.exit(0);
   });
@@ -234,7 +226,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   logger.info('SIGINT-Signal empfangen, Server wird beendet');
-  app.close(() => {
+  server.close(() => {
     logger.info('Server beendet');
     process.exit(0);
   });

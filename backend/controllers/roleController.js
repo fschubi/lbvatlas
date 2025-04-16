@@ -77,7 +77,7 @@ const roleController = {
   assignPermission: async (req, res) => {
     try {
       const { permission_id } = req.body;
-      await roleModel.assignPermission(req.params.id, permission_id);
+      await roleModel.assignPermissionToRole(req.params.id, permission_id);
       res.json({ success: true, message: 'Berechtigung erfolgreich zugewiesen' });
     } catch (error) {
       handleError(res, error);
@@ -87,8 +87,28 @@ const roleController = {
   // Berechtigung von einer Rolle entfernen
   removePermission: async (req, res) => {
     try {
-      await roleModel.removePermission(req.params.id, req.params.permissionId);
+      await roleModel.removePermissionFromRole(req.params.id, req.params.permissionId);
       res.json({ success: true, message: 'Berechtigung erfolgreich entfernt' });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+
+  // Alle Berechtigungen abrufen
+  getAllPermissions: async (req, res) => {
+    try {
+      const permissions = await roleModel.getAllPermissions();
+      res.json({ success: true, data: permissions });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+
+  // Berechtigungen nach Modul abrufen
+  getPermissionsByModule: async (req, res) => {
+    try {
+      const permissions = await roleModel.getPermissionsByModule(req.params.module);
+      res.json({ success: true, data: permissions });
     } catch (error) {
       handleError(res, error);
     }

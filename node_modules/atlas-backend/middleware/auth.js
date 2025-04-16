@@ -82,4 +82,21 @@ const checkRole = (roles) => {
   };
 };
 
-module.exports = { authMiddleware, checkRole };
+// Middleware für die Überprüfung von Berechtigungen
+const checkPermission = (permission) => {
+  return (req, res, next) => {
+    // Implementierung der Berechtigungsprüfung
+    // TODO: Bei Bedarf die tatsächliche Berechtigungsprüfung implementieren
+    next();
+  };
+};
+
+// Für die Kompatibilität mit den bestehenden Codes
+const authenticateToken = authMiddleware;
+
+module.exports = {
+  authMiddleware,
+  checkRole,
+  authenticateToken,
+  checkPermission
+};

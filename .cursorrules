@@ -131,3 +131,13 @@ Diese Komponenten sind projektweite Standards und **müssen bei allen passenden 
 
 ### Server Neustart ###
 Bitte starte niemals die server, weder front noch backend. Grund, ich habe die Server Gestartet und wenn du sie startet klappt das mit den ports nicht mehr.
+
+
+verändere die ansicht, Oltik und design nur auf genehmnigung von mir.
+
+# Datenbank-Konfiguration
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=atlas_user
+DB_PASSWORD=M@ster2023
+DB_NAME=atlas_db
