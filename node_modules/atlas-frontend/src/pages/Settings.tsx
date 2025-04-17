@@ -18,7 +18,8 @@ import {
   QrCode2 as AssetTagIcon,
   LocalPrintshop as PrintIcon,
   Storage as BasicDataIcon,
-  Security as SecurityIcon
+  Security as SecurityIcon,
+  Group as GroupsIcon
 } from '@mui/icons-material';
 
 interface SettingsCard {
@@ -68,6 +69,13 @@ const Settings: React.FC = () => {
       icon: <SecurityIcon />,
       path: '/settings/roles',
       color: '#d32f2f'
+    },
+    {
+      title: 'Benutzergruppen',
+      description: 'Gruppen für Benutzer erstellen und verwalten',
+      icon: <GroupsIcon />,
+      path: '/settings/user-groups',
+      color: '#e57373'
     },
     {
       title: 'Systemeinstellungen',

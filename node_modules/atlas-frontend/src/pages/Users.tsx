@@ -47,6 +47,7 @@ import AtlasAppBar from '../components/AtlasAppBar';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import axios from 'axios';
 import { ApiResponse, ApiError } from '../types/api';
+import { useNavigate } from 'react-router-dom';
 
 // API-Basis-URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
@@ -137,6 +138,7 @@ interface Room {
 
 const Users: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<IUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -595,11 +597,6 @@ const Users: React.FC = () => {
     }
   };
 
-  // Tab wechseln
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
   // Benutzer auswählen
   const handleSelectUser = (user: IUser) => {
     setSelectedUser(user);
@@ -675,113 +672,71 @@ const Users: React.FC = () => {
       : 'Kein Raum';
 
     return (
-      <Box sx={{ p: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Avatar sx={{ mr: 2 }}>
-            {selectedUser.first_name.charAt(0)}{selectedUser.last_name.charAt(0)}
+      <Paper elevation={0} sx={{ p: 2, height: '100%' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+          <Avatar
+            sx={{
+              width: 80,
+              height: 80,
+              mb: 2,
+              bgcolor: theme.palette.primary.main
+            }}
+          >
+            <PersonIcon sx={{ fontSize: 40 }} />
           </Avatar>
-          <Box>
-            <Typography variant="h6">{selectedUser.first_name} {selectedUser.last_name}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {selectedUser.email}
+          <Typography variant="h6" gutterBottom>
+            {selectedUser.first_name} {selectedUser.last_name}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {selectedUser.username}
+          </Typography>
+          <Chip
+            label={selectedUser.is_active ? 'Aktiv' : 'Inaktiv'}
+            color={selectedUser.is_active ? 'success' : 'error'}
+            size="small"
+            sx={{ mt: 1 }}
+          />
+        </Box>
+
+        <Divider sx={{ mb: 2 }} />
+
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            <EmailIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {selectedUser.email}
+          </Typography>
+          {selectedUser.department && (
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              <GroupIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'middle' }} />
+              {selectedUser.department}
             </Typography>
-          </Box>
-        </Box>
-
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
-          <Tab label="Details" />
-          <Tab label="Gruppen" />
-        </Tabs>
-
-        <Box sx={{ mt: 2 }}>
-          {tabValue === 0 ? (
-            <>
-              <Typography variant="subtitle2">Benutzerdetails</Typography>
-              <Box sx={{ mt: 1 }}>
-                <Typography variant="body2">
-                  <strong>Benutzername:</strong> {selectedUser.username}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>E-Mail:</strong> {selectedUser.email}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Rolle:</strong> {selectedUser.role}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Abteilung:</strong> {selectedUser.department}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Standort:</strong> {locationName}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Raum:</strong> {roomName}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Telefon:</strong> {selectedUser.phone}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Status:</strong> {selectedUser.is_active ? 'Aktiv' : 'Inaktiv'}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Letzter Login:</strong> {selectedUser.last_login || 'Nie'}
-                </Typography>
-              </Box>
-            </>
-          ) : (
-            <>
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Gruppen für {selectedUser.first_name} {selectedUser.last_name}
-                </Typography>
-
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Gruppen hinzufügen</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedGroups}
-                    onChange={handleGroupSelect}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {(selected as number[]).map((value) => (
-                          <Chip
-                            key={value}
-                            label={availableGroups.find(g => g.id === value)?.name}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {availableGroups.map((group) => (
-                      <MenuItem key={group.id} value={group.id}>
-                        <Checkbox checked={selectedGroups.indexOf(group.id) > -1} />
-                        <ListItemText primary={group.name} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <Button
-                  variant="contained"
-                  onClick={addUserToGroups}
-                  disabled={selectedGroups.length === 0}
-                  sx={{ mb: 3 }}
-                >
-                  Zu Gruppen hinzufügen
-                </Button>
-
-                <AtlasTable
-                  columns={groupColumns}
-                  rows={userGroups}
-                  loading={loading}
-                  heightPx={300}
-                  emptyMessage="Keine Gruppen gefunden"
-                  onDelete={(group) => removeUserFromGroup(group.id)}
-                />
-              </Box>
-            </>
           )}
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            <SecurityIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'middle' }} />
+            {roles.find(r => r.name === selectedUser.role)?.label || selectedUser.role}
+          </Typography>
         </Box>
-      </Box>
+
+        <Divider sx={{ mb: 2 }} />
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => handleEditUser(selectedUser)}
+          >
+            Bearbeiten
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={() => deleteUser(selectedUser.id)}
+          >
+            Löschen
+          </Button>
+        </Box>
+      </Paper>
     );
   };
 
@@ -825,78 +780,39 @@ const Users: React.FC = () => {
         </Paper>
 
         <Paper>
-          <Tabs value={tabValue} onChange={handleTabChange}>
-            <Tab label="Benutzer" icon={<PersonIcon />} />
-            <Tab
-              label="Gruppen"
-              icon={<GroupIcon />}
-              disabled={!selectedUser}
-            />
-          </Tabs>
+          <Box sx={{ display: 'flex', backgroundColor: 'background.paper' }}>
+            <Tabs value={tabValue} onChange={(e, value) => setTabValue(value)}>
+              <Tab label="BENUTZER" icon={<PersonIcon />} />
+            </Tabs>
+            <Button
+              sx={{
+                minHeight: 48,
+                px: 2,
+                borderRadius: 0,
+                borderBottom: tabValue === 0 ? '2px solid transparent' : '2px solid primary.main',
+                color: 'text.primary',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                }
+              }}
+              startIcon={<GroupIcon />}
+              onClick={() => navigate('/settings/user-groups')}
+            >
+              GRUPPEN
+            </Button>
+          </Box>
 
           <Box sx={{ p: 2 }}>
-            {tabValue === 0 ? (
-              <AtlasTable
-                columns={columns}
-                rows={users}
-                loading={loading}
-                onRowClick={handleSelectUser}
-                heightPx={400}
-                emptyMessage="Keine Benutzer gefunden"
-                onEdit={(user) => handleOpenDialog('edit', user)}
-                onDelete={(user) => deleteUser(user.id)}
-              />
-            ) : (
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Gruppen für {selectedUser?.first_name} {selectedUser?.last_name}
-                </Typography>
-
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Gruppen hinzufügen</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedGroups}
-                    onChange={handleGroupSelect}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {(selected as number[]).map((value) => (
-                          <Chip
-                            key={value}
-                            label={availableGroups.find(g => g.id === value)?.name}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {availableGroups.map((group) => (
-                      <MenuItem key={group.id} value={group.id}>
-                        <Checkbox checked={selectedGroups.indexOf(group.id) > -1} />
-                        <ListItemText primary={group.name} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <Button
-                  variant="contained"
-                  onClick={addUserToGroups}
-                  disabled={selectedGroups.length === 0}
-                  sx={{ mb: 3 }}
-                >
-                  Zu Gruppen hinzufügen
-                </Button>
-
-                <AtlasTable
-                  columns={groupColumns}
-                  rows={userGroups}
-                  loading={loading}
-                  heightPx={300}
-                  emptyMessage="Keine Gruppen gefunden"
-                  onDelete={(group) => removeUserFromGroup(group.id)}
-                />
-              </Box>
-            )}
+            <AtlasTable
+              columns={columns}
+              rows={users}
+              loading={loading}
+              onRowClick={handleSelectUser}
+              heightPx={400}
+              emptyMessage="Keine Benutzer gefunden"
+              onEdit={(user) => handleOpenDialog('edit', user)}
+              onDelete={(user) => deleteUser(user.id)}
+            />
           </Box>
         </Paper>
       </Box>

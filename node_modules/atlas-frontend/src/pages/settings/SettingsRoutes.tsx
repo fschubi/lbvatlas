@@ -6,6 +6,7 @@ import Settings from '../Settings';
 
 // Importieren der Settings-Komponenten
 import RoleManagement from './RoleManagement';
+import UserGroupManagement from './UserGroupManagement';
 import SystemSettings from '../admin/SystemSettings';
 import BasicSettings from './BasicSettings';
 import EmailNotifications from './EmailNotifications';
@@ -30,6 +31,7 @@ const SettingsRoutes: React.FC = () => {
 
       {/* Settings-Unterseiten */}
       <Route path="roles" element={<RoleManagement />} />
+      <Route path="user-groups" element={<UserGroupManagement />} />
       <Route path="system" element={<SystemSettings />} />
       <Route path="basic" element={<BasicSettings />} />
       <Route path="email-notifications" element={<EmailNotifications />} />
