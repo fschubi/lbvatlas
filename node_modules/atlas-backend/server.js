@@ -21,7 +21,7 @@ const todoRoutes = require('./routes/todos');
 const ticketRoutes = require('./routes/tickets');
 const reportRoutes = require('./routes/reports');
 const documentRoutes = require('./routes/documents');
-const userGroupRoutes = require('./routes/userGroups');
+const userGroupRoutes = require('./routes/userGroupRoutes');
 const settingsRoutes = require('./routes/settings');
 const toolsRoutes = require('./routes/tools'); // <- Tools-Route richtig eingebunden
 const userProfileRoutes = require('./routes/userProfiles');
@@ -90,6 +90,8 @@ app.use('/api/todos', authMiddleware, todoRoutes);
 app.use('/api/tickets', authMiddleware, ticketRoutes);
 app.use('/api/reports', authMiddleware, reportRoutes);
 app.use('/api/documents', authMiddleware, documentRoutes);
+app.use('/api/usergroups', authMiddleware, userGroupRoutes);
+// Unterstützung für den alten Pfad mit Bindestrich, um Abwärtskompatibilität zu gewährleisten
 app.use('/api/user-groups', authMiddleware, userGroupRoutes);
 app.use('/api/settings', settingsRoutes); // authMiddleware temporär entfernt
 app.use('/api', userProfileRoutes); // Benutzerprofilrouten

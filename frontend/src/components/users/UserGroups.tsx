@@ -9,10 +9,12 @@ import {
   MenuItem,
   Button,
   Chip,
-  Divider
+  Divider,
+  SelectChangeEvent
 } from '@mui/material';
+import { Delete as DeleteIcon } from '@mui/icons-material';
 import { User, UserGroup } from '../../types/user';
-import AtlasTable from '../AtlasTable';
+import AtlasTable, { AtlasColumn } from '../AtlasTable';
 
 interface UserGroupsProps {
   user: User;
@@ -33,11 +35,11 @@ export const UserGroups: React.FC<UserGroupsProps> = ({
 }) => {
   const [selectedGroups, setSelectedGroups] = React.useState<number[]>([]);
 
-  const handleGroupSelect = (event: React.ChangeEvent<{ value: unknown }>) => {
+  const handleGroupSelect = (event: SelectChangeEvent<number[]>) => {
     setSelectedGroups(event.target.value as number[]);
   };
 
-  const groupColumns = [
+  const groupColumns: AtlasColumn[] = [
     { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
     { label: 'Name', dataKey: 'name', width: 200 },
     { label: 'Beschreibung', dataKey: 'description', width: 300 },
@@ -45,11 +47,15 @@ export const UserGroups: React.FC<UserGroupsProps> = ({
     { label: 'Hinzugefügt von', dataKey: 'added_by', width: 150 }
   ];
 
+  const displayName = user.first_name && user.last_name
+    ? `${user.first_name} ${user.last_name}`
+    : user.username;
+
   return (
     <>
       <Box sx={{ mb: 2 }}>
         <Typography variant="h6">
-          Gruppen für Benutzer: {user.name}
+          Gruppen für Benutzer: {displayName}
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {user.email}
@@ -116,14 +122,11 @@ export const UserGroups: React.FC<UserGroupsProps> = ({
         columns={groupColumns}
         rows={userGroups}
         loading={loading}
-        actions={[
-          {
-            icon: <DeleteIcon />,
-            tooltip: 'Aus Gruppe entfernen',
-            onClick: (row) => onRemoveFromGroup(row.id)
-          }
-        ]}
+        onRowClick={() => {}}
+        onDelete={onRemoveFromGroup}
       />
     </>
   );
 };
+
+export default UserGroups;

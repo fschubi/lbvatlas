@@ -15,7 +15,9 @@ import {
   Tab,
   Divider,
   Alert,
-  Snackbar
+  Snackbar,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -23,7 +25,8 @@ import {
   Delete as DeleteIcon,
   Group as GroupIcon,
   Person as PersonIcon,
-  Search as SearchIcon
+  Search as SearchIcon,
+  MoreVert as MoreVertIcon
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import AtlasAppBar from '../components/AtlasAppBar';
@@ -49,6 +52,10 @@ const UserGroups = () => {
   const [groupMembers, setGroupMembers] = useState([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  // State für das Aktionsmenü
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [activeGroupId, setActiveGroupId] = useState(null);
+
   // Spalten für die Benutzergruppen-Tabelle
   const columns = [
     { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
@@ -56,7 +63,20 @@ const UserGroups = () => {
     { label: 'Beschreibung', dataKey: 'description', width: 300 },
     { label: 'Erstellt von', dataKey: 'created_by', width: 150 },
     { label: 'Erstellt am', dataKey: 'created_at', width: 180 },
-    { label: 'Aktualisiert am', dataKey: 'updated_at', width: 180 }
+    { label: 'Aktualisiert am', dataKey: 'updated_at', width: 180 },
+    {
+      label: 'Aktionen',
+      dataKey: 'actions',
+      width: 100,
+      render: (value, row) => (
+        <IconButton
+          size="small"
+          onClick={(e) => handleMenuOpen(e, row.id)}
+        >
+          <MoreVertIcon />
+        </IconButton>
+      )
+    }
   ];
 
   // Spalten für die Gruppenmitglieder-Tabelle
@@ -69,16 +89,30 @@ const UserGroups = () => {
     { label: 'Hinzugefügt von', dataKey: 'added_by', width: 150 }
   ];
 
+  // Aktionsmenü öffnen
+  const handleMenuOpen = (event, groupId) => {
+    event.stopPropagation(); // Verhindert, dass die Zeile selektiert wird
+    setMenuAnchorEl(event.currentTarget);
+    setActiveGroupId(groupId);
+  };
+
+  // Aktionsmenü schließen
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setActiveGroupId(null);
+  };
+
   // Benutzergruppen laden
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/user-groups`);
+      console.log("Fetching groups from:", `${API_BASE_URL}/usergroups`);
+      const response = await axios.get(`${API_BASE_URL}/usergroups`);
       setGroups(response.data.data);
       setError(null);
     } catch (err) {
-      setError('Fehler beim Laden der Benutzergruppen');
       console.error('Fehler beim Laden der Benutzergruppen:', err);
+      setError('Fehler beim Laden der Benutzergruppen');
     } finally {
       setLoading(false);
     }
@@ -88,7 +122,7 @@ const UserGroups = () => {
   const fetchGroupMembers = async (groupId) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/user-groups/${groupId}/members`);
+      const response = await axios.get(`${API_BASE_URL}/usergroups/${groupId}/members`);
       setGroupMembers(response.data.data);
       setError(null);
     } catch (err) {
@@ -108,7 +142,7 @@ const UserGroups = () => {
 
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/user-groups/search?searchTerm=${searchTerm}`);
+      const response = await axios.get(`${API_BASE_URL}/usergroups/search?searchTerm=${searchTerm}`);
       setGroups(response.data.data);
       setError(null);
     } catch (err) {
@@ -123,7 +157,7 @@ const UserGroups = () => {
   const createGroup = async () => {
     try {
       setLoading(true);
-      const response = await axios.post(`${API_BASE_URL}/user-groups`, {
+      const response = await axios.post(`${API_BASE_URL}/usergroups`, {
         name: groupName,
         description: groupDescription
       });
@@ -151,7 +185,7 @@ const UserGroups = () => {
   const updateGroup = async () => {
     try {
       setLoading(true);
-      const response = await axios.put(`${API_BASE_URL}/user-groups/${currentGroup.id}`, {
+      const response = await axios.put(`${API_BASE_URL}/usergroups/${currentGroup.id}`, {
         name: groupName,
         description: groupDescription
       });
@@ -186,7 +220,7 @@ const UserGroups = () => {
 
     try {
       setLoading(true);
-      await axios.delete(`${API_BASE_URL}/user-groups/${groupId}`);
+      await axios.delete(`${API_BASE_URL}/usergroups/${groupId}`);
 
       setGroups(groups.filter(group => group.id !== groupId));
       setSnackbar({
@@ -268,6 +302,28 @@ const UserGroups = () => {
     }
   }, [selectedGroup]);
 
+  // Aktuelle Gruppe aus der ID ermitteln
+  const getGroupById = (groupId) => {
+    return groups.find(group => group.id === groupId) || null;
+  };
+
+  // Bearbeiten-Aktion aus dem Menü
+  const handleEditFromMenu = () => {
+    const group = getGroupById(activeGroupId);
+    if (group) {
+      handleOpenDialog('edit', group);
+    }
+    handleMenuClose();
+  };
+
+  // Löschen-Aktion aus dem Menü
+  const handleDeleteFromMenu = () => {
+    if (activeGroupId) {
+      deleteGroup(activeGroupId);
+    }
+    handleMenuClose();
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <AtlasAppBar title="Benutzergruppen" />
@@ -331,18 +387,6 @@ const UserGroups = () => {
               rows={groups}
               loading={loading}
               onRowClick={handleSelectGroup}
-              actions={[
-                {
-                  icon: <EditIcon />,
-                  tooltip: 'Bearbeiten',
-                  onClick: (row) => handleOpenDialog('edit', row)
-                },
-                {
-                  icon: <DeleteIcon />,
-                  tooltip: 'Löschen',
-                  onClick: (row) => deleteGroup(row.id)
-                }
-              ]}
             />
           )}
 
@@ -408,6 +452,25 @@ const UserGroups = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 3-Punkte-Menü für Aktionen */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        PaperProps={{
+          sx: { width: 200, backgroundColor: theme.palette.background.paper }
+        }}
+      >
+        <MenuItem onClick={handleEditFromMenu}>
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          Bearbeiten
+        </MenuItem>
+        <MenuItem onClick={handleDeleteFromMenu}>
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          Löschen
+        </MenuItem>
+      </Menu>
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar
