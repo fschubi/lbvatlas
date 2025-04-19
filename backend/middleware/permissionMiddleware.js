@@ -1,5 +1,7 @@
 const db = require('../db');
 const logger = require('../utils/logger');
+const roleModel = require('../models/roleModel');
+const userModel = require('../models/userModel');
 
 /**
  * Middleware zur Überprüfung der Benutzerberechtigungen
@@ -170,9 +172,70 @@ const checkGroupMembership = (groupName) => {
   };
 };
 
+/**
+ * Middleware Factory zur Überprüfung von Benutzerberechtigungen.
+ * Akzeptiert eine oder mehrere erforderliche Berechtigungen.
+ * Wenn mehrere Berechtigungen übergeben werden, muss der Benutzer ALLE davon besitzen (AND-Logik).
+ *
+ * @param {...string} requiredPermissions - Die erforderliche(n) Berechtigung(en) (z.B. 'roles.create', 'devices.read').
+ * @returns {Function} - Die Express-Middleware-Funktion.
+ */
+const authorize = (...requiredPermissions) => {
+  return async (req, res, next) => {
+    // Stelle sicher, dass der Benutzer authentifiziert ist (sollte durch authMiddleware geschehen sein)
+    if (!req.user || !req.user.id) {
+      logger.warn('Authorization Middleware: Kein Benutzer im Request gefunden. AuthMiddleware korrekt ausgeführt?');
+      return res.status(401).json({ success: false, message: 'Nicht authentifiziert.' });
+    }
+
+    const userId = req.user.id;
+    logger.debug(`Authorization Middleware: Prüfe Berechtigungen für User ${userId}. Erforderlich: ${requiredPermissions.join(', ')}`);
+
+    try {
+      // 1. Hole die Rollen des Benutzers
+      const userRoles = await userModel.getUserRoles(userId);
+      if (!userRoles || userRoles.length === 0) {
+        logger.warn(`Authorization Middleware: Benutzer ${userId} hat keine Rollen zugewiesen.`);
+        return res.status(403).json({ success: false, message: 'Zugriff verweigert. Keine Rollen zugewiesen.' });
+      }
+
+      // 2. Hole die Berechtigungen für jede Rolle und sammle sie
+      let allPermissionObjects = [];
+      for (const role of userRoles) {
+        const permissionsForRole = await roleModel.getRolePermissions(role.id);
+        allPermissionObjects = allPermissionObjects.concat(permissionsForRole);
+      }
+
+      // 3. Extrahiere eindeutige Berechtigungsnamen (Strings)
+      const userPermissionNamesSet = new Set(allPermissionObjects.map(p => p.name).filter(Boolean));
+      const userPermissionNames = Array.from(userPermissionNamesSet);
+
+      logger.debug(`Authorization Middleware: Benutzer ${userId} hat effektive Berechtigungen: ${userPermissionNames.join(', ')}`);
+
+      // 4. Prüfe, ob ALLE erforderlichen Berechtigungen vorhanden sind
+      const hasAllPermissions = requiredPermissions.every(requiredPerm =>
+        userPermissionNames.includes(requiredPerm)
+      );
+
+      if (hasAllPermissions) {
+        logger.debug(`Authorization Middleware: Benutzer ${userId} hat Zugriff gewährt.`);
+        next();
+      } else {
+        const missingPermissions = requiredPermissions.filter(rp => !userPermissionNames.includes(rp));
+        logger.warn(`Authorization Middleware: Benutzer ${userId} hat KEINEN Zugriff. Fehlende Berechtigungen: ${missingPermissions.join(', ')}`);
+        return res.status(403).json({ success: false, message: 'Zugriff verweigert. Fehlende Berechtigungen.' });
+      }
+    } catch (error) {
+      logger.error(`Authorization Middleware: Fehler beim Prüfen der Berechtigungen für User ${userId}:`, error);
+      res.status(500).json({ success: false, message: 'Interner Fehler bei der Berechtigungsprüfung.' });
+    }
+  };
+};
+
 module.exports = {
   checkPermission,
   checkAnyPermission,
   checkAllPermissions,
-  checkGroupMembership
+  checkGroupMembership,
+  authorize
 };

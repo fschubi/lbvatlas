@@ -25,7 +25,9 @@ import {
   ListItemText,
   Chip,
   CircularProgress,
-  Autocomplete
+  Autocomplete,
+  Grid,
+  Divider
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -34,38 +36,39 @@ import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Visibility as ViewIcon
+  Visibility as ViewIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Room, Location } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { roomApi, locationApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import { Room, RoomCreate, RoomUpdate, Location } from '../../types/settings';
+
+// Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
+interface FormField<T> {
+  value: T;
+  error: boolean;
+  helperText: string;
+}
 
 const Rooms: React.FC = () => {
   // State für die Daten
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [readOnly, setReadOnly] = useState<boolean>(false);
 
-  // State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    roomId: number;
-  } | null>(null);
-
   // Form State
-  const [name, setName] = useState<string>('');
+  const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [description, setDescription] = useState<string>('');
-  const [locationId, setLocationId] = useState<number | null>(null);
-  const [isActive, setIsActive] = useState<boolean>(true);
-
-  // Standorte für Dropdown
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [loadingLocations, setLoadingLocations] = useState<boolean>(false);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [locationError, setLocationError] = useState<string>('');
+  const [active, setActive] = useState<boolean>(true);
 
   // UI State
   const [snackbar, setSnackbar] = useState<{
@@ -78,60 +81,61 @@ const Rooms: React.FC = () => {
     severity: 'info'
   });
 
+  // Kontextmenü
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    roomId: number;
+  } | null>(null);
+
   // API-Daten laden
   useEffect(() => {
-    fetchRooms();
-    fetchLocations();
+    loadRooms();
+    loadLocationsForSelect();
   }, []);
 
-  // Räume vom API laden
-  const fetchRooms = async () => {
+  // Räume laden
+  const loadRooms = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await settingsApi.getAllRooms();
-      setRooms(response.data);
+      const response = await roomApi.getAll();
+      if (response && response.data) {
+        const formattedRooms = response.data.map((room: any) => toCamelCase(room) as Room);
+        setRooms(formattedRooms);
+      } else {
+        setRooms([]);
+      }
     } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Räume: ${errorMessage}`,
-        severity: 'error'
-      });
+      const errorMessage = handleApiError(error); // Nur Fehler übergeben
+      setSnackbar({ open: true, message: `Fehler beim Laden der Räume: ${errorMessage}`, severity: 'error' });
+      setRooms([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Standorte laden für Dropdown
-  const fetchLocations = async () => {
+  // Standorte laden
+  const loadLocationsForSelect = async () => {
     try {
-      setLoadingLocations(true);
-      const response = await settingsApi.getAllLocations();
+      const response = await locationApi.getAll();
       if (response && response.data) {
-        // Sortiere die Standorte nach Namen
-        const sortedLocations = response.data.sort((a: Location, b: Location) =>
-          a.name.localeCompare(b.name, 'de-DE')
-        );
-        setLocations(sortedLocations);
+        const formattedLocations = response.data.map((loc: any) => toCamelCase(loc) as Location);
+        setLocations(formattedLocations);
+      } else {
+        setLocations([]);
       }
     } catch (error) {
-      const errorMessage = handleApiError(error);
-      console.error('Fehler beim Laden der Standorte:', errorMessage);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Standorte: ${errorMessage}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoadingLocations(false);
+      const errorMessage = handleApiError(error); // Nur Fehler übergeben
+      setSnackbar({ open: true, message: `Fehler beim Laden der Standorte: ${errorMessage}`, severity: 'error' });
+      setLocations([]);
     }
   };
 
   // Standortnamen für einen Raum erhalten
   const getLocationName = (locationId: number | undefined): string => {
-    if (!locationId) return '';
+    if (!locationId) return 'Unbekannt';
     const location = locations.find(loc => loc.id === locationId);
-    return location ? location.name : '';
+    return location ? location.name : 'Unbekannt';
   };
 
   // Spalten für die AtlasTable-Komponente
@@ -180,12 +184,12 @@ const Rooms: React.FC = () => {
       )
     },
     {
-      dataKey: 'created_at',
+      dataKey: 'createdAt',
       label: 'Erstellt am',
       width: 180,
       render: (value, row) => {
         // Verwende den Wert aus dem row Objekt oder den übergebenen value
-        const dateValue = row?.created_at || row?.createdAt || value;
+        const dateValue = row?.createdAt || row?.createdAt || value;
 
         if (!dateValue) return 'Unbekannt';
 
@@ -227,45 +231,47 @@ const Rooms: React.FC = () => {
   // Dialog öffnen für neuen Raum
   const handleAddNew = () => {
     setEditMode(false);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentRoom(null);
-    setName('');
+    setName({ value: '', error: false, helperText: '' });
     setDescription('');
-    setLocationId(null);
-    setIsActive(true);
+    setSelectedLocation(null);
+    setLocationError('');
+    setActive(true);
+    setReadOnly(false);
     setDialogOpen(true);
   };
 
   // Dialog öffnen für Bearbeitung
   const handleEdit = (room: Room) => {
     setEditMode(true);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentRoom(room);
-    setName(room.name);
-    setDescription(room.description);
-    setLocationId(room.locationId || room.location_id || null);
-    setIsActive(room.active);
+    setName({ value: room.name, error: false, helperText: '' });
+    setDescription(room.description || '');
+    setSelectedLocation(room.locationId ? locations.find(l => l.id === room.locationId) || null : null);
+    setLocationError('');
+    setActive(room.active);
+    setReadOnly(false);
     setDialogOpen(true);
   };
 
   // Löschen eines Raums
   const handleDelete = async (room: Room) => {
+    if (!window.confirm(`Möchten Sie den Raum "${room.name}" wirklich löschen?`)) return;
     try {
-      await settingsApi.deleteRoom(room.id);
-      // Aktualisiere die Liste der Räume nach dem Löschen
-      setRooms(rooms.filter(r => r.id !== room.id));
-      setSnackbar({
-        open: true,
-        message: `Raum "${room.name}" wurde gelöscht.`,
-        severity: 'success'
-      });
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Raums: ${errorMessage}`,
-        severity: 'error'
-      });
+      setLoading(true);
+      await roomApi.delete(room.id);
+      loadRooms();
+      setSnackbar({ open: true, message: `Raum "${room.name}" wurde gelöscht.`, severity: 'success' });
+    } catch (error: any) {
+      // Versuche, die spezifische Nachricht aus dem Fehlerobjekt zu extrahieren
+      const specificMessage = error?.data?.message || error?.message;
+      const errorMessage = specificMessage || handleApiError(error); // Fallback auf generische Meldung
+
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -276,75 +282,92 @@ const Rooms: React.FC = () => {
 
   // Speichern des Raums
   const handleSave = async () => {
-    // Validierung
-    if (!name.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie einen Namen ein.',
-        severity: 'error'
-      });
-      return;
-    }
+    const isValid = await validateForm();
+    if (!isValid || !selectedLocation) return;
 
-    if (!locationId) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte wählen Sie einen Standort aus.',
-        severity: 'error'
-      });
-      return;
-    }
+    const roomData: Partial<Room> = {
+      name: name.value.trim(),
+      description: description.trim() || undefined,
+      locationId: selectedLocation.id,
+      active: active
+    };
+
+    const backendData = toSnakeCase(roomData);
+    console.log('DEBUG: Sende Daten an Backend (room, snake_case):', backendData);
 
     try {
       setLoading(true);
-
-      // Neue Raum-Daten erstellen
-      const roomData = {
-        name,
-        description,
-        location_id: locationId,
-        active: isActive
-      };
-
       if (editMode && currentRoom) {
-        // Bestehenden Raum bearbeiten
-        const response = await settingsApi.updateRoom(currentRoom.id, roomData);
-
-        // Lokale Liste aktualisieren
-        const updatedRoom = response.data;
-        setRooms(rooms.map(r => r.id === currentRoom.id ? updatedRoom : r));
-
-        setSnackbar({
-          open: true,
-          message: `Raum "${name}" wurde aktualisiert.`,
-          severity: 'success'
-        });
+        await roomApi.update(currentRoom.id, backendData as RoomUpdate);
+        setSnackbar({ open: true, message: `Raum "${name.value}" wurde aktualisiert.`, severity: 'success' });
       } else {
-        // Neuen Raum erstellen
-        const response = await settingsApi.createRoom(roomData);
-
-        // Lokale Liste aktualisieren
-        setRooms([...rooms, response.data]);
-
-        setSnackbar({
-          open: true,
-          message: `Raum "${name}" wurde erstellt.`,
-          severity: 'success'
-        });
+        await roomApi.create(backendData as RoomCreate);
+        setSnackbar({ open: true, message: `Raum "${name.value}" wurde erstellt.`, severity: 'success' });
       }
-
-      // Dialog schließen
+      loadRooms();
       setDialogOpen(false);
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Speichern des Raums: ${errorMessage}`,
-        severity: 'error'
-      });
+    } catch (error: any) {
+      const errorMessage = handleApiError(error); // Nur Fehler übergeben
+      if (errorMessage.includes('existiert bereits')) {
+        setName({ ...name, error: true, helperText: errorMessage });
+        setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+      } else {
+        setSnackbar({ open: true, message: `Fehler beim Speichern des Raums: ${errorMessage}`, severity: 'error' });
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Neue Funktion für die Anzeige des Raums beim Klick auf den Namen
+  const handleViewRoom = (room: Room) => {
+    setEditMode(false);
+    setViewMode(true);
+    setCurrentRoom(room);
+    setName({ value: room.name, error: false, helperText: '' });
+    setDescription(room.description || '');
+    setSelectedLocation(room.locationId ? locations.find(l => l.id === room.locationId) || null : null);
+    setActive(room.active);
+    setReadOnly(true);
+    setDialogOpen(true);
+  };
+
+  // Snackbar schließen
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Validierung
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setLocationError('');
+
+    if (!name.value.trim()) {
+      setName({ ...name, error: true, helperText: 'Name ist erforderlich' });
+      isValid = false;
+    }
+
+    if (!selectedLocation) {
+      setLocationError('Standort ist erforderlich');
+      isValid = false;
+    }
+
+    if (name.value.trim() && selectedLocation) {
+        if (!editMode || (currentRoom && (name.value !== currentRoom.name || selectedLocation.id !== currentRoom.locationId))) {
+            try {
+                const nameExists = await roomApi.checkRoomNameExists(name.value, editMode ? currentRoom?.id : undefined);
+                 if (nameExists) {
+                    // TODO: Backend-Prüfung verfeinern (Name + Standort)
+                    setName({ ...name, error: true, helperText: 'Ein Raum mit diesem Namen existiert bereits (global). Standortspezifische Prüfung TODO.' });
+                    // isValid = false;
+                }
+            } catch (error) {
+                console.error("Validierungsfehler Name:", error);
+            }
+        }
+    }
+
+    return isValid;
   };
 
   // Handlefunktionen für das Kontextmenü
@@ -366,14 +389,7 @@ const Rooms: React.FC = () => {
     if (contextMenu) {
       const room = rooms.find(r => r.id === contextMenu.roomId);
       if (room) {
-        setEditMode(false);
-        setReadOnly(true);
-        setCurrentRoom(room);
-        setName(room.name);
-        setDescription(room.description);
-        setLocationId(room.locationId || room.location_id || null);
-        setIsActive(room.active);
-        setDialogOpen(true);
+        handleViewRoom(room);
       }
       handleContextMenuClose();
     }
@@ -397,23 +413,6 @@ const Rooms: React.FC = () => {
       }
       handleContextMenuClose();
     }
-  };
-
-  // Neue Funktion für die Anzeige des Raums beim Klick auf den Namen
-  const handleViewRoom = (room: Room) => {
-    setEditMode(false);
-    setReadOnly(true);
-    setCurrentRoom(room);
-    setName(room.name);
-    setDescription(room.description);
-    setLocationId(room.locationId || room.location_id || null);
-    setIsActive(room.active);
-    setDialogOpen(true);
-  };
-
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -447,6 +446,11 @@ const Rooms: React.FC = () => {
         >
           Neuer Raum
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={loadRooms} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -501,110 +505,115 @@ const Rooms: React.FC = () => {
       {/* Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {readOnly ? `Raum anzeigen: ${currentRoom?.name}` :
-            (editMode ? `Raum bearbeiten: ${currentRoom?.name}` : 'Neuen Raum erstellen')}
+          {viewMode ? 'Raumdetails' : (editMode ? 'Raum bearbeiten' : 'Neuen Raum erstellen')}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Name"
-              fullWidth
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <TextField
-              label="Beschreibung"
-              fullWidth
-              multiline
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <Autocomplete
-              id="location-autocomplete"
-              options={locations}
-              getOptionLabel={(option) => option.name}
-              value={locations.find(loc => loc.id === locationId) || null}
-              onChange={(_, newValue) => setLocationId(newValue ? newValue.id : null)}
-              disabled={readOnly || loadingLocations}
-              disablePortal
-              fullWidth
-              filterSelectedOptions
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              noOptionsText="Keine Standorte verfügbar"
-              loadingText="Standorte werden geladen..."
-              loading={loadingLocations}
-              renderOption={(props, option) => (
-                <li {...props} key={option.id}>
-                  <Box
-                    component="span"
-                    sx={{
-                      width: '100%',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Raumname"
+                fullWidth
+                value={name.value}
+                onChange={(e) => setName({ value: e.target.value, error: false, helperText: '' })}
+                required
+                error={name.error}
+                helperText={name.helperText}
+                disabled={viewMode}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                options={locations}
+                getOptionLabel={(option) => option.name}
+                value={selectedLocation || null}
+                onChange={(_, newValue) => setSelectedLocation(newValue || null)}
+                disabled={viewMode}
+                disablePortal
+                fullWidth
+                filterSelectedOptions
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                noOptionsText="Keine Standorte verfügbar"
+                loadingText="Standorte werden geladen..."
+                loading={loading}
+                renderOption={(props, option) => (
+                  <li {...props} key={option.id}>
+                    <Box
+                      component="span"
+                      sx={{
+                        width: '100%',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Typography>{option.name}</Typography>
+                      {option.city && (
+                        <Typography variant="body2" color="text.secondary">
+                          {option.city}
+                        </Typography>
+                      )}
+                    </Box>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Standort"
+                    required
+                    error={!!locationError}
+                    helperText={locationError}
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <InputAdornment position="start">
+                            <BuildingIcon />
+                          </InputAdornment>
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                      endAdornment: (
+                        <>
+                          {loading ? <CircularProgress color="inherit" size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      )
                     }}
-                  >
-                    <Typography>{option.name}</Typography>
-                    {option.city && (
-                      <Typography variant="body2" color="text.secondary">
-                        {option.city}
-                      </Typography>
-                    )}
-                  </Box>
-                </li>
-              )}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Standort"
-                  required
-                  InputProps={{
-                    ...params.InputProps,
-                    startAdornment: (
-                      <>
-                        <InputAdornment position="start">
-                          <BuildingIcon />
-                        </InputAdornment>
-                        {params.InputProps.startAdornment}
-                      </>
-                    ),
-                    endAdornment: (
-                      <>
-                        {loadingLocations ? <CircularProgress color="inherit" size={20} /> : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    )
-                  }}
-                  helperText={loadingLocations ? "Standorte werden geladen..." : ""}
-                />
-              )}
-            />
-            <FormControlLabel
-              control={
-                <MuiSwitch
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  color="primary"
-                  disabled={readOnly}
-                />
-              }
-              label="Raum aktiv"
-            />
-          </Box>
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Beschreibung"
+                fullWidth
+                multiline
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={viewMode}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={active}
+                    onChange={(e) => setActive(e.target.checked)}
+                    color="primary"
+                    disabled={viewMode}
+                  />
+                }
+                label="Raum aktiv"
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+            {viewMode ? 'Schließen' : (editMode ? 'Abbrechen' : 'Abbrechen')}
           </Button>
-          {!readOnly && (
+          {!viewMode && (
             <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
               Speichern
             </Button>

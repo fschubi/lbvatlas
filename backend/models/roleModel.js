@@ -7,12 +7,13 @@ const RoleModel = {
    * @returns {Promise<Array>} - Array von Rollen
    */
   getAllRoles: async () => {
+    logger.debug('roleModel: getAllRoles aufgerufen');
     try {
       const query = `
-        SELECT * FROM roles
+        SELECT id, name, description, is_system, created_at, updated_at
+        FROM roles
         ORDER BY name
       `;
-
       const { rows } = await db.query(query);
       return rows;
     } catch (error) {
@@ -23,18 +24,19 @@ const RoleModel = {
 
   /**
    * Rolle nach ID abrufen
-   * @param {number} id - Rollen-ID
-   * @returns {Promise<Object>} - Rolle
+   * @param {string | number} id - Rollen-ID
+   * @returns {Promise<Object | null>} - Rolle oder null
    */
   getRoleById: async (id) => {
+    logger.debug('roleModel: getRoleById aufgerufen', { id });
     try {
       const query = `
-        SELECT * FROM roles
+        SELECT id, name, description, is_system, created_at, updated_at
+        FROM roles
         WHERE id = $1
       `;
-
       const { rows } = await db.query(query, [id]);
-      return rows[0];
+      return rows[0] || null; // Gebe null zurück, wenn nichts gefunden wurde
     } catch (error) {
       logger.error(`Fehler beim Abrufen der Rolle mit ID ${id}:`, error);
       throw error;
@@ -63,73 +65,83 @@ const RoleModel = {
 
   /**
    * Neue Rolle erstellen
-   * @param {Object} roleData - Rollendaten
+   * @param {Object} roleData - { name: string, description?: string }
    * @returns {Promise<Object>} - Erstellte Rolle
    */
-  createRole: async (roleData) => {
+  createRole: async ({ name, description }) => {
+    logger.debug('roleModel: createRole aufgerufen', { name, description });
     try {
-      const { name, description, is_system } = roleData;
-
+       // is_system wird standardmäßig auf false gesetzt
       const query = `
         INSERT INTO roles (name, description, is_system)
-        VALUES ($1, $2, $3)
-        RETURNING *
+        VALUES ($1, $2, false)
+        RETURNING id, name, description, is_system, created_at, updated_at
       `;
-
-      const { rows } = await db.query(query, [name, description, is_system || false]);
+      const { rows } = await db.query(query, [name, description || null]);
       return rows[0];
     } catch (error) {
       logger.error('Fehler beim Erstellen der Rolle:', error);
+      // Spezifische Fehlerbehandlung für z.B. Unique Constraint
+      if (error.code === '23505') { // Unique violation
+        throw new Error(`Eine Rolle mit dem Namen '${name}' existiert bereits.`);
+      }
       throw error;
     }
   },
 
   /**
    * Rolle aktualisieren
-   * @param {number} id - Rollen-ID
-   * @param {Object} roleData - Rollendaten
-   * @returns {Promise<Object>} - Aktualisierte Rolle
+   * @param {string | number} id - Rollen-ID
+   * @param {Object} roleData - { name: string, description?: string }
+   * @returns {Promise<Object | null>} - Aktualisierte Rolle oder null
    */
-  updateRole: async (id, roleData) => {
+  updateRole: async (id, { name, description }) => {
+     logger.debug('roleModel: updateRole aufgerufen', { id, name, description });
     try {
-      const { name, description, is_system } = roleData;
-
+      // Wichtig: is_system sollte hier nicht geändert werden können
       const query = `
         UPDATE roles
-        SET name = $1, description = $2, is_system = $3, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4
-        RETURNING *
+        SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3 AND is_system = false -- Systemrollen nicht ändern
+        RETURNING id, name, description, is_system, created_at, updated_at
       `;
-
-      const { rows } = await db.query(query, [name, description, is_system, id]);
-      return rows[0];
+      const { rows } = await db.query(query, [name, description || null, id]);
+      return rows[0] || null; // null wenn ID nicht gefunden oder Systemrolle
     } catch (error) {
       logger.error(`Fehler beim Aktualisieren der Rolle mit ID ${id}:`, error);
+       if (error.code === '23505') { // Unique violation
+        throw new Error(`Eine Rolle mit dem Namen '${name}' existiert bereits.`);
+      }
       throw error;
     }
   },
 
   /**
    * Rolle löschen
-   * @param {number} id - Rollen-ID
-   * @returns {Promise<boolean>} - Erfolg
+   * @param {string | number} id - Rollen-ID
+   * @returns {Promise<boolean>} - Erfolg (true wenn gelöscht, false wenn nicht gefunden/Systemrolle)
    */
   deleteRole: async (id) => {
+    logger.debug('roleModel: deleteRole aufgerufen', { id });
     try {
-      // Prüfen, ob es sich um eine Systemrolle handelt
+      // Zuerst prüfen, ob es eine Systemrolle ist
       const role = await RoleModel.getRoleById(id);
       if (role && role.is_system) {
-        throw new Error('Systemrollen können nicht gelöscht werden');
+        logger.warn(`Versuch, Systemrolle ${id} zu löschen, abgelehnt.`);
+        return false; // Verhindere das Löschen von Systemrollen
       }
+
+      // TODO: Prüfen, ob Rolle noch Benutzern zugewiesen ist?
+      // Ggf. Zuerst Verknüpfungen in role_permissions löschen
+       await db.query('DELETE FROM role_permissions WHERE role_id = $1', [id]);
 
       const query = `
         DELETE FROM roles
         WHERE id = $1
         RETURNING id
       `;
-
-      const { rows } = await db.query(query, [id]);
-      return rows.length > 0;
+      const { rowCount } = await db.query(query, [id]);
+      return rowCount > 0;
     } catch (error) {
       logger.error(`Fehler beim Löschen der Rolle mit ID ${id}:`, error);
       throw error;
@@ -141,16 +153,17 @@ const RoleModel = {
    * @returns {Promise<Array>} - Array von Berechtigungen
    */
   getAllPermissions: async () => {
+    logger.debug('roleModel (via getAllPermissions): getAllPermissions aufgerufen');
     try {
       const query = `
-        SELECT * FROM permissions
+        SELECT id, name, description, module, action, category
+        FROM permissions
         ORDER BY module, action
       `;
-
       const { rows } = await db.query(query);
       return rows;
     } catch (error) {
-      logger.error('Fehler beim Abrufen aller Berechtigungen:', error);
+      logger.error('Fehler beim Abrufen aller Berechtigungen (in roleModel):', error);
       throw error;
     }
   },
@@ -161,39 +174,46 @@ const RoleModel = {
    * @returns {Promise<Array>} - Array von Berechtigungen
    */
   getPermissionsByModule: async (module) => {
+    logger.debug('roleModel (via getPermissionsByModule): getPermissionsByModule aufgerufen', { module });
     try {
       const query = `
-        SELECT * FROM permissions
+        SELECT id, name, description, module, action, category
+        FROM permissions
         WHERE module = $1
         ORDER BY action
       `;
-
       const { rows } = await db.query(query, [module]);
       return rows;
     } catch (error) {
-      logger.error(`Fehler beim Abrufen der Berechtigungen für Modul ${module}:`, error);
+      logger.error(`Fehler beim Abrufen der Berechtigungen für Modul ${module} (in roleModel):`, error);
       throw error;
     }
   },
 
   /**
    * Berechtigungen einer Rolle abrufen
-   * @param {number} roleId - Rollen-ID
+   * @param {string | number} roleId - Rollen-ID
    * @returns {Promise<Array>} - Array von Berechtigungen
    */
   getRolePermissions: async (roleId) => {
+    logger.debug('roleModel (via getRolePermissions): getRolePermissions aufgerufen', { roleId });
+    // Stelle sicher, dass roleId nicht undefined oder null ist
+    if (roleId === undefined || roleId === null) {
+        logger.error('roleModel.getRolePermissions: Ungültige roleId empfangen:', roleId);
+        throw new Error('Ungültige Rollen-ID für Berechtigungsabfrage.');
+    }
     try {
       const query = `
-        SELECT p.*
+        SELECT p.id, p.name, p.description, p.module, p.action -- p.category entfernt
         FROM permissions p
         JOIN role_permissions rp ON p.id = rp.permission_id
         WHERE rp.role_id = $1
         ORDER BY p.module, p.action
       `;
-
       const { rows } = await db.query(query, [roleId]);
       return rows;
     } catch (error) {
+      // Doppeltes Logging entfernt
       logger.error(`Fehler beim Abrufen der Berechtigungen für Rolle ${roleId}:`, error);
       throw error;
     }

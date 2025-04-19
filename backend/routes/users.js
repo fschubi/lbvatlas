@@ -7,6 +7,7 @@ const { checkRole } = require('../middleware/auth');
 const { pool } = require('../db');
 const logger = require('../utils/logger');
 const { getLocations, getRoomsByLocation } = require('../models/userModel');
+const { authenticateToken } = require('../middleware/authMiddleware');
 
 /**
  * @route   POST /api/users/login

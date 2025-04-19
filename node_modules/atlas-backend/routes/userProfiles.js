@@ -4,11 +4,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/authMiddleware');
+const { authenticateToken } = require('../middleware/authMiddleware');
 const userProfileController = require('../controllers/userProfileController');
 
 // Alle Routen für Benutzerprofile schützen
-router.use(authenticate);
+router.use(authenticateToken);
 
 // Benutzerprofil abrufen
 router.get('/users/:userId/profile', userProfileController.getUserProfile);

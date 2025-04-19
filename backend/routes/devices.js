@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const DeviceController = require('../controllers/deviceController');
+const { authenticateToken } = require('../middleware/authMiddleware');
+const { authorize } = require('../middleware/permissionMiddleware');
+const upload = require('../middleware/upload.js');
 
 /**
  * @route   GET /api/devices

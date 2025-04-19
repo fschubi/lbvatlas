@@ -32,9 +32,10 @@ import {
   Category as CategoryIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Category } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { categoryApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { Category, CategoryCreate, CategoryUpdate } from '../../types/settings';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 
 const Categories: React.FC = () => {
   // State für die Daten
@@ -111,31 +112,7 @@ const Categories: React.FC = () => {
       dataKey: 'createdAt',
       label: 'Erstellt am',
       width: 180,
-      render: (value, row) => {
-        // Verwende den Wert aus dem row Objekt oder den übergebenen value
-        const dateValue = row?.createdAt || value;
-
-        if (!dateValue) return 'Unbekannt';
-
-        try {
-          // Versuche das Datum zu parsen (funktioniert sowohl mit ISO 8601 als auch mit Postgres-Timestamp)
-          const date = new Date(dateValue as string);
-
-          // Prüfe ob das Datum gültig ist
-          if (isNaN(date.getTime())) {
-            return 'Ungültiges Datum';
-          }
-
-          // Formatiere das Datum auf deutsch
-          return date.toLocaleDateString('de-DE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          });
-        } catch (e) {
-          return 'Fehler beim Parsen';
-        }
-      }
+      render: (value) => value ? new Date(value as string).toLocaleDateString('de-DE') : '-'
     },
     {
       dataKey: 'actions',
@@ -160,15 +137,15 @@ const Categories: React.FC = () => {
   const loadCategories = async () => {
     setLoading(true);
     try {
-      const response = await settingsApi.getAllCategories();
+      const response = await categoryApi.getAll();
+      console.log('DEBUG: Rohdaten von API (Categories Response Objekt):', response);
       if (response && response.data) {
-        // Sicherstellen, dass die Daten korrekt typisiert sind
-        const typedCategories = response.data.map((cat: any) => ({
-          ...cat,
-          // Wir benötigen keinen Type mehr, da wir das Feld entfernt haben
-          isActive: typeof cat.isActive === 'boolean' ? cat.isActive : true
-        }));
-        setCategories(typedCategories);
+        const formattedCategories = response.data.map(cat => toCamelCase(cat) as Category);
+        console.log('DEBUG: Konvertierte Kategorien (camelCase):', formattedCategories);
+        setCategories(formattedCategories);
+      } else {
+        console.warn('Unerwartete Datenstruktur von categoryApi.getAll:', response);
+        setCategories([]);
       }
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -177,6 +154,7 @@ const Categories: React.FC = () => {
         message: `Fehler beim Laden der Kategorien: ${errorMessage}`,
         severity: 'error'
       });
+      setCategories([]);
     } finally {
       setLoading(false);
     }
@@ -200,7 +178,7 @@ const Categories: React.FC = () => {
     setCurrentCategory(category);
     setName(category.name);
     setDescription(category.description);
-    setIsActive(category.isActive);
+    setIsActive(category.isActive ?? true);
     setDialogOpen(true);
   };
 
@@ -209,27 +187,23 @@ const Categories: React.FC = () => {
     if (!window.confirm(`Möchten Sie die Kategorie "${category.name}" wirklich löschen?`)) {
       return;
     }
-
     try {
       setLoading(true);
-      await settingsApi.deleteCategory(category.id);
-
-      // Nach erfolgreichem Löschen die Liste aktualisieren
-      loadCategories();
-
+      await categoryApi.delete(category.id);
+      loadCategories(); // Daten neu laden
       setSnackbar({
         open: true,
         message: `Kategorie "${category.name}" wurde gelöscht.`,
         severity: 'success'
       });
     } catch (error) {
-      setLoading(false);
       const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
         message: `Fehler beim Löschen der Kategorie: ${errorMessage}`,
         severity: 'error'
       });
+      setLoading(false);
     }
   };
 
@@ -240,7 +214,6 @@ const Categories: React.FC = () => {
 
   // Speichern der Kategorie
   const handleSave = async () => {
-    // Validierung
     if (!name.trim()) {
       setSnackbar({
         open: true,
@@ -250,42 +223,35 @@ const Categories: React.FC = () => {
       return;
     }
 
-    const categoryData = {
-      name,
-      description,
-      isActive
+    const categoryData: CategoryCreate | CategoryUpdate = {
+      name: name.trim(),
+      description: description.trim(),
+      isActive: isActive
+      // parentId fehlt hier noch, falls benötigt
     };
+
+    // Konvertiere zu snake_case für das Backend
+    const backendData = toSnakeCase(categoryData);
 
     try {
       setLoading(true);
-
       if (editMode && currentCategory) {
-        // Bestehende Kategorie aktualisieren
-        await settingsApi.updateCategory(currentCategory.id, categoryData);
-
-        // Liste der Kategorien aktualisieren
-        loadCategories();
-
+        await categoryApi.update(currentCategory.id, backendData as CategoryUpdate);
+        loadCategories(); // Daten neu laden
         setSnackbar({
           open: true,
           message: `Kategorie "${name}" wurde aktualisiert.`,
           severity: 'success'
         });
       } else {
-        // Neue Kategorie erstellen
-        await settingsApi.createCategory(categoryData);
-
-        // Liste der Kategorien aktualisieren
-        loadCategories();
-
+        await categoryApi.create(backendData as CategoryCreate);
+        loadCategories(); // Daten neu laden
         setSnackbar({
           open: true,
           message: `Kategorie "${name}" wurde erstellt.`,
           severity: 'success'
         });
       }
-
-      // Dialog schließen
       setDialogOpen(false);
     } catch (error) {
       setLoading(false);
@@ -327,13 +293,7 @@ const Categories: React.FC = () => {
     if (contextMenu) {
       const category = categories.find(c => c.id === contextMenu.categoryId);
       if (category) {
-        setEditMode(false);
-        setReadOnly(true);
-        setCurrentCategory(category);
-        setName(category.name);
-        setDescription(category.description);
-        setIsActive(category.isActive);
-        setDialogOpen(true);
+        handleViewCategory(category);
       }
       handleContextMenuClose();
     }
@@ -366,7 +326,7 @@ const Categories: React.FC = () => {
     setCurrentCategory(category);
     setName(category.name);
     setDescription(category.description);
-    setIsActive(category.isActive);
+    setIsActive(category.isActive ?? true);
     setDialogOpen(true);
   };
 
@@ -401,6 +361,11 @@ const Categories: React.FC = () => {
         >
           Neue Kategorie
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={handleRefresh} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -417,6 +382,7 @@ const Categories: React.FC = () => {
             emptyMessage="Keine Kategorien vorhanden"
             initialSortColumn="name"
             initialSortDirection="asc"
+            onRowClick={handleViewCategory}
           />
         )}
       </Paper>

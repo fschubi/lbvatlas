@@ -20,86 +20,82 @@ const mockUser = {
 };
 
 /**
- * Middleware zur Authentifizierung von Benutzern
+ * Middleware zur Authentifizierung von Benutzern mittels JWT
  * @param {Object} req - Express Request-Objekt
  * @param {Object} res - Express Response-Objekt
  * @param {Function} next - Express Next-Funktion
  */
-const authenticate = async (req, res, next) => {
-  try {
-    // Token aus dem Authorization-Header extrahieren
-    const authHeader = req.headers.authorization;
+const authenticateToken = async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentifizierung fehlgeschlagen: Kein Token vorhanden'
-      });
+  if (token == null) {
+    logger.warn('Auth Middleware: Kein Token bereitgestellt.');
+    return res.status(401).json({ success: false, message: 'Zugriff verweigert. Kein Token bereitgestellt.' });
+  }
+
+  try {
+    // Token verifizieren
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id; // Annahme: User ID ist im Token Payload als 'id'
+
+    if (!userId) {
+      logger.error('Auth Middleware: Ungültiger Token-Payload (fehlende ID).');
+      return res.status(403).json({ success: false, message: 'Zugriff verweigert. Ungültiger Token.' });
     }
 
-    // Token extrahieren (ohne "Bearer " Präfix)
-    const token = authHeader.split(' ')[1];
+    logger.debug(`Auth Middleware: Token validiert für User ID ${userId}. Lade Benutzerdaten...`);
 
-    // Token validieren
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Benutzer aus der Datenbank abrufen
-    const query = `
-      SELECT id, username, email, role, active, last_login
-      FROM users
-      WHERE id = $1
+    // Benutzerdaten und Rollen aus der Datenbank laden
+    const userQuery = 'SELECT id, username, active FROM users WHERE id = $1';
+    const roleQuery = `
+      SELECT r.name
+      FROM roles r
+      JOIN user_roles ur ON r.id = ur.role_id
+      WHERE ur.user_id = $1
     `;
 
-    const { rows } = await db.query(query, [decoded.id]);
+    const userResult = await db.query(userQuery, [userId]);
+    const roleResult = await db.query(roleQuery, [userId]);
 
-    // Prüfen, ob Benutzer existiert und aktiv ist
-    if (rows.length === 0) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentifizierung fehlgeschlagen: Benutzer nicht gefunden'
-      });
+    if (userResult.rows.length === 0) {
+      logger.warn(`Auth Middleware: Benutzer mit ID ${userId} aus Token nicht gefunden.`);
+      return res.status(401).json({ success: false, message: 'Authentifizierung fehlgeschlagen. Benutzer nicht gefunden.' });
     }
 
-    const user = rows[0];
+    const user = userResult.rows[0];
 
+    // Prüfen, ob Benutzer aktiv ist
     if (!user.active) {
-      return res.status(403).json({
-        success: false,
-        message: 'Zugriff verweigert: Benutzerkonto ist deaktiviert'
-      });
+        logger.warn(`Auth Middleware: Benutzer ${userId} ist inaktiv.`);
+        return res.status(403).json({ success: false, message: 'Zugriff verweigert. Benutzerkonto ist deaktiviert.' });
     }
 
-    // Benutzerinformationen im Request-Objekt speichern
-    req.user = user;
+    // Rollen extrahieren
+    const roles = roleResult.rows.map(row => row.name);
 
-    // Request fortsetzen
-    next();
+    // Benutzerinformationen (inkl. Rollen) an das Request-Objekt anhängen
+    req.user = {
+      id: user.id,
+      username: user.username,
+      roles: roles // Array von Rollennamen
+    };
+
+    logger.debug(`Auth Middleware: Benutzer ${user.username} (ID: ${user.id}) erfolgreich authentifiziert. Rollen: ${roles.join(', ')}`);
+    next(); // Authentifizierung erfolgreich
+
   } catch (error) {
-    // JWT-Verifizierungsfehler
-    if (error.name === 'JsonWebTokenError') {
-      logger.warn('JWT-Verifizierungsfehler:', error.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Authentifizierung fehlgeschlagen: Ungültiger Token'
-      });
-    }
-
-    // JWT-Ablauf
     if (error.name === 'TokenExpiredError') {
-      logger.warn('JWT-Ablauf:', error.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Authentifizierung fehlgeschlagen: Token abgelaufen'
-      });
+      logger.warn('Auth Middleware: Token abgelaufen.');
+      return res.status(401).json({ success: false, message: 'Authentifizierung fehlgeschlagen. Token abgelaufen.' });
     }
-
+    if (error.name === 'JsonWebTokenError') {
+      logger.error('Auth Middleware: Ungültiger Token.', { error: error.message });
+      return res.status(403).json({ success: false, message: 'Zugriff verweigert. Ungültiger Token.' });
+    }
     // Andere Fehler
-    logger.error('Authentifizierungsfehler:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Interner Serverfehler bei der Authentifizierung',
-      error: error.message
-    });
+    logger.error('Auth Middleware: Interner Fehler bei der Token-Verifizierung:', error);
+    next(error); // An zentrale Fehlerbehandlung weiterleiten
   }
 };
 
@@ -110,29 +106,15 @@ const authenticate = async (req, res, next) => {
  * @param {Function} next - Express Next-Funktion
  */
 const isAdmin = async (req, res, next) => {
-  try {
-    // Benutzer-ID aus dem Request-Objekt
-    const userId = req.user.id;
-
-    // Überprüfung der Admin-Rolle direkt aus dem req.user-Objekt
-    if (req.user.role !== 'admin') {
-      logger.warn(`Zugriff verweigert: Benutzer ${userId} ist kein Administrator`);
+  // Diese Funktion prüft jetzt gegen req.user.roles
+  if (!req.user || !req.user.roles || !req.user.roles.includes('admin')) {
+      logger.warn(`Zugriff verweigert (isAdmin): Benutzer ${req.user?.id} ist kein Administrator.`);
       return res.status(403).json({
         success: false,
         message: 'Zugriff verweigert: Administratorberechtigung erforderlich'
       });
-    }
-
-    // Admin-Berechtigung vorhanden, Request fortsetzen
-    next();
-  } catch (error) {
-    logger.error('Fehler bei der Admin-Rollenprüfung:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Fehler bei der Berechtigungsprüfung',
-      error: error.message
-    });
   }
+  next();
 };
 
 /**
@@ -142,33 +124,19 @@ const isAdmin = async (req, res, next) => {
  * @param {Function} next - Express Next-Funktion
  */
 const isManager = async (req, res, next) => {
-  try {
-    // Benutzer-ID aus dem Request-Objekt
-    const userId = req.user.id;
-
-    // Überprüfung der Manager-Rolle direkt aus dem req.user-Objekt
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-      logger.warn(`Zugriff verweigert: Benutzer ${userId} ist kein Manager`);
+   // Diese Funktion prüft jetzt gegen req.user.roles
+   if (!req.user || !req.user.roles || (!req.user.roles.includes('admin') && !req.user.roles.includes('manager'))) {
+      logger.warn(`Zugriff verweigert (isManager): Benutzer ${req.user?.id} ist kein Manager oder Admin.`);
       return res.status(403).json({
         success: false,
-        message: 'Zugriff verweigert: Managerberechtigung erforderlich'
+        message: 'Zugriff verweigert: Manager- oder Adminberechtigung erforderlich'
       });
-    }
-
-    // Manager-Berechtigung vorhanden, Request fortsetzen
-    next();
-  } catch (error) {
-    logger.error('Fehler bei der Manager-Rollenprüfung:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Fehler bei der Berechtigungsprüfung',
-      error: error.message
-    });
   }
+  next();
 };
 
 module.exports = {
-  authenticate,
+  authenticateToken,
   isAdmin,
   isManager
 };

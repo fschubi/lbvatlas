@@ -509,16 +509,28 @@ const verifyPassword = async (user, password) => {
 };
 
 /**
- * Benutzerrollen abrufen
- * @returns {Promise<Array>} - Liste der verfügbaren Rollen
+ * Rollen eines bestimmten Benutzers abrufen
+ * @param {number} userId - Die ID des Benutzers
+ * @returns {Promise<Array<{id: number, name: string}>>} - Liste der Rollenobjekte des Benutzers (mit ID und Name)
  */
-const getUserRoles = async () => {
+const getUserRoles = async (userId) => {
+  if (!userId) {
+    logger.error('getUserRoles: Keine userId übergeben.');
+    throw new Error('Benutzer-ID ist erforderlich, um Rollen abzurufen.');
+  }
   try {
-    const query = 'SELECT DISTINCT role FROM users';
-    const { rows } = await pool.query(query);
-    return rows.map(row => row.role);
+    // Korrekte Abfrage an user_roles und roles Tabelle
+    const query = `
+      SELECT r.id, r.name
+      FROM roles r
+      JOIN user_roles ur ON r.id = ur.role_id
+      WHERE ur.user_id = $1
+    `;
+    const { rows } = await pool.query(query, [userId]);
+    // Gibt Array von Objekten zurück, z.B. [{ id: 1, name: 'admin' }]
+    return rows;
   } catch (error) {
-    logger.error('Fehler beim Abrufen der Benutzerrollen:', error);
+    logger.error(`Fehler beim Abrufen der Rollen für Benutzer ${userId}:`, error);
     throw error;
   }
 };

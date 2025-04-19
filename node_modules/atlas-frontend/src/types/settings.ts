@@ -37,6 +37,24 @@ export interface Manufacturer {
   contact_info?: string;
 }
 
+export interface ManufacturerCreate {
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  website?: string;
+  contactInfo?: string;
+  isActive?: boolean;
+}
+
+export interface ManufacturerUpdate {
+  name?: string;
+  description?: string;
+  logoUrl?: string;
+  website?: string;
+  contactInfo?: string;
+  isActive?: boolean;
+}
+
 export interface Supplier {
   id: number;
   name: string;
@@ -60,15 +78,13 @@ export interface Supplier {
 export interface Room {
   id: number;
   name: string;
-  description: string;
-  floor?: string;
-  room_number?: string;
-  location_id?: number;
-  locationId?: number;
+  description?: string | null;
+  locationId: number;
+  locationName?: string | null;
+  building?: string | null;
+  floor?: string | null;
+  roomNumber?: string | null;
   active: boolean;
-  location_name?: string;
-  created_at?: string;
-  updated_at?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -212,16 +228,16 @@ export interface NetworkPort {
 
 export interface DepartmentCreate {
   name: string;
-  description: string;
+  description?: string;
   locationId?: number;
-  active?: boolean;
+  isActive?: boolean;
 }
 
 export interface DepartmentUpdate {
   name?: string;
   description?: string;
   locationId?: number;
-  active?: boolean;
+  isActive?: boolean;
 }
 
 export interface AssetTagSettings {
@@ -238,4 +254,58 @@ export interface AssetTagSettingsUpdate {
   prefix?: string;
   digitCount?: number;
   isActive?: boolean;
+}
+
+export interface CategoryCreate {
+  name: string;
+  description?: string;
+  parentId?: number;
+  isActive?: boolean;
+}
+
+export interface CategoryUpdate {
+  name?: string;
+  description?: string;
+  parentId?: number;
+  isActive?: boolean;
+}
+
+export interface LocationCreate {
+  name: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+  isActive?: boolean;
+}
+
+export interface LocationUpdate {
+  name?: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+  isActive?: boolean;
+}
+
+export interface RoomCreate {
+  name: string;
+  description?: string;
+  locationId: number;
+  building?: string;
+  floor?: string;
+  roomNumber?: string;
+  active?: boolean;
+}
+
+export interface RoomUpdate {
+  name?: string;
+  description?: string;
+  locationId?: number;
+  building?: string;
+  floor?: string;
+  roomNumber?: string;
+  active?: boolean;
 }

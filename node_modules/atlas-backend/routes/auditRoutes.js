@@ -11,6 +11,8 @@ const {
   getPasswordChangeLog,
   exportAuditLogCSV
 } = require('../controllers/auditController');
+const { authenticateToken } = require('../middleware/authMiddleware');
+const { authorize } = require('../middleware/permissionMiddleware');
 
 // Audit-Log abfragen (nur für Administratoren)
 router.get('/logs', authMiddleware, getAuditLog);

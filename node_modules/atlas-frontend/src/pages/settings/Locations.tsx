@@ -14,7 +14,6 @@ import {
   Snackbar,
   Alert,
   FormControlLabel,
-  Switch as MuiSwitch,
   InputAdornment,
   Grid,
   CircularProgress,
@@ -29,17 +28,18 @@ import {
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
-  LocationCity as LocationIcon,
+  MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Business as BusinessIcon,
-  Public as CountryIcon,
-  MoreVert as MoreVertIcon
+  LocationOn as LocationIcon,
+  Public as PublicIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Location } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { locationApi } from '../../utils/api';
+import handleApiError from '../../utils/errorHandler';
+import { Location, LocationCreate, LocationUpdate } from '../../types/settings';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 
 // Schnittstelle für Formularfelder mit Validierungszustand
 interface FormField<T> {
@@ -61,7 +61,7 @@ const Locations: React.FC = () => {
   const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
 
-  // Form State mit Validierung
+  // Form State ohne isActive
   const [name, setName] = useState<FormField<string>>({
     value: '',
     error: false,
@@ -76,7 +76,7 @@ const Locations: React.FC = () => {
   });
   const [postalCode, setPostalCode] = useState<string>('');
   const [country, setCountry] = useState<string>('Deutschland');
-  const [isActive, setIsActive] = useState<boolean>(true);
+  const [readOnly, setReadOnly] = useState<boolean>(false);
 
   // UI State
   const [snackbar, setSnackbar] = useState<{
@@ -89,25 +89,40 @@ const Locations: React.FC = () => {
     severity: 'info'
   });
 
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    locationId: number;
+  } | null>(null);
+
   // API-Daten laden
   useEffect(() => {
-    fetchLocations();
+    loadLocations();
   }, []);
 
   // Standorte vom API laden
-  const fetchLocations = async () => {
+  const loadLocations = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await settingsApi.getAllLocations();
-      // Daten sind bereits vom API nach Namen sortiert
-      setLocations(response.data as Location[]);
-      setLoading(false);
-    } catch (error: any) {
+      const response = await locationApi.getAll();
+      console.log('DEBUG: Rohdaten von API (Locations Response Objekt):', response);
+      if (response && response.data) {
+        const formattedLocations = response.data.map(loc => toCamelCase(loc) as Location);
+        console.log('DEBUG: Konvertierte Standorte (camelCase):', formattedLocations);
+        setLocations(formattedLocations);
+      } else {
+        console.warn('Unerwartete Datenstruktur von locationApi.getAll:', response);
+        setLocations([]);
+      }
+    } catch (error) {
+      const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Laden der Standorte: ${error.message}`,
+        message: `Fehler beim Laden der Standorte: ${errorMessage}`,
         severity: 'error'
       });
+      setLocations([]);
+    } finally {
       setLoading(false);
     }
   };
@@ -124,6 +139,25 @@ const Locations: React.FC = () => {
 
     const handleClose = () => {
       setAnchorEl(null);
+    };
+
+    // Wrapper-Funktionen, die stopPropagation hinzufügen
+    const handleViewClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleView(location);
+      handleClose();
+    };
+
+    const handleEditClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleEdit(location);
+      handleClose();
+    };
+
+    const handleDeleteClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleDelete(location);
+      handleClose();
     };
 
     return (
@@ -144,43 +178,20 @@ const Locations: React.FC = () => {
           anchorEl={anchorEl}
           open={open}
           onClose={handleClose}
-          onClick={handleClose}
-          PaperProps={{
-            elevation: 3,
-            sx: {
-              bgcolor: '#1e1e1e',
-              overflow: 'visible',
-              mt: 1,
-              '&:before': {
-                content: '""',
-                display: 'block',
-                position: 'absolute',
-                top: 0,
-                right: 14,
-                width: 10,
-                height: 10,
-                bgcolor: '#1e1e1e',
-                transform: 'translateY(-50%) rotate(45deg)',
-                zIndex: 0,
-              },
-            },
-          }}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         >
-          <MenuItem onClick={() => handleView(location)} sx={{ minWidth: 160 }}>
+          <MenuItem onClick={handleViewClick} sx={{ minWidth: 160 }}>
             <ListItemIcon>
               <ViewIcon fontSize="small" sx={{ color: '#2196f3' }} />
             </ListItemIcon>
             <ListItemText>Anzeigen</ListItemText>
           </MenuItem>
-          <MenuItem onClick={() => handleEdit(location)}>
+          <MenuItem onClick={handleEditClick}>
             <ListItemIcon>
               <EditIcon fontSize="small" sx={{ color: '#4caf50' }} />
             </ListItemIcon>
             <ListItemText>Bearbeiten</ListItemText>
           </MenuItem>
-          <MenuItem onClick={() => handleDelete(location)}>
+          <MenuItem onClick={handleDeleteClick}>
             <ListItemIcon>
               <DeleteIcon fontSize="small" sx={{ color: '#f44336' }} />
             </ListItemIcon>
@@ -256,20 +267,6 @@ const Locations: React.FC = () => {
       render: (value) => value || 'Deutschland'
     },
     {
-      label: 'Aktiv',
-      dataKey: 'isActive',
-      width: 100,
-      sortable: true,
-      render: (value) => (
-        <Chip
-          label={value ? 'Aktiv' : 'Inaktiv'}
-          color={value ? 'success' : 'default'}
-          size="small"
-          variant="outlined"
-        />
-      )
-    },
-    {
       label: 'Aktionen',
       dataKey: 'actions',
       width: 70,
@@ -290,7 +287,7 @@ const Locations: React.FC = () => {
     setCity({ value: '', error: false, helperText: '' });
     setPostalCode('');
     setCountry('Deutschland');
-    setIsActive(true);
+    setReadOnly(false);
 
     setDialogOpen(true);
   };
@@ -308,7 +305,7 @@ const Locations: React.FC = () => {
     setCity({ value: location.city || '', error: false, helperText: '' });
     setPostalCode(location.postalCode || '');
     setCountry(location.country || 'Deutschland');
-    setIsActive(location.isActive);
+    setReadOnly(true);
 
     setDialogOpen(true);
   };
@@ -326,7 +323,7 @@ const Locations: React.FC = () => {
     setCity({ value: location.city || '', error: false, helperText: '' });
     setPostalCode(location.postalCode || '');
     setCountry(location.country || 'Deutschland');
-    setIsActive(location.isActive);
+    setReadOnly(false);
 
     setDialogOpen(true);
   };
@@ -339,10 +336,10 @@ const Locations: React.FC = () => {
 
     try {
       setLoading(true);
-      await settingsApi.deleteLocation(location.id);
+      await locationApi.delete(location.id);
 
       // Neu laden statt nur lokale Liste aktualisieren
-      fetchLocations();
+      loadLocations();
 
       setSnackbar({
         open: true,
@@ -352,7 +349,7 @@ const Locations: React.FC = () => {
     } catch (error: any) {
       setSnackbar({
         open: true,
-        message: `Fehler beim Löschen des Standorts: ${error.message}`,
+        message: `Fehler beim Löschen des Standorts: ${handleApiError(error)}`,
         severity: 'error'
       });
       setLoading(false);
@@ -386,7 +383,7 @@ const Locations: React.FC = () => {
     } else if (!editMode) {
       // Prüfe, ob der Name bereits existiert (nur bei Neuanlage)
       try {
-        const nameExists = await settingsApi.checkLocationNameExists(name.value);
+        const nameExists = await locationApi.checkLocationNameExists(name.value);
         if (nameExists) {
           setName({
             ...name,
@@ -421,26 +418,27 @@ const Locations: React.FC = () => {
       return;
     }
 
+    const locationData: Partial<Location> = {
+      name: name.value.trim(),
+      description: description.trim() || undefined,
+      address: address.trim() || undefined,
+      city: city.value.trim(),
+      postalCode: postalCode.trim() || undefined,
+      country: country.trim() || 'Deutschland'
+    };
+
+    // Konvertiere zu snake_case für das Backend
+    const backendData = toSnakeCase(locationData);
+
+    // *** NEUE DEBUG-AUSGABE ***
+    console.log('DEBUG: Sende Daten an Backend (snake_case):', backendData);
+
     try {
       setLoading(true);
-
-      // Neue Standort-Daten erstellen
-      const locationData: Partial<Location> = {
-        name: name.value.trim(),
-        description: description.trim() || undefined,
-        address: address.trim() || undefined,
-        city: city.value.trim(),
-        postalCode: postalCode.trim() || undefined,
-        country: country.trim() || 'Deutschland',
-        isActive
-      };
-
       if (editMode && currentLocation) {
-        // Bestehenden Standort bearbeiten
-        await settingsApi.updateLocation(currentLocation.id, locationData);
-
+        await locationApi.update(currentLocation.id, backendData as LocationUpdate);
         // Alle Standorte neu laden statt nur lokale Liste aktualisieren
-        fetchLocations();
+        loadLocations();
 
         setSnackbar({
           open: true,
@@ -448,11 +446,9 @@ const Locations: React.FC = () => {
           severity: 'success'
         });
       } else {
-        // Neuen Standort erstellen
-        await settingsApi.createLocation(locationData);
-
+        await locationApi.create(backendData as LocationCreate);
         // Alle Standorte neu laden statt nur lokale Liste aktualisieren
-        fetchLocations();
+        loadLocations();
 
         setSnackbar({
           open: true,
@@ -464,7 +460,7 @@ const Locations: React.FC = () => {
       setDialogOpen(false);
     } catch (error: any) {
       setLoading(false);
-      let errorMessage = `Fehler beim Speichern: ${error.message}`;
+      let errorMessage = `Fehler beim Speichern: ${handleApiError(error)}`;
 
       // Prüfen, ob es einen spezifischen Fehler gibt (z.B. Name bereits vergeben)
       if (error.message.includes('existiert bereits')) {
@@ -486,12 +482,57 @@ const Locations: React.FC = () => {
 
   // Aktualisieren der Daten
   const handleRefresh = () => {
-    fetchLocations();
+    loadLocations();
   };
 
   // Snackbar schließen
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Kontextmenü
+  const handleContextMenu = (event: React.MouseEvent, locationId: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      locationId
+    });
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuView = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleView(location);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuEdit = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleEdit(location);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuDelete = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleDelete(location);
+      }
+      handleContextMenuClose();
+    }
   };
 
   return (
@@ -523,6 +564,11 @@ const Locations: React.FC = () => {
         >
           Neuer Standort
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={handleRefresh} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle mit Standorten */}
@@ -539,9 +585,41 @@ const Locations: React.FC = () => {
             emptyMessage="Keine Standorte gefunden"
             initialSortColumn="name"
             initialSortDirection="asc"
+            onRowClick={handleView}
           />
         )}
       </Paper>
+
+      {/* Kontextmenü */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleContextMenuView}>
+          <ListItemIcon>
+            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
+          </ListItemIcon>
+          <ListItemText primary="Anzeigen" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuEdit}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+          </ListItemIcon>
+          <ListItemText primary="Bearbeiten" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuDelete}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+          </ListItemIcon>
+          <ListItemText primary="Löschen" />
+        </MenuItem>
+      </Menu>
 
       {/* Dialog für Erstellen/Bearbeiten/Anzeigen */}
       <Dialog
@@ -749,7 +827,7 @@ const Locations: React.FC = () => {
                       disableUnderline: true,
                       startAdornment: (
                         <InputAdornment position="start">
-                          <CountryIcon sx={{ color: 'text.secondary' }} />
+                          <PublicIcon sx={{ color: 'text.secondary' }} />
                         </InputAdornment>
                       )
                     }}
@@ -800,22 +878,6 @@ const Locations: React.FC = () => {
                     }
                   }
                 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1, bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
-              <FormControlLabel
-                control={
-                  <MuiSwitch
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    disabled={viewMode}
-                    color="primary"
-                  />
-                }
-                label="Standort ist aktiv"
-                sx={{ color: 'text.primary' }}
               />
             </Grid>
           </Grid>

@@ -1,118 +1,189 @@
 const roleModel = require('../models/roleModel');
+const permissionModel = require('../models/permissionModel');
+const logger = require('../utils/logger');
 const { handleError } = require('../utils/errorHandler');
+const { validationResult } = require('express-validator');
 
-const roleController = {
-  // Alle Rollen abrufen
-  getAllRoles: async (req, res) => {
-    try {
-      const roles = await roleModel.getAllRoles();
-      res.json({ success: true, data: roles });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
+// Definiere Funktionen als eigenständige Konstanten
 
-  // Rolle nach ID abrufen
-  getRoleById: async (req, res) => {
-    try {
-      const role = await roleModel.getRoleById(req.params.id);
-      if (!role) {
-        return res.status(404).json({ success: false, message: 'Rolle nicht gefunden' });
-      }
-      res.json({ success: true, data: role });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Neue Rolle erstellen
-  createRole: async (req, res) => {
-    try {
-      const { name, description } = req.body;
-      const role = await roleModel.createRole({ name, description });
-      res.status(201).json({ success: true, data: role });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Rolle aktualisieren
-  updateRole: async (req, res) => {
-    try {
-      const { name, description } = req.body;
-      const role = await roleModel.updateRole(req.params.id, { name, description });
-      if (!role) {
-        return res.status(404).json({ success: false, message: 'Rolle nicht gefunden' });
-      }
-      res.json({ success: true, data: role });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Rolle löschen
-  deleteRole: async (req, res) => {
-    try {
-      const success = await roleModel.deleteRole(req.params.id);
-      if (!success) {
-        return res.status(404).json({ success: false, message: 'Rolle nicht gefunden' });
-      }
-      res.json({ success: true, message: 'Rolle erfolgreich gelöscht' });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Berechtigungen einer Rolle abrufen
-  getRolePermissions: async (req, res) => {
-    try {
-      const permissions = await roleModel.getRolePermissions(req.params.id);
-      res.json({ success: true, data: permissions });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Berechtigung einer Rolle zuweisen
-  assignPermission: async (req, res) => {
-    try {
-      const { permission_id } = req.body;
-      await roleModel.assignPermissionToRole(req.params.id, permission_id);
-      res.json({ success: true, message: 'Berechtigung erfolgreich zugewiesen' });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Berechtigung von einer Rolle entfernen
-  removePermission: async (req, res) => {
-    try {
-      await roleModel.removePermissionFromRole(req.params.id, req.params.permissionId);
-      res.json({ success: true, message: 'Berechtigung erfolgreich entfernt' });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Alle Berechtigungen abrufen
-  getAllPermissions: async (req, res) => {
-    try {
-      const permissions = await roleModel.getAllPermissions();
-      res.json({ success: true, data: permissions });
-    } catch (error) {
-      handleError(res, error);
-    }
-  },
-
-  // Berechtigungen nach Modul abrufen
-  getPermissionsByModule: async (req, res) => {
-    try {
-      const permissions = await roleModel.getPermissionsByModule(req.params.module);
-      res.json({ success: true, data: permissions });
-    } catch (error) {
-      handleError(res, error);
-    }
+// GET /api/roles
+const getAllRoles = async (req, res, next) => {
+  try {
+    logger.info('Controller: getAllRoles aufgerufen');
+    const roles = await roleModel.getAllRoles();
+    res.status(200).json({ success: true, data: roles });
+  } catch (error) {
+    logger.error('Fehler in getAllRoles Controller:', error);
+    next(error);
   }
 };
 
-module.exports = roleController;
+// POST /api/roles
+const createRole = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { name, description } = req.body;
+  try {
+    logger.info('Controller: createRole aufgerufen', { name, description });
+    const newRole = await roleModel.createRole({ name: name.trim(), description });
+    res.status(201).json({ success: true, data: newRole });
+  } catch (error) {
+    logger.error('Fehler in createRole Controller:', error);
+    if (error.message.includes('existiert bereits')) {
+      return res.status(409).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+// PUT /api/roles/:roleId
+const updateRole = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId } = req.params;
+  const { name, description } = req.body;
+  try {
+    logger.info('Controller: updateRole aufgerufen', { roleId, name, description });
+    const updatedRole = await roleModel.updateRole(roleId, { name: name.trim(), description });
+    if (!updatedRole) {
+      const roleExists = await roleModel.getRoleById(roleId);
+      if (!roleExists) {
+        return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+      } else {
+        return res.status(403).json({ success: false, message: 'Systemrollen können nicht bearbeitet werden.' });
+      }
+    }
+    res.status(200).json({ success: true, data: updatedRole });
+  } catch (error) {
+    logger.error('Fehler in updateRole Controller:', error);
+    if (error.message.includes('existiert bereits')) {
+      return res.status(409).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+// DELETE /api/roles/:roleId
+const deleteRole = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId } = req.params;
+  try {
+    logger.info('Controller: deleteRole aufgerufen', { roleId });
+    const deleted = await roleModel.deleteRole(roleId);
+    if (!deleted) {
+      const roleExists = await roleModel.getRoleById(roleId);
+      if (!roleExists) {
+        return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+      } else {
+        return res.status(403).json({ success: false, message: 'Systemrollen können nicht gelöscht werden.' });
+      }
+    }
+    res.status(200).json({ success: true, message: 'Rolle erfolgreich gelöscht' });
+  } catch (error) {
+    logger.error('Fehler in deleteRole Controller:', error);
+    next(error);
+  }
+};
+
+// GET /api/roles/:roleId/permissions
+const getRolePermissions = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId } = req.params;
+  try {
+    logger.info('Controller: getRolePermissions aufgerufen', { roleId });
+    const role = await roleModel.getRoleById(roleId);
+    if (!role) {
+      return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+    }
+    const permissions = await permissionModel.findRolePermissions(roleId);
+    res.status(200).json({ success: true, data: permissions });
+  } catch (error) {
+    logger.error('Fehler in getRolePermissions Controller:', error);
+    next(error);
+  }
+};
+
+// POST /api/roles/:roleId/permissions
+const addPermissionToRole = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId } = req.params;
+  const { permission_id } = req.body;
+  try {
+    logger.info('Controller: addPermissionToRole aufgerufen', { roleId, permission_id });
+    const role = await roleModel.getRoleById(roleId);
+    if (!role) {
+      return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+    }
+    // TODO: Prüfen ob Permission existiert?
+
+    const success = await roleModel.assignPermissionToRole(roleId, permission_id);
+    res.status(200).json({ success: true, message: 'Berechtigung erfolgreich zugewiesen' });
+  } catch (error) {
+    logger.error('Fehler in addPermissionToRole Controller:', error);
+    if (error.code === '23503') { // foreign_key_violation
+      return res.status(404).json({ success: false, message: 'Berechtigung nicht gefunden.' });
+    }
+    next(error);
+  }
+};
+
+// DELETE /api/roles/:roleId/permissions/:permissionId
+const removePermissionFromRole = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId, permissionId } = req.params;
+  try {
+    logger.info('Controller: removePermissionFromRole aufgerufen', { roleId, permissionId });
+    const removed = await roleModel.removePermissionFromRole(roleId, permissionId);
+    if (!removed) {
+      return res.status(404).json({ success: false, message: 'Berechtigungszuweisung nicht gefunden oder konnte nicht entfernt werden.' });
+    }
+    res.status(200).json({ success: true, message: 'Berechtigung erfolgreich entfernt' });
+  } catch (error) {
+    logger.error('Fehler in removePermissionFromRole Controller:', error);
+    next(error);
+  }
+};
+
+// Berechtigungen nach Modul abrufen
+const getPermissionsByModule = async (req, res) => {
+  try {
+    const permissions = await roleModel.getPermissionsByModule(req.params.module);
+    res.json({ success: true, data: permissions });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+// Korrigierter Export nur mit den tatsächlich in roleRoutes.js verwendeten Funktionen
+module.exports = {
+  getAllRoles,
+  createRole,
+  updateRole,
+  deleteRole,
+  getRolePermissions,
+  addPermissionToRole,
+  removePermissionFromRole,
+  getPermissionsByModule
+};

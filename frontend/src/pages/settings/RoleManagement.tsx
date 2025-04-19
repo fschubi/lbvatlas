@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   Box,
   Typography,
@@ -34,7 +34,7 @@ import {
   Delete as DeleteIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import axios from 'axios';
 
 // API-Basis-URL
@@ -524,6 +524,7 @@ const RoleManagement: React.FC = () => {
 
   const RoleRow = ({ role }: { role: Role }) => {
     const isSystemRole = role.is_system;
+    const theme = useTheme();
 
     return (
       <TableRow
@@ -533,9 +534,9 @@ const RoleManagement: React.FC = () => {
         onClick={() => handleSelectRole(role)}
         sx={{
           cursor: 'pointer',
-          bgcolor: isSystemRole ? 'rgba(25, 118, 210, 0.08)' : 'inherit',
+          bgcolor: isSystemRole ? theme.palette.action.focus : 'inherit',
           '&:hover': {
-            bgcolor: isSystemRole ? 'rgba(25, 118, 210, 0.15)' : undefined,
+            bgcolor: theme.palette.action.hover,
           }
         }}
       >
@@ -587,8 +588,8 @@ const RoleManagement: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+    <Box sx={{ p: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4">Benutzerrollen</Typography>
         <Button
           variant="contained"
@@ -601,7 +602,7 @@ const RoleManagement: React.FC = () => {
       </Box>
 
       {/* Rollen-Tabelle */}
-      <TableContainer component={Paper} variant="outlined" sx={{ mb: 4 }}>
+      <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
         <Table sx={{ minWidth: 650 }} aria-label="Benutzerrollen">
           <TableHead>
             <TableRow>
@@ -627,7 +628,7 @@ const RoleManagement: React.FC = () => {
 
       {/* Berechtigungsmatrix */}
       {selectedRole && (
-        <Box>
+        <Box sx={{ mt: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">
               Berechtigungsmatrix für {selectedRole.name}
@@ -769,7 +770,7 @@ const RoleManagement: React.FC = () => {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button onClick={handleCloseDialog}>Abbrechen</Button>
           <Button
             onClick={handleDialogAction}

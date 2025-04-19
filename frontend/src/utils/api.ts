@@ -5,9 +5,8 @@
  * Alle API-Anfragen werden über diese zentrale Stelle verwaltet.
  */
 
-import { Location } from '../types/settings';
+import { Location, LocationCreate, LocationUpdate } from '../types/settings';
 import axios from 'axios';
-import type { AxiosInstance, AxiosError } from 'axios';
 import {
   Device,
   DeviceCreate,
@@ -15,12 +14,17 @@ import {
   NetworkPort,
   NetworkPortCreate,
   NetworkPortUpdate
-} from '../types';
+} from '../types/api';
 import { ApiResponse } from '../types/api';
-import { DeviceModel, DeviceModelCreate, DeviceModelUpdate } from '../types/settings';
+import { Manufacturer, ManufacturerCreate, ManufacturerUpdate, DeviceModel, DeviceModelCreate, DeviceModelUpdate } from '../types/settings';
 import { Department, DepartmentCreate, DepartmentUpdate } from '../types/settings';
+import { Category, CategoryCreate, CategoryUpdate } from '../types/settings';
 // Importiere handoverApi aus der separaten Datei
 import { handoverApi } from './handoverApi';
+import apiRequest from './interceptors'; // Default import
+import axiosInstance from './interceptors'; // Default import
+import handleApiError from '../utils/errorHandler'; // Korrekter Default-Import
+import { Room, RoomCreate, RoomUpdate } from '../types/settings';
 
 interface License {
   id: string;
@@ -181,7 +185,7 @@ async function apiRequest<T>(
       }
 
       return {} as T;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`API-Fehler (Versuch ${attempt}/${maxRetries + 1}):`, error);
 
       // Wiederholungsversuch, wenn der Fehler als wiederholbar eingestuft wird und Versuche übrig sind
@@ -201,12 +205,16 @@ async function apiRequest<T>(
       const enhancedError: any = error instanceof Error ? error : new Error('Unbekannter API-Fehler');
 
       // Benutzerfreundliche Nachricht basierend auf Fehlercode
-      if (error.code) {
-        switch (error.code) {
+      // Check if error has properties before accessing them
+      const errorCode = error?.code;
+      const errorData = error?.data;
+
+      if (errorCode) {
+        switch (errorCode) {
           case 'HTTP_400':
-            if (error.data && error.data.message) {
+            if (errorData && errorData.message) {
               // Bei 400-Fehler die ursprüngliche Fehlermeldung vom Backend beibehalten
-              enhancedError.message = error.data.message;
+              enhancedError.message = errorData.message;
             } else {
               enhancedError.message = 'Ungültige Anfrage. Bitte überprüfen Sie Ihre Eingaben.';
             }
@@ -1328,7 +1336,7 @@ export const settingsApi = {
     try {
       // Überprüfen, ob ein Standort mit dem Namen bereits existiert
       const locations = await settingsApi.getAllLocations();
-      return locations.data.some((location: { name: string }) =>
+      return locations.data.some((location: Location) =>
         location.name.toLowerCase() === name.toLowerCase()
       );
     } catch (error) {
@@ -2966,7 +2974,7 @@ export const settingsApi = {
     return response.json();
   },
 
-  updateAssetTagSettings: async (id, data) => {
+  updateAssetTagSettings: async (id: number | string, data: any) => {
     const response = await fetch(`/api/settings/asset-tags/${id}`, {
       method: 'PUT',
       headers: {
@@ -2981,7 +2989,7 @@ export const settingsApi = {
     return response.json();
   },
 
-  createAssetTagSettings: async (data) => {
+  createAssetTagSettings: async (data: any) => {
     const response = await fetch('/api/settings/asset-tags', {
       method: 'POST',
       headers: {
@@ -3032,7 +3040,7 @@ export const settingsApi = {
     }
   },
 
-  saveLabelSettings: async (settings) => {
+  saveLabelSettings: async (settings: any) => {
     try {
       // Speichere die Einstellungen lokal
       localStorage.setItem('atlasLabelSettings', JSON.stringify(settings));
@@ -3080,7 +3088,7 @@ export const settingsApi = {
     }
   },
 
-  getLabelTemplateById: async (id) => {
+  getLabelTemplateById: async (id: number | string) => {
     try {
       const response = await fetch(`/api/settings/label-templates/${id}`);
       if (!response.ok) {
@@ -3094,7 +3102,7 @@ export const settingsApi = {
     }
   },
 
-  createLabelTemplate: async (templateData) => {
+  createLabelTemplate: async (templateData: any) => {
     try {
       const response = await fetch('/api/settings/label-templates', {
         method: 'POST',
@@ -3116,7 +3124,7 @@ export const settingsApi = {
     }
   },
 
-  updateLabelTemplate: async (id, templateData) => {
+  updateLabelTemplate: async (id: number | string, templateData: any) => {
     try {
       const response = await fetch(`/api/settings/label-templates/${id}`, {
         method: 'PUT',
@@ -3138,7 +3146,7 @@ export const settingsApi = {
     }
   },
 
-  deleteLabelTemplate: async (id) => {
+  deleteLabelTemplate: async (id: number | string) => {
     try {
       const response = await fetch(`/api/settings/label-templates/${id}`, {
         method: 'DELETE'
@@ -3156,7 +3164,7 @@ export const settingsApi = {
     }
   },
 
-  getLabelTemplateVersions: async (id) => {
+  getLabelTemplateVersions: async (id: number | string) => {
     try {
       const response = await fetch(`/api/settings/label-templates/${id}/versions`);
 
@@ -3172,7 +3180,7 @@ export const settingsApi = {
     }
   },
 
-  revertToLabelTemplateVersion: async (templateId, versionId) => {
+  revertToLabelTemplateVersion: async (templateId: number | string, versionId: number | string) => {
     try {
       const response = await fetch(`/api/settings/label-templates/${templateId}/revert/${versionId}`, {
         method: 'POST'
@@ -3190,7 +3198,7 @@ export const settingsApi = {
     }
   },
 
-  importLabelTemplate: async (templateData) => {
+  importLabelTemplate: async (templateData: any) => {
     try {
       const response = await fetch('/api/settings/label-templates/import', {
         method: 'POST',
@@ -3212,7 +3220,7 @@ export const settingsApi = {
     }
   },
 
-  exportLabelTemplate: async (id) => {
+  exportLabelTemplate: async (id: number | string) => {
     try {
       // Hole die Vorlage vom Server
       const templateResponse = await fetch(`/api/settings/label-templates/${id}`);
@@ -3540,4 +3548,153 @@ export const deviceModelsApi = {
 
 // Füge Default-Export hinzu für bestehende import-Anweisungen
 export default api;
+
+// Department API
+export const departmentApi = {
+  getAll: () =>
+    apiRequest<ApiResponse<Department[]>>('/departments', 'GET'),
+
+  getById: (id: number | string) =>
+    apiRequest<Department>(`/departments/${id}`, 'GET'),
+
+  create: (data: DepartmentCreate) =>
+    apiRequest<Department>('/departments', 'POST', data),
+
+  update: (id: number | string, data: DepartmentUpdate) =>
+    apiRequest<Department>(`/departments/${id}`, 'PUT', data),
+
+  delete: (id: number | string) =>
+    apiRequest<void>(`/departments/${id}`, 'DELETE'), // Kein Rückgabewert bei DELETE erwartet
+};
+
+// Category API
+export const categoryApi = {
+  getAll: () =>
+    apiRequest<ApiResponse<Category[]>>('/categories', 'GET'),
+
+  getById: (id: number | string) =>
+    apiRequest<Category>(`/categories/${id}`, 'GET'),
+
+  create: (data: CategoryCreate) =>
+    apiRequest<Category>('/categories', 'POST', data),
+
+  update: (id: number | string, data: CategoryUpdate) =>
+    apiRequest<Category>(`/categories/${id}`, 'PUT', data),
+
+  delete: (id: number | string) =>
+    apiRequest<void>(`/categories/${id}`, 'DELETE'),
+};
+
+// Location API
+export const locationApi = {
+  getAll: () =>
+    apiRequest<ApiResponse<Location[]>>('/locations', 'GET'),
+
+  getById: (id: number | string) =>
+    apiRequest<Location>(`/locations/${id}`, 'GET'),
+
+  create: (data: LocationCreate) =>
+    apiRequest<Location>('/locations', 'POST', data),
+
+  update: (id: number | string, data: LocationUpdate) =>
+    apiRequest<Location>(`/locations/${id}`, 'PUT', data),
+
+  delete: (id: number | string) =>
+    apiRequest<void>(`/locations/${id}`, 'DELETE'),
+
+  // Funktion zur Überprüfung, ob ein Name existiert
+  checkLocationNameExists: async (name: string): Promise<boolean> => {
+    try {
+      const response = await locationApi.getAll(); // Ruft die eigene Funktion auf
+      return response.data.some((location: Location) =>
+        location.name.toLowerCase() === name.toLowerCase()
+      );
+    } catch (error) {
+      console.error('Fehler beim Überprüfen des Standortnamens:', error);
+      return false; // Im Fehlerfall false zurückgeben
+    }
+  },
+};
+
+// ==============================================
+// Rooms API
+// ==============================================
+export const roomApi = {
+  getAll: async (): Promise<Room[]> => { // Return Promise<Room[]> directly
+    return apiRequest<Room[]>('/rooms');
+  },
+
+  getById: async (id: number): Promise<Room> => { // Return Promise<Room>
+    return apiRequest<Room>(`/rooms/${id}`);
+  },
+
+  create: async (data: RoomCreate): Promise<Room> => { // Return Promise<Room>
+    return apiRequest<Room>('/rooms', 'POST', data);
+  },
+
+  update: async (id: number, data: RoomUpdate): Promise<Room> => { // Return Promise<Room>
+    return apiRequest<Room>(`/rooms/${id}`, 'PUT', data);
+  },
+
+  delete: async (id: number): Promise<void> => { // Return Promise<void>
+    return apiRequest<void>(`/rooms/${id}`, 'DELETE');
+  },
+
+  // Hilfsfunktion zur Prüfung, ob ein Raumname bereits existiert (clientseitig)
+  checkRoomNameExists: async (name: string, currentId?: number): Promise<boolean> => {
+    try {
+      const rooms = await roomApi.getAll(); // relies on getAll returning Room[]
+      const lowerCaseName = name.toLowerCase();
+      return rooms.some(
+        (room) =>
+          room.name.toLowerCase() === lowerCaseName && room.id !== currentId
+      );
+    } catch (error) {
+      console.error('Fehler bei checkRoomNameExists:', handleApiError(error));
+      return false; // Bei API-Fehler sicherheitshalber false zurückgeben
+    }
+  },
+};
+
+// ==============================================
+// Manufacturers API
+// ==============================================
+export const manufacturerApi = {
+  getAll: async (): Promise<Manufacturer[]> => { // Return Promise<Manufacturer[]>
+    // Ensure endpoint is correct if it's under settings
+    // Example: return apiRequest<Manufacturer[]>('/settings/manufacturers');
+    return apiRequest<Manufacturer[]>('/manufacturers'); // Adjust endpoint if needed
+  },
+
+  getById: async (id: number | string): Promise<Manufacturer> => { // Return Promise<Manufacturer>
+    return apiRequest<Manufacturer>(`/manufacturers/${id}`); // Adjust endpoint if needed
+  },
+
+  create: async (data: ManufacturerCreate): Promise<Manufacturer> => { // Return Promise<Manufacturer>
+    return apiRequest<Manufacturer>('/manufacturers', 'POST', data); // Adjust endpoint if needed
+  },
+
+  update: async (id: number | string, data: ManufacturerUpdate): Promise<Manufacturer> => { // Return Promise<Manufacturer>
+    return apiRequest<Manufacturer>(`/manufacturers/${id}`, 'PUT', data); // Adjust endpoint if needed
+  },
+
+  delete: async (id: number | string): Promise<void> => { // Return Promise<void>
+    return apiRequest<void>(`/manufacturers/${id}`, 'DELETE'); // Adjust endpoint if needed
+  },
+
+  // Optional: Hilfsfunktion zur Prüfung, ob ein Herstellername bereits existiert (clientseitig)
+  checkManufacturerNameExists: async (name: string, currentId?: number): Promise<boolean> => {
+    try {
+      const manufacturers = await manufacturerApi.getAll(); // relies on getAll returning Manufacturer[]
+      const lowerCaseName = name.toLowerCase();
+      return manufacturers.some(
+        (manufacturer) =>
+          manufacturer.name.toLowerCase() === lowerCaseName && manufacturer.id !== currentId
+      );
+    } catch (error) {
+      console.error('Fehler bei checkManufacturerNameExists:', handleApiError(error));
+      return false;
+    }
+  },
+};
 

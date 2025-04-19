@@ -1,237 +1,107 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const cookieParser = require('cookie-parser');
-const { rateLimit } = require('express-rate-limit');
 const dotenv = require('dotenv');
-const fs = require('fs');
 const logger = require('./utils/logger');
 const path = require('path');
+const http = require('http'); // Importiere http für den Server
 
-// Routen
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const deviceRoutes = require('./routes/devices');
-const licenseRoutes = require('./routes/licenses');
-const certificateRoutes = require('./routes/certificates');
-const accessoryRoutes = require('./routes/accessories');
-const inventoryRoutes = require('./routes/inventory');
-const todoRoutes = require('./routes/todos');
-const ticketRoutes = require('./routes/tickets');
-const reportRoutes = require('./routes/reports');
-const documentRoutes = require('./routes/documents');
-const userGroupRoutes = require('./routes/userGroupRoutes');
-const settingsRoutes = require('./routes/settings');
-const toolsRoutes = require('./routes/tools'); // <- Tools-Route richtig eingebunden
-const userProfileRoutes = require('./routes/userProfiles');
-const roleRoutes = require('./routes/roles'); // Rollen-Routen
-const permissionRoutes = require('./routes/permissions'); // Berechtigungs-Routen
+// Importiere die konfigurierte Express App
+const app = require('./app');
 
-// Middleware
-const { authMiddleware } = require('./middleware/auth');
-
-// Konfiguration
+// Konfiguration laden (wird auch in app.js geladen, aber sicher ist sicher)
 dotenv.config();
 
-const app = express();
+// --- Entferne redundante Middleware und Routen-Imports/Registrierungen ---
+// const express = require('express');
+// const cors = require('cors');
+// const helmet = require('helmet');
+// ... (alle anderen Middleware/Routen-Requires hier entfernt)
+// const { authMiddleware } = require('./middleware/auth');
 
-// Middleware
-app.use(helmet()); // Sicherheits-Header
-app.use(cors({
-  origin: function(origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3003',
-      'http://localhost:5173',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
+// const app = express(); // App wird jetzt aus app.js importiert
 
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS policy: Origin ' + origin + ' not allowed'));
-    }
-  },
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  maxAge: 86400 // 24 Stunden
-}));
-app.use(express.json()); // <- Muss vor Tools-Routen stehen!
-app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+// Middleware (alles nach app.js verschoben)
+// app.use(helmet());
+// app.use(cors(...));
+// app.use(express.json());
+// ... (alle app.use für Middleware hier entfernt)
 
-// Tools-Routen (JETZT an korrekter Stelle)
-app.use('/api/tools', toolsRoutes);
+// Routen zuweisen (alles nach app.js verschoben)
+// app.use('/api/auth', authRoutes);
+// app.use('/api/users', authMiddleware, userRoutes);
+// ... (alle app.use für Routen hier entfernt)
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 Minuten
-  max: 1000, // Maximal 1000 Anfragen pro IP (erhöht für Entwicklung)
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Nur im Produktionsmodus aktivieren
-  skip: (req, res) => process.env.NODE_ENV !== 'production'
-});
-app.use(limiter);
+// Statische Dateien (werden jetzt in app.js behandelt, außer ggf. Uploads?)
+// const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+// if (!fs.existsSync(uploadDir)) { ... }
+// app.use('/uploads', express.static(uploadDir)); // Lass diesen Teil erstmal hier, falls er spezifisch für server.js sein soll
 
-// Routen zuweisen
-app.use('/api/auth', authRoutes);
-app.use('/api/users', authMiddleware, userRoutes);
-app.use('/api/devices', authMiddleware, deviceRoutes);
-app.use('/api/licenses', authMiddleware, licenseRoutes);
-app.use('/api/certificates', authMiddleware, certificateRoutes);
-app.use('/api/accessories', authMiddleware, accessoryRoutes);
-app.use('/api/inventory', authMiddleware, inventoryRoutes);
-app.use('/api/todos', authMiddleware, todoRoutes);
-app.use('/api/tickets', authMiddleware, ticketRoutes);
-app.use('/api/reports', authMiddleware, reportRoutes);
-app.use('/api/documents', authMiddleware, documentRoutes);
-app.use('/api/usergroups', authMiddleware, userGroupRoutes);
-// Unterstützung für den alten Pfad mit Bindestrich, um Abwärtskompatibilität zu gewährleisten
-app.use('/api/user-groups', authMiddleware, userGroupRoutes);
-app.use('/api/settings', settingsRoutes); // authMiddleware temporär entfernt
-app.use('/api', userProfileRoutes); // Benutzerprofilrouten
-app.use('/api/roles', authMiddleware, roleRoutes); // Rollen-Routen
-app.use('/api/permissions', authMiddleware, permissionRoutes); // Berechtigungs-Routen
+// // Standardroute (nach app.js verschoben)
+// app.get('/', ...);
 
-// Statische Dateien (für Uploads)
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-app.use('/uploads', express.static(uploadDir));
+// // API-Dokumentation (nach app.js verschoben)
+// app.get('/api/docs', ...);
 
-// Statische Dateien servieren
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// // API-Status (nach app.js verschoben)
+// app.get('/api/status', ...);
 
-// Standardroute (für API-Dokumentation oder Frontend)
-app.get('/', (req, res) => {
-  res.json({
-    message: 'ATLAS API Server',
-    version: '1.0.0',
-    documentation: '/api/docs'
-  });
-});
+// // Gesundheitscheck-Route (nach app.js verschoben)
+// app.get('/health', ...);
 
-// API-Dokumentation (optional)
-app.get('/api/docs', (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <title>ATLAS API Dokumentation</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
-      </head>
-      <body class="bg-dark text-light p-5">
-        <div class="container">
-          <h1>ATLAS API Dokumentation</h1>
-          <p>Die vollständige API-Dokumentation finden Sie in der Datei '/docs/api_dokumentation.md'</p>
-        </div>
-      </body>
-    </html>
-  `);
-});
+// // API-Dokumentationsroute (nach app.js verschoben)
+// app.get('/api', ...);
 
-// API-Status
-app.get('/api/status', (req, res) => {
-  res.json({
-    status: 'online',
-    timestamp: new Date(),
-    version: '1.0.0'
-  });
-});
+// // 404 Not Found Handler (nach app.js verschoben)
+// app.use((req, res, next) => { ... });
 
-// Gesundheitscheck-Route
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// // API-Routen Catch-all (nach app.js verschoben)
+// app.use('/api/*', ...);
 
-// API-Dokumentationsroute
-app.get('/api', (req, res) => {
-  res.status(200).json({
-    message: 'ATLAS API v1.0',
-    endpoints: [
-      { path: '/api/devices', description: 'Geräte-Management' },
-      { path: '/api/licenses', description: 'Lizenz-Management' },
-      { path: '/api/certificates', description: 'Zertifikats-Management' },
-      { path: '/api/users', description: 'Benutzer-Management' },
-      { path: '/api/tickets', description: 'Ticket-System' },
-      { path: '/api/inventory', description: 'Inventarisierung' },
-      { path: '/api/todos', description: 'Aufgaben-Management' }
-    ]
-  });
-});
+// // Frontend Catch-all (nach app.js verschoben)
+// app.get('*', ...);
 
-// 404 Not Found Handler
-app.use((req, res, next) => {
-  res.status(404).json({
-    message: 'Route nicht gefunden',
-    path: req.originalUrl
-  });
-});
+// // Globaler Fehlerhandler (nach app.js verschoben)
+// app.use((err, req, res, next) => { ... });
 
-// API-Routen
-app.use('/api/*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'API-Endpunkt nicht gefunden'
-  });
-});
+// --- Server starten ---
+const PORT = process.env.PORT || 3500; // Verwende den gleichen Port wie vorher
 
-// Alle anderen Anfragen an die Frontend-App weiterleiten (für Client-Side-Routing)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-});
+// Erstelle HTTP-Server mit der importierten App
+const server = http.createServer(app);
 
-// Globaler Fehlerhandler
-app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  logger.error(`Serverfehler: ${err.message}`, err);
-
-  res.status(statusCode).json({
-    message: process.env.NODE_ENV === 'production'
-      ? 'Ein Serverfehler ist aufgetreten'
-      : err.message,
-    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
-  });
-});
-
-// Server starten
-const PORT = process.env.PORT || 3500;
-
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   logger.info(`ATLAS-Server gestartet auf Port ${PORT} im ${process.env.NODE_ENV || 'development'}-Modus`);
+  // Der Link zur API-Doku kann bleiben, auch wenn die Route in app.js definiert ist
   logger.info(`API-Dokumentation verfügbar unter http://localhost:${PORT}/api`);
 }).on('error', (err) => {
   logger.error(`Konnte Server nicht starten: ${err.message}`);
 });
 
+// --- Prozess-Handler (können hier bleiben) ---
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unbehandelte Promise-Rejection', { reason, promise });
 });
 
 process.on('uncaughtException', (error) => {
   logger.error('Unbehandelte Exception', error);
+  // Im Produktionsmodus könnte man hier überlegen, neu zu starten,
+  // aber für die Entwicklung ist ein Exit besser, um den Fehler zu sehen.
   process.exit(1);
 });
 
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM-Signal empfangen, Server wird beendet');
+const shutdown = (signal) => {
+  logger.info(`${signal}-Signal empfangen, Server wird beendet`);
   server.close(() => {
     logger.info('Server beendet');
+    // Hier könnte man noch DB-Verbindungen schließen etc.
     process.exit(0);
   });
-});
+  // Erzwinge Beenden nach Timeout
+  setTimeout(() => {
+     logger.warn('Server konnte nicht ordnungsgemäß beendet werden, erzwinge Beendigung.');
+     process.exit(1);
+  }, 10000); // 10 Sekunden Timeout
+}
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT-Signal empfangen, Server wird beendet');
-  server.close(() => {
-    logger.info('Server beendet');
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
-module.exports = app;
+// Entferne module.exports = app;

@@ -17,16 +17,45 @@ dotenv.config();
 const userRoutes = require('./routes/users');
 const authRoutes = require('./routes/auth');
 const deviceRoutes = require('./routes/devices');
-const locationRoutes = require('./routes/locations');
+const locationRoutes = require('./routes/locationRoutes');
 const passwordRoutes = require('./routes/passwordRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const roleRoutes = require('./routes/roleRoutes');
+const permissionRoutes = require('./routes/permissionRoutes');
+const licenseRoutes = require('./routes/licenses');
+const certificateRoutes = require('./routes/certificates');
+const accessoryRoutes = require('./routes/accessories');
+const inventoryRoutes = require('./routes/inventory');
+const todoRoutes = require('./routes/todos');
+const ticketRoutes = require('./routes/tickets');
+const reportRoutes = require('./routes/reports');
+const documentRoutes = require('./routes/documents');
+const userGroupRoutes = require('./routes/userGroupRoutes');
+const toolsRoutes = require('./routes/tools');
+const userProfileRoutes = require('./routes/userProfiles');
+const supplierRoutes = require('./routes/supplierRoutes');
+const switchRoutes = require('./routes/switchRoutes');
+const networkSocketRoutes = require('./routes/networkSocketRoutes');
+const networkPortRoutes = require('./routes/networkPortRoutes');
+const deviceModelRoutes = require('./routes/deviceModelRoutes');
+const systemSettingsRoutes = require('./routes/systemSettingsRoutes');
+const assetTagSettingsRoutes = require('./routes/assetTagSettingsRoutes');
+const labelSettingsRoutes = require('./routes/labelSettingsRoutes');
+const roomRoutes = require('./routes/roomRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const manufacturerRoutes = require('./routes/manufacturerRoutes');
+const departmentRoutes = require('./routes/departmentRoutes');
+const labelTemplateRoutes = require('./routes/labelTemplateRoutes');
 
 // Erstelle Express-App
 const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+  credentials: true
+}));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -57,6 +86,32 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/passwords', passwordRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/permissions', permissionRoutes);
+app.use('/api/licenses', licenseRoutes);
+app.use('/api/certificates', certificateRoutes);
+app.use('/api/accessories', accessoryRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/todos', todoRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/userGroupRoutes', userGroupRoutes);
+app.use('/api/tools', toolsRoutes);
+app.use('/api/userProfiles', userProfileRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/switches', switchRoutes);
+app.use('/api/network-sockets', networkSocketRoutes);
+app.use('/api/network-ports', networkPortRoutes);
+app.use('/api/devicemodels', deviceModelRoutes);
+app.use('/api/system-settings', systemSettingsRoutes);
+app.use('/api/asset-tag-settings', assetTagSettingsRoutes);
+app.use('/api/labels', labelSettingsRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/manufacturers', manufacturerRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/label-templates', labelTemplateRoutes);
 
 // Statische Dateien (für Produktion)
 if (process.env.NODE_ENV === 'production') {
@@ -75,12 +130,6 @@ app.use((err, req, res, next) => {
     message: 'Serverfehler',
     error: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
-});
-
-// Starte Server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  logger.info(`Server läuft auf Port ${PORT}`);
 });
 
 module.exports = app;

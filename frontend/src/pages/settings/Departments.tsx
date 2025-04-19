@@ -32,9 +32,10 @@ import {
   Business as BusinessIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Department } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { departmentApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { Department, DepartmentCreate, DepartmentUpdate } from '../../types/settings';
+import { toCamelCase } from '../../utils/caseConverter';
 
 const Departments: React.FC = () => {
   // State für die Daten
@@ -95,7 +96,7 @@ const Departments: React.FC = () => {
     },
     { dataKey: 'description', label: 'Beschreibung' },
     {
-      dataKey: 'active',
+      dataKey: 'isActive',
       label: 'Status',
       width: 120,
       render: (value) => (
@@ -108,10 +109,10 @@ const Departments: React.FC = () => {
       )
     },
     {
-      dataKey: 'created_at',
+      dataKey: 'createdAt',
       label: 'Erstellt am',
       width: 180,
-      render: (value) => new Date(value as string).toLocaleDateString('de-DE')
+      render: (value) => value ? new Date(value as string).toLocaleDateString('de-DE') : '-'
     },
     {
       dataKey: 'actions',
@@ -136,8 +137,24 @@ const Departments: React.FC = () => {
   const loadDepartments = async () => {
     setLoading(true);
     try {
-      const response = await settingsApi.getAllDepartments();
-      setDepartments(response.data);
+      // 1. Antwortobjekt von der API abrufen
+      const response = await departmentApi.getAll();
+      console.log('DEBUG: Rohdaten von API (Response Objekt):', response);
+
+      // 2. Prüfen, ob die Antwort erfolgreich war und Daten enthält
+      if (response && response.data) { // Zugriff auf response.data
+        // 3. Daten aus response.data in camelCase konvertieren
+        const formattedDepartments = response.data.map(dept => toCamelCase(dept) as Department);
+        console.log('DEBUG: Konvertierte Daten (camelCase):', formattedDepartments);
+
+        // 4. Konvertierte Daten im State speichern
+        setDepartments(formattedDepartments);
+      } else {
+        // Fallback, falls die Datenstruktur unerwartet ist
+        console.warn('Unerwartete Datenstruktur von departmentApi.getAll:', response);
+        setDepartments([]); // Tabelle leeren oder alte Daten behalten?
+      }
+
     } catch (error) {
       const errorMessage = handleApiError(error);
       setSnackbar({
@@ -145,6 +162,7 @@ const Departments: React.FC = () => {
         message: `Fehler beim Laden der Abteilungen: ${errorMessage}`,
         severity: 'error'
       });
+      setDepartments([]); // Tabelle im Fehlerfall leeren
     } finally {
       setLoading(false);
     }
@@ -168,7 +186,7 @@ const Departments: React.FC = () => {
     setCurrentDepartment(department);
     setName(department.name);
     setDescription(department.description);
-    setIsActive(department.active === undefined ? true : department.active);
+    setIsActive(department.isActive ?? true);
     setDialogOpen(true);
   };
 
@@ -180,7 +198,7 @@ const Departments: React.FC = () => {
 
     try {
       setLoading(true);
-      await settingsApi.deleteDepartment(department.id);
+      await departmentApi.delete(department.id);
 
       // Neu laden statt nur lokale Liste aktualisieren
       loadDepartments();
@@ -218,10 +236,10 @@ const Departments: React.FC = () => {
       return;
     }
 
-    const departmentData = {
-      name,
-      description,
-      isActive
+    const departmentData: DepartmentCreate | DepartmentUpdate = {
+      name: name.trim(),
+      description: description.trim(),
+      isActive: isActive
     };
 
     try {
@@ -229,7 +247,7 @@ const Departments: React.FC = () => {
 
       if (editMode && currentDepartment) {
         // Bearbeiten
-        await settingsApi.updateDepartment(currentDepartment.id, departmentData);
+        await departmentApi.update(currentDepartment.id, departmentData);
 
         // Neu laden statt nur lokale Liste aktualisieren
         loadDepartments();
@@ -241,7 +259,7 @@ const Departments: React.FC = () => {
         });
       } else {
         // Neu erstellen
-        await settingsApi.createDepartment(departmentData);
+        await departmentApi.create(departmentData as DepartmentCreate);
 
         // Neu laden statt nur lokale Liste aktualisieren
         loadDepartments();
@@ -299,7 +317,7 @@ const Departments: React.FC = () => {
         setCurrentDepartment(department);
         setName(department.name);
         setDescription(department.description);
-        setIsActive(department.active === undefined ? true : department.active);
+        setIsActive(department.isActive ?? true);
         setDialogOpen(true);
       }
       handleContextMenuClose();
@@ -333,7 +351,7 @@ const Departments: React.FC = () => {
     setCurrentDepartment(department);
     setName(department.name);
     setDescription(department.description);
-    setIsActive(department.active === undefined ? true : department.active);
+    setIsActive(department.isActive ?? true);
     setDialogOpen(true);
   };
 
@@ -453,11 +471,11 @@ const Departments: React.FC = () => {
                 <MuiSwitch
                   checked={isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
+                  name="isActive"
                   disabled={readOnly}
-                  color="primary"
                 />
               }
-              label="Abteilung aktiv"
+              label="Aktiv"
             />
           </Box>
         </DialogContent>
