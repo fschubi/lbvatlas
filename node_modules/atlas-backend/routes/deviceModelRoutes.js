@@ -34,10 +34,10 @@ router.post(
     authorize(CREATE_DEVICEMODELS),
     [
         check('name', 'Name ist erforderlich').not().isEmpty().trim(),
-        check('manufacturerId', 'Hersteller-ID ist erforderlich und muss eine Zahl sein').isInt({ gt: 0 }),
-        check('categoryId', 'Kategorie-ID ist erforderlich und muss eine Zahl sein').isInt({ gt: 0 }),
-        check('warrantyMonths', 'Garantie muss eine Zahl sein (optional)').optional().isInt({ min: 0 }),
-        check('isActive', 'isActive muss ein Boolean sein (optional)').optional().isBoolean()
+        check('manufacturer_id', 'Hersteller-ID ist erforderlich und muss eine Zahl sein').not().isEmpty().isInt({ gt: 0 }),
+        check('category_id', 'Kategorie-ID ist erforderlich und muss eine Zahl sein').not().isEmpty().isInt({ gt: 0 }),
+        check('warranty_months', 'Garantie muss eine Zahl sein (optional)').optional({ checkFalsy: true }).isInt({ min: 0 }),
+        check('is_active', 'isActive muss ein Boolean sein (optional)').optional().isBoolean()
     ],
     deviceModelController.createDeviceModel
 );
@@ -49,10 +49,10 @@ router.put(
     [
         check('id').isInt({ gt: 0 }).withMessage('Ungültige DeviceModel-ID'),
         check('name', 'Name ist erforderlich').optional().not().isEmpty().trim(), // Optional, falls nur andere Felder geändert werden
-        check('manufacturerId', 'Hersteller-ID muss eine Zahl sein').optional().isInt({ gt: 0 }),
-        check('categoryId', 'Kategorie-ID muss eine Zahl sein').optional().isInt({ gt: 0 }),
-        check('warrantyMonths', 'Garantie muss eine Zahl sein').optional().isInt({ min: 0 }),
-        check('isActive', 'isActive muss ein Boolean sein').optional().isBoolean()
+        check('manufacturer_id', 'Hersteller-ID muss eine Zahl sein').optional().isInt({ gt: 0 }),
+        check('category_id', 'Kategorie-ID muss eine Zahl sein').optional().isInt({ gt: 0 }),
+        check('warranty_months', 'Garantie muss eine Zahl sein').optional({ checkFalsy: true }).isInt({ min: 0 }),
+        check('is_active', 'isActive muss ein Boolean sein').optional().isBoolean()
     ],
     deviceModelController.updateDeviceModel
 );

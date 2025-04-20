@@ -480,8 +480,68 @@ export const devicesApi = {
   delete: (id: number) => Promise.resolve({ message: 'Deleted' }),
 };
 
+// --- NEU: Device Models API ---
+export interface DeviceModel {
+  id: number;
+  name: string;
+  description?: string;
+  manufacturerId: number;
+  categoryId: number;
+  specifications?: string;
+  cpu?: string;
+  ram?: string;
+  hdd?: string;
+  warrantyMonths?: number;
+  isActive: boolean;
+  createdAt?: string; // Kommt vom Backend
+  updatedAt?: string; // Kommt vom Backend
+  manufacturerName?: string; // Vom JOIN im Backend
+  categoryName?: string; // Vom JOIN im Backend
+  deviceCount?: number; // Vom JOIN/Subquery im Backend
+}
+
+// Typ für das Erstellen (ID wird vom Backend generiert)
+export type DeviceModelCreate = Omit<DeviceModel, 'id' | 'createdAt' | 'updatedAt' | 'manufacturerName' | 'categoryName' | 'deviceCount'>;
+// Typ für das Update (alle Felder optional, außer ID wird über den Pfad übergeben)
+export type DeviceModelUpdate = Partial<Omit<DeviceModel, 'id' | 'createdAt' | 'updatedAt' | 'manufacturerName' | 'categoryName' | 'deviceCount'>>;
+
 export const deviceModelsApi = {
-  getAll: () => Promise.resolve([] as any[]),
+  getAll: (): Promise<ApiResponse<DeviceModel[]>> => apiRequest<DeviceModel[]>('/devicemodels'),
+  getById: (id: number): Promise<ApiResponse<DeviceModel>> => apiRequest<DeviceModel>(`/devicemodels/${id}`),
+  create: (data: DeviceModelCreate): Promise<ApiResponse<DeviceModel>> =>
+    apiRequest<DeviceModel>('/devicemodels', 'POST', data),
+  update: (id: number, data: DeviceModelUpdate): Promise<ApiResponse<DeviceModel>> =>
+    apiRequest<DeviceModel>(`/devicemodels/${id}`, 'PUT', data),
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
+    apiRequest<{ message?: string }>(`/devicemodels/${id}`, 'DELETE'),
+  checkDeviceModelNameExists: async (
+    name: string,
+    manufacturerId: number, // Name muss nur pro Hersteller eindeutig sein
+    currentId?: number
+  ): Promise<boolean> => {
+    if (!manufacturerId) {
+        console.warn('[checkDeviceModelNameExists] Keine manufacturerId für die Prüfung angegeben.');
+        return true; // oder false, je nach gewünschtem Verhalten?
+    }
+    try {
+      const modelsResponse = await deviceModelsApi.getAll(); // Hole alle Modelle
+      const modelsArray = modelsResponse.data;
+      if (modelsResponse.success && Array.isArray(modelsArray)) {
+        return modelsArray.some(
+          (model) =>
+            model.manufacturerId === manufacturerId && // Prüfe nur für den gleichen Hersteller
+            model.name.toLowerCase() === name.toLowerCase() &&
+            model.id !== currentId
+        );
+      } else {
+        console.error(`[checkDeviceModelNameExists] Prüfung fehlgeschlagen. Success: ${modelsResponse.success}, IsArray: ${Array.isArray(modelsArray)}.`);
+        return true; // Im Fehlerfall annehmen, dass es existiert, um Duplikate zu vermeiden
+      }
+    } catch (error) {
+      console.error('[checkDeviceModelNameExists] Fehler im try-Block:', error);
+      return true; // Im Fehlerfall annehmen, dass es existiert
+    }
+  },
 };
 
 export const accessoriesApi = {

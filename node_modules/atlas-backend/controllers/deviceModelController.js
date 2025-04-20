@@ -94,20 +94,20 @@ class DeviceModelController {
   async deleteDeviceModel(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ success: false, message: 'Validierungsfehler', errors: errors.array() });
     }
     try {
       const modelId = req.params.id;
-      const result = await deviceModelModel.deleteDeviceModel(modelId);
-      res.json(result);
+      await deviceModelModel.deleteDeviceModel(modelId);
+      res.status(200).json({ success: true, message: 'Gerätemodell erfolgreich gelöscht.' });
     } catch (error) {
-      console.error('Fehler beim Löschen des Gerätemodells:', error);
+      console.error('Fehler beim Löschen des Gerätemodells (Controller):', error);
       if (error.message === 'Gerätemodell nicht gefunden') {
         return res.status(404).json({ success: false, message: error.message });
       } else if (error.message.includes('verwendet wird')) {
-        return res.status(400).json({ success: false, message: error.message });
+        return res.status(409).json({ success: false, message: error.message });
       }
-      res.status(500).json({ success: false, message: 'Fehler beim Löschen des Gerätemodells', error: error.message });
+      res.status(500).json({ success: false, message: error.message || 'Allgemeiner Fehler beim Löschen des Gerätemodells' });
     }
   }
 

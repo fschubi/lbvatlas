@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -19,870 +19,591 @@ import {
   FormControl,
   InputLabel,
   Select,
-  FormHelperText,
-  InputAdornment,
-  Menu,
-  ListItemIcon,
-  ListItemText,
+  Grid,
   CircularProgress,
   Chip,
-  Autocomplete
+  FormHelperText,
+  SelectChangeEvent,
+  InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
-  Description as SpecIcon,
-  CalendarToday as CalendarIcon,
-  MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Visibility as ViewIcon,
-  Devices as DevicesIcon
+  LaptopChromebook as DeviceModelIcon,
+  Memory as RamIcon,
+  DeveloperBoard as CpuIcon,
+  Save as HddIcon,
+  Category as CategoryIcon,
+  Factory as ManufacturerIcon,
+  Description as DescriptionIcon,
+  Info as InfoIcon,
+  CalendarMonth as WarrantyIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { DeviceModel, Manufacturer, Category } from '../../types/settings';
-import { deviceModelsApi, settingsApi } from '../../utils/api';
+import {
+  DeviceModel,
+  DeviceModelCreate,
+  DeviceModelUpdate,
+  deviceModelsApi,
+} from '../../utils/api'; // DeviceModel-Typen und API importieren
+import { settingsApi } from '../../utils/api'; // Für Hersteller & Kategorien
+import { Manufacturer, Category } from '../../types/settings'; // Typen importieren
 import handleApiError from '../../utils/errorHandler';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+
+// Typ für den Formularstatus
+interface DeviceModelFormData {
+    name: string;
+    description: string;
+    manufacturerId: number | '';
+    categoryId: number | '';
+    specifications: string;
+    cpu: string;
+    ram: string;
+    hdd: string;
+    warrantyMonths: number | '';
+    isActive: boolean;
+}
+
+const initialFormData: DeviceModelFormData = {
+    name: '',
+    description: '',
+    manufacturerId: '',
+    categoryId: '',
+    specifications: '',
+    cpu: '',
+    ram: '',
+    hdd: '',
+    warrantyMonths: '',
+    isActive: true,
+};
 
 const DeviceModels: React.FC = () => {
-  // State für die Daten
   const [deviceModels, setDeviceModels] = useState<DeviceModel[]>([]);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [deviceCounts, setDeviceCounts] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
   const [currentModel, setCurrentModel] = useState<DeviceModel | null>(null);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
-
-  // State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    modelId: number;
-  } | null>(null);
-
-  // Form State
-  const [name, setName] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
-  const [manufacturerId, setManufacturerId] = useState<number | ''>('');
-  const [categoryId, setCategoryId] = useState<number | ''>('');
-  const [specifications, setSpecifications] = useState<string>('');
-  const [isActive, setIsActive] = useState<boolean>(true);
-  const [cpu, setCpu] = useState<string>('');
-  const [ram, setRam] = useState<string>('');
-  const [hdd, setHdd] = useState<string>('');
-  const [warrantyMonths, setWarrantyMonths] = useState<string>('');
-
-  // Validation State
-  const [errors, setErrors] = useState<{
-    name?: string;
-    manufacturerId?: string;
-    categoryId?: string;
-    cpu?: string;
-    ram?: string;
-    hdd?: string;
-    warrantyMonths?: string;
-  }>({});
-
-  // UI State
+  const [formData, setFormData] = useState<DeviceModelFormData>(initialFormData);
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'error' | 'info';
-  }>({
-    open: false,
-    message: '',
-    severity: 'info'
-  });
+  }>({ open: false, message: '', severity: 'info' });
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [modelToDelete, setModelToDelete] = useState<DeviceModel | null>(null);
+  const [saveLoading, setSaveLoading] = useState<boolean>(false);
 
-  // Mock-Daten für das Beispiel
-  const mockManufacturers: Manufacturer[] = [
-    {
-      id: 1,
-      name: 'Dell Technologies',
-      description: 'US-amerikanischer Hersteller von PCs, Servern und Speichersystemen',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'HP Inc.',
-      description: 'Hersteller von PCs, Druckern und anderen Peripheriegeräten',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 3,
-      name: 'Lenovo Group',
-      description: 'Chinesischer Hersteller von PCs, Laptops und Mobilgeräten',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  const mockCategories: Category[] = [
-    {
-      id: 1,
-      name: 'Laptops',
-      description: 'Tragbare Computer',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'Desktop-PCs',
-      description: 'Stationäre Computer',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 3,
-      name: 'Server',
-      description: 'Serversysteme',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 4,
-      name: 'Monitore',
-      description: 'Bildschirme',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  const mockDeviceModels: DeviceModel[] = [
-    {
-      id: 1,
-      name: 'Latitude 5420',
-      description: 'Business-Laptop für professionelle Anwender',
-      manufacturerId: 1,
-      categoryId: 1,
-      specifications: 'Windows 11 Pro',
-      cpu: 'Intel Core i5-1135G7',
-      ram: '16GB DDR4 3200MHz',
-      hdd: '512GB SSD NVMe',
-      warrantyMonths: 36,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'OptiPlex 7090',
-      description: 'Desktop-PC für Unternehmen',
-      manufacturerId: 1,
-      categoryId: 2,
-      specifications: 'Windows 11 Pro',
-      cpu: 'Intel Core i7-11700',
-      ram: '32GB DDR4 3200MHz',
-      hdd: '1TB SSD NVMe + 1TB HDD',
-      warrantyMonths: 24,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 3,
-      name: 'ThinkPad X1 Carbon',
-      description: 'Premium Business-Laptop',
-      manufacturerId: 3,
-      categoryId: 1,
-      specifications: 'Windows 11 Pro',
-      cpu: 'Intel Core i7-1260P',
-      ram: '16GB LPDDR5 5200MHz',
-      hdd: '1TB SSD NVMe Gen4',
-      warrantyMonths: 36,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 4,
-      name: 'EliteBook 840',
-      description: 'Business-Laptop mit hoher Sicherheit',
-      manufacturerId: 2,
-      categoryId: 1,
-      specifications: 'Windows 11 Pro',
-      cpu: 'Intel Core i5-1240P',
-      ram: '8GB DDR4 3200MHz',
-      hdd: '256GB SSD NVMe',
-      warrantyMonths: 12,
-      isActive: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  // Mock-Daten für die Anzahl der Geräte pro Modell
-  const mockDeviceCount = {
-    1: 24, // Latitude 5420: 24 Geräte
-    2: 17, // OptiPlex 7090: 17 Geräte
-    3: 8,  // ThinkPad X1 Carbon: 8 Geräte
-    4: 3   // EliteBook 840: 3 Geräte
-  };
-
-  // Spalten für die Tabelle
-  const columns: AtlasColumn<DeviceModel>[] = [
-    { dataKey: 'id', label: 'ID', width: 70, numeric: true },
-    {
-      dataKey: 'name',
-      label: 'Name',
-      render: (value, row) => (
-        <Box
-          sx={{
-            color: 'primary.main',
-            fontWeight: 500,
-            cursor: 'pointer',
-            '&:hover': {
-              textDecoration: 'underline'
-            }
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewModel(row);
-          }}
-        >
-          {value}
-        </Box>
-      )
-    },
-    { dataKey: 'description', label: 'Beschreibung' },
-    {
-      dataKey: 'manufacturerId',
-      label: 'Hersteller',
-      render: (value, row) => {
-        // Prüfen auf beide mögliche Feldnamen (camelCase und snake_case)
-        const manufacturerId = row.manufacturer_id !== undefined ? row.manufacturer_id : row.manufacturerId;
-        const manufacturer = manufacturers.find(m => m.id === manufacturerId);
-        return manufacturer ? manufacturer.name : '-';
-      }
-    },
-    {
-      dataKey: 'categoryId',
-      label: 'Kategorie',
-      render: (value, row) => {
-        // Prüfen auf beide mögliche Feldnamen (camelCase und snake_case)
-        const categoryId = row.category_id !== undefined ? row.category_id : row.categoryId;
-        const category = categories.find(c => c.id === categoryId);
-        return category ? category.name : '-';
-      }
-    },
-    {
-      dataKey: 'deviceCount',
-      label: 'Anzahl Geräte',
-      width: 130,
-      numeric: true,
-      render: (_, row) => {
-        const count = deviceCounts[row.id] || 0;
-        return (
-          <Chip
-            label={count.toString()}
-            color={count > 0 ? 'primary' : 'default'}
-            size="small"
-            sx={{
-              minWidth: '60px',
-              fontWeight: count > 0 ? 'bold' : 'normal'
-            }}
-          />
-        );
-      }
-    },
-    {
-      dataKey: 'isActive',
-      label: 'Status',
-      width: 120,
-      render: (value, row) => {
-        // Prüfen auf beide mögliche Feldnamen (camelCase und snake_case)
-        const isActive = row.is_active !== undefined ? row.is_active : row.isActive;
-        return (
-          <Chip
-            label={isActive ? 'Aktiv' : 'Inaktiv'}
-            color={isActive ? 'success' : 'default'}
-            size="small"
-            variant="outlined"
-          />
-        );
-      }
-    },
-    {
-      dataKey: 'createdAt',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value) => value ? new Date(value as string).toLocaleDateString('de-DE') : '-'
-    },
-    {
-      dataKey: 'actions',
-      label: 'Aktionen',
-      width: 80,
-      render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
-      )
-    }
-  ];
-
-  // Daten laden
-  useEffect(() => {
-    loadModels();
-  }, []);
-
-  const loadModels = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // API-Anfragen für alle Daten parallel ausführen
       const [modelsResponse, manufacturersResponse, categoriesResponse] = await Promise.all([
         deviceModelsApi.getAll(),
         settingsApi.getAllManufacturers(),
-        settingsApi.getAllCategories()
+        settingsApi.getAllCategories(),
       ]);
 
-      // Daten setzen - auch leere Arrays sind gültige Ergebnisse!
-      const modelsData = modelsResponse?.data || [];
-      const manufacturersResult = manufacturersResponse?.data || [];
-      const categoriesResult = categoriesResponse?.data || [];
+      if (modelsResponse.success && Array.isArray(modelsResponse.data)) {
+        setDeviceModels(modelsResponse.data); // toCamelCase wird in apiRequest gemacht
+      } else {
+        throw new Error(modelsResponse.message || 'Fehler beim Laden der Gerätemodelle');
+      }
 
-      console.log("Geladene Daten:", {
-        models: modelsData,
-        manufacturers: manufacturersResult,
-        categories: categoriesResult
-      });
+      if (manufacturersResponse.success && Array.isArray(manufacturersResponse.data)) {
+        setManufacturers(manufacturersResponse.data);
+      } else {
+        throw new Error(manufacturersResponse.message || 'Fehler beim Laden der Hersteller');
+      }
 
-      // Daten aus der API verwenden, auch wenn diese leer sind
-      setDeviceModels(modelsData);
-      setManufacturers(manufacturersResult);
-      setCategories(categoriesResult);
+      if (categoriesResponse.success && Array.isArray(categoriesResponse.data)) {
+        setCategories(categoriesResponse.data);
+      } else {
+        throw new Error(categoriesResponse.message || 'Fehler beim Laden der Kategorien');
+      }
 
-      // Gerätezahl aus den Daten extrahieren
-      const countMap: Record<number, number> = {};
-      modelsData.forEach((model: any) => {
-        countMap[model.id] = parseInt(model.device_count || '0');
-      });
-      setDeviceCounts(countMap);
     } catch (error) {
-      const errorMessage = handleApiError(error);
+      console.error('Fehler beim Laden der Daten:', error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Laden der Gerätemodelle: ${errorMessage}`,
-        severity: 'error'
+        message: handleApiError(error),
+        severity: 'error',
       });
-
-      // Im Fehlerfall leere Arrays anzeigen
       setDeviceModels([]);
       setManufacturers([]);
       setCategories([]);
-      setDeviceCounts({});
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<number | ''>) => {
+    const { name, value } = event.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
-  // Dialog öffnen für neuen Eintrag
+  const handleSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      [event.target.name]: event.target.checked,
+    }));
+  };
+
   const handleAddNew = () => {
     setEditMode(false);
-    setReadOnly(false);
     setCurrentModel(null);
-    resetForm();
+    setFormData(initialFormData);
+    setFormErrors({});
     setDialogOpen(true);
   };
 
-  // Formular zurücksetzen
-  const resetForm = () => {
-    setName('');
-    setDescription('');
-    setManufacturerId('');
-    setCategoryId('');
-    setSpecifications('');
-    setIsActive(true);
-    setCpu('');
-    setRam('');
-    setHdd('');
-    setWarrantyMonths('');
-    setErrors({});
-  };
-
-  // Dialog öffnen für Bearbeitung
   const handleEdit = (model: DeviceModel) => {
     setEditMode(true);
-    setReadOnly(false);
     setCurrentModel(model);
-    setName(model.name);
-    setDescription(model.description || '');
-    setManufacturerId(model.manufacturer_id || model.manufacturerId || '');
-    setCategoryId(model.category_id || model.categoryId || '');
-    setSpecifications(model.specifications || '');
-    setCpu(model.cpu || '');
-    setRam(model.ram || '');
-    setHdd(model.hdd || '');
-    setWarrantyMonths(model.warranty_months?.toString() || model.warrantyMonths?.toString() || '');
-    setIsActive(model.is_active === undefined ? (model.isActive === undefined ? true : model.isActive) : model.is_active);
-    setErrors({});
+    setFormData({
+        name: model.name || '',
+        description: model.description || '',
+        manufacturerId: model.manufacturerId || '',
+        categoryId: model.categoryId || '',
+        specifications: model.specifications || '',
+        cpu: model.cpu || '',
+        ram: model.ram || '',
+        hdd: model.hdd || '',
+        warrantyMonths: model.warrantyMonths ?? '',
+        isActive: model.isActive ?? true,
+    });
+    setFormErrors({});
     setDialogOpen(true);
   };
 
-  // Löschen eines Modells
-  const handleDelete = async (model: DeviceModel) => {
-    if (!window.confirm(`Möchten Sie das Gerätemodell "${model.name}" wirklich löschen?`)) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await deviceModelsApi.delete(model.id);
-
-      // Neu laden statt nur lokale Liste aktualisieren
-      loadModels();
-
-      setSnackbar({
-        open: true,
-        message: `Gerätemodell "${model.name}" wurde gelöscht.`,
-        severity: 'success'
-      });
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Gerätemodells: ${errorMessage}`,
-        severity: 'error'
-      });
-      setLoading(false);
-    }
-  };
-
-  // Dialog schließen
   const handleCloseDialog = () => {
     setDialogOpen(false);
   };
 
-  // Kontextmenü öffnen
-  const handleContextMenu = (event: React.MouseEvent, modelId: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX - 2,
-      mouseY: event.clientY - 4,
-      modelId
-    });
-  };
+  const validateForm = async (): Promise<boolean> => {
+    let errors: { [key: string]: string } = {};
+    const { name, manufacturerId, categoryId, warrantyMonths } = formData;
 
-  // Kontextmenü schließen
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
+    if (!name.trim()) errors.name = 'Modellname ist erforderlich.';
+    if (!manufacturerId) errors.manufacturerId = 'Hersteller ist erforderlich.';
+    if (!categoryId) errors.categoryId = 'Kategorie ist erforderlich.';
+    if (warrantyMonths && isNaN(Number(warrantyMonths))) errors.warrantyMonths = 'Garantie muss eine Zahl sein.';
 
-  // Ansicht im Kontextmenü
-  const handleContextMenuView = () => {
-    const model = deviceModels.find(m => m.id === contextMenu?.modelId);
-    if (model) {
-      handleViewModel(model);
-    }
-    handleContextMenuClose();
-  };
-
-  // Bearbeitung im Kontextmenü
-  const handleContextMenuEdit = () => {
-    const model = deviceModels.find(m => m.id === contextMenu?.modelId);
-    if (model) {
-      handleEdit(model);
-    }
-    handleContextMenuClose();
-  };
-
-  // Löschen im Kontextmenü
-  const handleContextMenuDelete = () => {
-    const model = deviceModels.find(m => m.id === contextMenu?.modelId);
-    if (model) {
-      handleDelete(model);
-    }
-    handleContextMenuClose();
-  };
-
-  // Anzeigen eines Modells
-  const handleViewModel = (model: DeviceModel) => {
-    setEditMode(true);
-    setReadOnly(true);
-    setCurrentModel(model);
-    setName(model.name);
-    setDescription(model.description || '');
-    setManufacturerId(model.manufacturer_id || model.manufacturerId || '');
-    setCategoryId(model.category_id || model.categoryId || '');
-    setSpecifications(model.specifications || '');
-    setCpu(model.cpu || '');
-    setRam(model.ram || '');
-    setHdd(model.hdd || '');
-    setWarrantyMonths(model.warranty_months?.toString() || model.warrantyMonths?.toString() || '');
-    setIsActive(model.is_active === undefined ? (model.isActive === undefined ? true : model.isActive) : model.is_active);
-    setDialogOpen(true);
-  };
-
-  // Formular validieren
-  const validateForm = (): boolean => {
-    const newErrors: {
-      name?: string;
-      manufacturerId?: string;
-      categoryId?: string;
-      warrantyMonths?: string;
-    } = {};
-
-    if (!name.trim()) {
-      newErrors.name = 'Name ist erforderlich';
-    }
-
-    if (manufacturerId === '') {
-      newErrors.manufacturerId = 'Hersteller ist erforderlich';
-    }
-
-    if (categoryId === '') {
-      newErrors.categoryId = 'Kategorie ist erforderlich';
-    }
-
-    if (warrantyMonths) {
-      const months = parseInt(warrantyMonths, 10);
-      if (isNaN(months) || months < 0) {
-        newErrors.warrantyMonths = 'Bitte geben Sie eine positive Zahl ein';
+    if (name.trim() && manufacturerId) {
+      try {
+        const nameExists = await deviceModelsApi.checkDeviceModelNameExists(
+          name.trim(),
+          Number(manufacturerId),
+          editMode ? currentModel?.id : undefined
+        );
+        if (nameExists) {
+          errors.name = 'Ein Modell mit diesem Namen existiert bereits für diesen Hersteller.';
+        }
+      } catch (error) {
+        console.error("Fehler bei Namensprüfung:", error);
+        errors.name = "Fehler bei der Prüfung des Modellnamens.";
       }
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
-  // Speichern des Modells
   const handleSave = async () => {
-    if (!validateForm()) {
+    setSaveLoading(true);
+    const isValid = await validateForm();
+    if (!isValid) {
+      setSaveLoading(false);
       return;
     }
 
-    const modelData = {
-      name,
-      description,
-      manufacturerId: typeof manufacturerId === 'number' ? manufacturerId : parseInt(manufacturerId as string, 10),
-      categoryId: typeof categoryId === 'number' ? categoryId : parseInt(categoryId as string, 10),
-      specifications,
-      cpu,
-      ram,
-      hdd,
-      warrantyMonths: warrantyMonths ? parseInt(warrantyMonths, 10) : undefined,
-      isActive
+    const modelPayload: Partial<DeviceModelCreate | DeviceModelUpdate> = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || undefined,
+        manufacturerId: Number(formData.manufacturerId),
+        categoryId: Number(formData.categoryId),
+        specifications: formData.specifications.trim() || undefined,
+        cpu: formData.cpu.trim() || undefined,
+        ram: formData.ram.trim() || undefined,
+        hdd: formData.hdd.trim() || undefined,
+        warrantyMonths: formData.warrantyMonths ? Number(formData.warrantyMonths) : undefined,
+        isActive: formData.isActive,
     };
 
     try {
-      setLoading(true);
-
+      let response;
+      const modelName = modelPayload.name; // Für Snackbar
       if (editMode && currentModel) {
-        // Bearbeiten
-        await deviceModelsApi.update(currentModel.id, modelData);
+        response = await deviceModelsApi.update(currentModel.id, modelPayload as DeviceModelUpdate);
       } else {
-        // Neu erstellen
-        await deviceModelsApi.create(modelData);
+        response = await deviceModelsApi.create(modelPayload as DeviceModelCreate);
       }
 
-      // Neu laden
-      loadModels();
-
-      setSnackbar({
-        open: true,
-        message: `Gerätemodell "${name}" wurde ${editMode ? 'aktualisiert' : 'erstellt'}.`,
-        severity: 'success'
-      });
-
-      setDialogOpen(false);
+      if (response.success) {
+        setSnackbar({
+          open: true,
+          message: response.message || `Gerätemodell "${modelName}" erfolgreich ${editMode ? 'aktualisiert' : 'erstellt'}.`,
+          severity: 'success',
+        });
+        handleCloseDialog();
+        await loadData();
+      } else {
+        setSnackbar({
+          open: true,
+          message: response.message || `Fehler beim Speichern des Gerätemodells.`,
+          severity: 'error',
+        });
+      }
     } catch (error) {
-      const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Speichern des Gerätemodells: ${errorMessage}`,
-        severity: 'error'
+        message: handleApiError(error),
+        severity: 'error',
       });
     } finally {
-      setLoading(false);
+      setSaveLoading(false);
     }
   };
 
-  // Aktualisieren der Daten
-  const handleRefresh = () => {
-    loadModels();
+  const handleDeleteRequest = (model: DeviceModel) => {
+    setModelToDelete(model);
+    setConfirmDeleteDialogOpen(true);
   };
 
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
+  const handleCloseConfirmDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setModelToDelete(null);
   };
+
+  const executeDelete = async () => {
+    if (!modelToDelete) return;
+    setSaveLoading(true); // Reuse saveLoading state for delete operation indication
+    try {
+      const response = await deviceModelsApi.delete(modelToDelete.id);
+      if (response.success) {
+        setSnackbar({
+          open: true,
+          message: response.message || `Gerätemodell "${modelToDelete.name}" gelöscht.`,
+          severity: 'success',
+        });
+        await loadData();
+      } else {
+        setSnackbar({
+          open: true,
+          message: response.message || 'Fehler beim Löschen.',
+          severity: 'error',
+        });
+      }
+    } catch (error: any) {
+        // Spezifischen 409-Fehler abfangen
+        if (error?.message?.includes('verwendet wird')) {
+             setSnackbar({
+                open: true,
+                message: error.message, // Zeige die spezifische Fehlermeldung an
+                severity: 'error',
+            });
+        } else {
+            setSnackbar({
+                open: true,
+                message: handleApiError(error),
+                severity: 'error',
+            });
+        }
+    } finally {
+      setSaveLoading(false);
+      handleCloseConfirmDialog();
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar((prev) => ({ ...prev, open: false }));
+  };
+
+  const columns: AtlasColumn<DeviceModel>[] = [
+    // { dataKey: 'id', label: 'ID', width: 70, numeric: true, sortable: true }, // Ausgeblendet
+    { dataKey: 'name', label: 'Modellname', width: 250, sortable: true },
+    {
+      dataKey: 'manufacturerName',
+      label: 'Hersteller',
+      width: 180,
+      sortable: true,
+      render: (value, row) => value || `ID: ${row.manufacturerId}`
+    },
+    {
+      dataKey: 'categoryName',
+      label: 'Kategorie',
+      width: 180,
+      sortable: true,
+      render: (value, row) => value || `ID: ${row.categoryId}`
+    },
+    // Ausgeblendete Spalten
+    // { dataKey: 'cpu', label: 'CPU', width: 150, sortable: true },
+    // { dataKey: 'ram', label: 'RAM', width: 100, sortable: true },
+    // { dataKey: 'hdd', label: 'HDD/SSD', width: 100, sortable: true },
+    { dataKey: 'warrantyMonths', label: 'Garantie (Mon.)', width: 120, numeric: true, sortable: true },
+    {
+      dataKey: 'isActive',
+      label: 'Status',
+      width: 100,
+      sortable: true,
+      render: (value) => (
+        <Chip label={value ? 'Aktiv' : 'Inaktiv'} color={value ? 'success' : 'default'} size="small" variant="outlined" />
+      )
+    },
+     {
+        dataKey: 'deviceCount',
+        label: 'Geräte',
+        width: 100,
+        numeric: true,
+        sortable: true,
+        render: (value) => value ?? 0
+    },
+    {
+      dataKey: 'actions',
+      label: 'Aktionen',
+      width: 100,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={() => handleEdit(row)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={() => handleDeleteRequest(row)}>
+              <DeleteIcon fontSize="small" color="error" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
 
   return (
     <Box sx={{ p: 3 }}>
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <DevicesIcon fontSize="large" color="primary" />
-            <Typography variant="h5" component="h1">
-              Gerätemodelle
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={handleRefresh}
-            >
-              Aktualisieren
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddNew}
-            >
-              Neues Gerätemodell
-            </Button>
-          </Box>
-        </Box>
+      <Paper elevation={3} sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center' }}>
+        <DeviceModelIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
+        <Typography variant="h4" component="h1">Gerätemodelle verwalten</Typography>
+      </Paper>
 
+      <Box sx={{ mb: 3 }}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddNew}>
+          Neues Gerätemodell
+        </Button>
+      </Box>
+
+      <Paper elevation={3} sx={{ mb: 3, overflow: 'hidden' }}>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
             <CircularProgress />
           </Box>
         ) : (
           <AtlasTable
             columns={columns}
             rows={deviceModels}
+            loading={loading}
+            heightPx={600}
+            initialSortColumn="name"
+            initialSortDirection="asc"
+            emptyMessage="Keine Gerätemodelle gefunden."
           />
         )}
       </Paper>
 
-      {/* Dialog für neues/bearbeiten/anzeigen */}
-      <Dialog
-        open={dialogOpen}
-        onClose={handleCloseDialog}
-        maxWidth="md"
-        fullWidth
-      >
+      {/* Dialog für Erstellen/Bearbeiten */}
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
-          {readOnly
-            ? `Gerätemodell anzeigen: ${name}`
-            : editMode
-              ? `Gerätemodell bearbeiten: ${name}`
-              : 'Neues Gerätemodell erstellen'
-          }
+          {editMode ? `Gerätemodell bearbeiten: ${currentModel?.name}` : 'Neues Gerätemodell erstellen'}
         </DialogTitle>
         <DialogContent dividers>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mt: 1 }}>
-            <TextField
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              error={!!errors.name}
-              helperText={errors.name}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <DevicesIcon />
-                  </InputAdornment>
-                )
-              }}
-            />
-
-            <FormControl fullWidth margin="normal" error={!!errors.manufacturerId}>
-              <Autocomplete
-                value={manufacturers.find(m => m.id === manufacturerId) || null}
-                onChange={(_, newValue) => {
-                  setManufacturerId(newValue ? newValue.id : '');
-                }}
-                options={manufacturers}
-                getOptionLabel={(option) => option.name}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Hersteller"
-                    error={!!errors.manufacturerId}
-                    helperText={errors.manufacturerId}
-                  />
-                )}
-                disabled={readOnly}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
+          <Grid container spacing={2} sx={{ pt: 1 }}>
+            {/* Linke Spalte */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Modellname"
+                name="name"
+                fullWidth
+                margin="normal"
+                variant="outlined"
+                value={formData.name}
+                onChange={handleInputChange}
+                required
+                error={!!formErrors.name}
+                helperText={formErrors.name}
+                InputProps={{ startAdornment: <InputAdornment position="start"><DeviceModelIcon /></InputAdornment> }}
               />
-            </FormControl>
-
-            <FormControl fullWidth margin="normal" error={!!errors.categoryId}>
-              <Autocomplete
-                value={categories.find(c => c.id === categoryId) || null}
-                onChange={(_, newValue) => {
-                  setCategoryId(newValue ? newValue.id : '');
-                }}
-                options={categories}
-                getOptionLabel={(option) => option.name}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Kategorie"
-                    error={!!errors.categoryId}
-                    helperText={errors.categoryId}
-                  />
-                )}
-                disabled={readOnly}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
+              <FormControl fullWidth margin="normal" required error={!!formErrors.manufacturerId}>
+                <InputLabel id="manufacturer-label">Hersteller</InputLabel>
+                <Select
+                  labelId="manufacturer-label"
+                  name="manufacturerId"
+                  value={formData.manufacturerId}
+                  label="Hersteller"
+                  onChange={handleInputChange}
+                  startAdornment={<InputAdornment position="start"><ManufacturerIcon /></InputAdornment>}
+                >
+                  <MenuItem value=""><em>Bitte wählen</em></MenuItem>
+                  {manufacturers.map((man) => (
+                    <MenuItem key={man.id} value={man.id}>{man.name}</MenuItem>
+                  ))}
+                </Select>
+                 {formErrors.manufacturerId && <FormHelperText>{formErrors.manufacturerId}</FormHelperText>}
+              </FormControl>
+               <FormControl fullWidth margin="normal" required error={!!formErrors.categoryId}>
+                <InputLabel id="category-label">Kategorie</InputLabel>
+                <Select
+                  labelId="category-label"
+                  name="categoryId"
+                  value={formData.categoryId}
+                  label="Kategorie"
+                  onChange={handleInputChange}
+                   startAdornment={<InputAdornment position="start"><CategoryIcon /></InputAdornment>}
+                >
+                  <MenuItem value=""><em>Bitte wählen</em></MenuItem>
+                  {categories.map((cat) => (
+                    <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
+                  ))}
+                </Select>
+                 {formErrors.categoryId && <FormHelperText>{formErrors.categoryId}</FormHelperText>}
+              </FormControl>
+               <TextField
+                label="Beschreibung"
+                name="description"
+                fullWidth
+                multiline
+                rows={3}
+                margin="normal"
+                variant="outlined"
+                value={formData.description}
+                onChange={handleInputChange}
+                InputProps={{ startAdornment: <InputAdornment position="start"><DescriptionIcon /></InputAdornment> }}
               />
-            </FormControl>
+            </Grid>
 
-            <TextField
-              label="Garantie (Monate)"
-              value={warrantyMonths}
-              onChange={(e) => setWarrantyMonths(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              error={!!errors.warrantyMonths}
-              helperText={errors.warrantyMonths}
-              type="number"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <CalendarIcon />
-                  </InputAdornment>
-                )
-              }}
-            />
-
-            <TextField
-              label="CPU"
-              value={cpu}
-              onChange={(e) => setCpu(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              placeholder="z.B. Intel Core i7-12700K"
-            />
-
-            <TextField
-              label="RAM"
-              value={ram}
-              onChange={(e) => setRam(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              placeholder="z.B. 16GB DDR4 3200MHz"
-            />
-
-            <TextField
-              label="HDD"
-              value={hdd}
-              onChange={(e) => setHdd(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              placeholder="z.B. 512GB SSD NVMe"
-            />
-
-            <TextField
-              label="Beschreibung"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              multiline
-              rows={4}
-              sx={{ gridColumn: { md: '1 / span 2' } }}
-            />
-
-            <TextField
-              label="Spezifikationen"
-              value={specifications}
-              onChange={(e) => setSpecifications(e.target.value)}
-              fullWidth
-              margin="normal"
-              disabled={readOnly}
-              multiline
-              rows={4}
-              sx={{ gridColumn: { md: '1 / span 2' } }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SpecIcon />
-                  </InputAdornment>
-                )
-              }}
-            />
-
-            <FormControlLabel
-              control={
-                <MuiSwitch
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  disabled={readOnly}
-                />
-              }
-              label="Aktiv"
-              sx={{ mt: 2 }}
-            />
-          </Box>
+            {/* Rechte Spalte */}
+            <Grid item xs={12} md={6}>
+               <TextField
+                label="Spezifikationen"
+                name="specifications"
+                fullWidth
+                multiline
+                rows={3}
+                margin="normal"
+                variant="outlined"
+                value={formData.specifications}
+                onChange={handleInputChange}
+                 InputProps={{ startAdornment: <InputAdornment position="start"><InfoIcon /></InputAdornment> }}
+              />
+               <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                     <TextField
+                        label="CPU"
+                        name="cpu"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        value={formData.cpu}
+                        onChange={handleInputChange}
+                        InputProps={{ startAdornment: <InputAdornment position="start"><CpuIcon /></InputAdornment> }}
+                    />
+                 </Grid>
+                  <Grid item xs={6}>
+                    <TextField
+                        label="RAM"
+                        name="ram"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        value={formData.ram}
+                        onChange={handleInputChange}
+                         InputProps={{ startAdornment: <InputAdornment position="start"><RamIcon /></InputAdornment> }}
+                    />
+                 </Grid>
+               </Grid>
+                 <Grid container spacing={2}>
+                   <Grid item xs={6}>
+                     <TextField
+                        label="HDD/SSD"
+                        name="hdd"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        value={formData.hdd}
+                        onChange={handleInputChange}
+                         InputProps={{ startAdornment: <InputAdornment position="start"><HddIcon /></InputAdornment> }}
+                    />
+                 </Grid>
+                   <Grid item xs={6}>
+                    <TextField
+                        label="Garantie (Monate)"
+                        name="warrantyMonths"
+                        type="number"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        value={formData.warrantyMonths}
+                        onChange={handleInputChange}
+                        error={!!formErrors.warrantyMonths}
+                        helperText={formErrors.warrantyMonths}
+                         InputProps={{
+                            startAdornment: <InputAdornment position="start"><WarrantyIcon /></InputAdornment>,
+                            inputProps: { min: 0 }
+                         }}
+                    />
+                 </Grid>
+               </Grid>
+              <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={formData.isActive}
+                    onChange={handleSwitchChange}
+                    name="isActive"
+                    color="primary"
+                  />
+                }
+                label="Modell aktiv"
+                sx={{ mt: 1 }}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+          <Button onClick={handleCloseDialog} disabled={saveLoading}>Abbrechen</Button>
+          <Button onClick={handleSave} color="primary" variant="contained" disabled={saveLoading}>
+            {saveLoading ? <CircularProgress size={24} /> : (editMode ? 'Speichern' : 'Erstellen')}
           </Button>
-          {!readOnly && (
-            <Button onClick={handleSave} variant="contained" color="primary">
-              Speichern
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
 
-      {/* Kontextmenü */}
-      <Menu
-        open={contextMenu !== null}
-        onClose={handleContextMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-      >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <ViewIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Anzeigen</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Bearbeiten</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" color="error" />
-          </ListItemIcon>
-          <ListItemText>Löschen</ListItemText>
-        </MenuItem>
-      </Menu>
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmDeleteDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Gerätemodell löschen?"
+        message={`Möchten Sie das Gerätemodell "${modelToDelete?.name}" wirklich löschen? Dies ist nicht möglich, wenn dem Modell noch Geräte zugewiesen sind.`}
+        confirmText="Löschen"
+      />
 
-      {/* Snackbar für Benachrichtigungen */}
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
           {snackbar.message}
         </Alert>
       </Snackbar>

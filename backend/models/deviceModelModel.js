@@ -13,7 +13,7 @@ class DeviceModelModel {
         FROM device_models dm
         LEFT JOIN manufacturers m ON dm.manufacturer_id = m.id
         LEFT JOIN categories c ON dm.category_id = c.id
-        LEFT JOIN devices d ON dm.id = d.model_id
+        LEFT JOIN devices d ON dm.id = d.model
         GROUP BY dm.id, m.name, c.name
         ORDER BY dm.name ASC
       `);
@@ -33,7 +33,7 @@ class DeviceModelModel {
           dm.*,
           m.name AS manufacturer_name,
           c.name AS category_name,
-          (SELECT COUNT(*) FROM devices WHERE model_id = dm.id) AS device_count
+          (SELECT COUNT(*) FROM devices WHERE model = dm.id) AS device_count
         FROM device_models dm
         LEFT JOIN manufacturers m ON dm.manufacturer_id = m.id
         LEFT JOIN categories c ON dm.category_id = c.id
@@ -61,8 +61,6 @@ class DeviceModelModel {
         throw new Error(`Ein Gerätemodell mit dem Namen "${modelData.name}" existiert bereits`);
       }
 
-      const { name, description, manufacturerId, categoryId, specifications, cpu, ram, hdd, warrantyMonths, isActive } = modelData;
-
       const query = `
         INSERT INTO device_models (
           name, description, manufacturer_id, category_id, specifications, cpu, ram, hdd, warranty_months, is_active, created_at, updated_at
@@ -71,16 +69,16 @@ class DeviceModelModel {
         RETURNING id
       `;
       const values = [
-          name,
-          description || null,
-          manufacturerId || null,
-          categoryId || null,
-          specifications || null,
-          cpu || null,
-          ram || null,
-          hdd || null,
-          warrantyMonths || null,
-          isActive !== undefined ? isActive : true // Verwende isActive
+          modelData.name,
+          modelData.description || null,
+          modelData.manufacturer_id || null,
+          modelData.category_id || null,
+          modelData.specifications || null,
+          modelData.cpu || null,
+          modelData.ram || null,
+          modelData.hdd || null,
+          modelData.warranty_months || null,
+          modelData.is_active !== undefined ? modelData.is_active : true
       ];
       const { rows } = await db.query(query, values);
       const newModelId = rows[0].id;
@@ -193,7 +191,7 @@ class DeviceModelModel {
       }
 
       // Überprüfen, ob Geräte mit diesem Modell verknüpft sind
-      const deviceCheck = await db.query('SELECT COUNT(*) FROM devices WHERE model_id = $1', [id]);
+      const deviceCheck = await db.query('SELECT COUNT(*) FROM devices WHERE model = $1', [id]);
       if (parseInt(deviceCheck.rows[0].count) > 0) {
         throw new Error(`Das Gerätemodell "${existingModel.name}" wird von ${deviceCheck.rows[0].count} Geräten verwendet und kann nicht gelöscht werden`);
       }
@@ -221,7 +219,7 @@ class DeviceModelModel {
           dm.id,
           COUNT(d.id) AS device_count
         FROM device_models dm
-        LEFT JOIN devices d ON dm.id = d.model_id
+        LEFT JOIN devices d ON dm.id = d.model
         GROUP BY dm.id
       `);
 
