@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -15,7 +15,10 @@ import {
   TextField,
   MenuItem,
   Snackbar,
-  Alert
+  Alert,
+  Link as MuiLink,
+  Avatar,
+  Tooltip
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -28,28 +31,34 @@ import {
   Delete as DeleteIcon,
   Devices as DevicesIcon,
   LocationOn as LocationIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
+  Link as LinkIcon,
+  Computer as DeviceIcon,
+  AccountCircle as UserIcon,
+  Business as CategoryIcon,
+  Build as ManufacturerIcon,
+  Store as SupplierIcon,
+  CloudUpload as CloudUploadIcon,
+  AttachMoney as MoneyIcon,
+  Inventory as QuantityIcon,
+  Mouse as AccessoryTypeIcon
 } from '@mui/icons-material';
 import { QRCodeSVG } from 'qrcode.react';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import api from '../utils/api';
+// TODO: Korrekte Typen importieren
+// import { Accessory, AccessoryHistory, AccessoryDocument } from '../types/accessoryTypes';
+// import { getStatusChipColor, getStatusChipLabel } from '../utils/statusUtils'; // Auskommentiert, da nicht gefunden
+import DocumentUploader, { UploadedFile } from '../components/DocumentUploader';
+import ConfirmationDialog from '../components/ConfirmationDialog';
+// TODO: usePermissions Hook importieren
+// import { usePermissions } from '../hooks/usePermissions';
 
-interface AccessoryHistory {
-  id: string;
-  action: string;
-  date: string;
-  user: string;
-  details: string;
-}
-
-interface AccessoryDocument {
-  id: string;
-  name: string;
-  type: string;
-  uploadDate: string;
-  size: string;
-  uploadedBy: string;
-}
+// --- Mock Typen als Platzhalter ---
+type Accessory = any;
+type AccessoryHistory = any;
+type AccessoryDocument = any;
+// --- Ende Mock Typen ---
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -128,15 +137,18 @@ const AccessoryDetails: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [accessory, setAccessory] = useState<any>(null);
-  const [formData, setFormData] = useState<any>(null);
+  const [accessory, setAccessory] = useState<Accessory | null>(null);
+  const [formData, setFormData] = useState<Accessory | null>(null);
   const [history] = useState<AccessoryHistory[]>(generateMockHistory(15));
-  const [documents] = useState<AccessoryDocument[]>(generateMockDocuments(5));
+  const [documents, setDocuments] = useState<AccessoryDocument[]>(generateMockDocuments(5));
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
     severity: 'success'
   });
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<Accessory | null>(null);
 
   // Status-Optionen
   const statusOptions = ['Verfügbar', 'Ausgegeben', 'Defekt', 'In Reparatur'];
@@ -244,47 +256,53 @@ const AccessoryDetails: React.FC = () => {
     }
   };
 
-  const handleDeleteAccessory = async () => {
-    if (window.confirm('Sind Sie sicher, dass Sie dieses Zubehör löschen möchten?')) {
-      try {
-        setLoading(true);
-
-        // In einer realen Anwendung würden wir die API verwenden:
-        // await api.accessories.deleteAccessory(accessoryId!);
-
-        // Für Entwicklungszwecke simulieren wir die Antwort
-        setTimeout(() => {
-          setLoading(false);
-          setSnackbar({
-            open: true,
-            message: 'Zubehör erfolgreich gelöscht',
-            severity: 'success'
-          });
-          // Zurück zur Übersichtsseite
-          navigate('/accessories');
-        }, 800);
-      } catch (error) {
-        console.error('Fehler beim Löschen des Zubehörs:', error);
-        setSnackbar({
-          open: true,
-          message: 'Fehler beim Löschen des Zubehörs',
-          severity: 'error'
-        });
-        setLoading(false);
-      }
+  const handleDeleteAccessory = () => {
+    if (accessory && window.confirm('Sind Sie sicher, dass Sie dieses Zubehör löschen möchten?')) {
+      setItemToDelete(accessory);
+      setConfirmDialogOpen(true);
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbar({
-      ...snackbar,
-      open: false
-    });
+  const executeDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setLoading(true);
+
+      // In einer realen Anwendung würden wir die API verwenden:
+      // await api.accessories.deleteAccessory(itemToDelete.id);
+
+      // Für Entwicklungszwecke simulieren wir die Antwort
+      setTimeout(() => {
+        setLoading(false);
+        setSnackbar({
+          open: true,
+          message: 'Zubehör erfolgreich gelöscht',
+          severity: 'success'
+        });
+        navigate('/accessories');
+      }, 800);
+    } catch (error) {
+      console.error('Fehler beim Löschen des Zubehörs:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Löschen des Zubehörs',
+        severity: 'error'
+      });
+    } finally {
+      setConfirmDialogOpen(false);
+      setItemToDelete(null);
+      setLoading(false);
+    }
   };
 
-  const handleGoBack = () => {
-    navigate('/accessories');
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialogOpen(false);
+    setItemToDelete(null);
   };
+
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
+
+  const handleGoBack = () => navigate('/accessories');
 
   // Spalten für die Verlaufsübersicht
   const historyColumns: AtlasColumn[] = [
@@ -304,6 +322,31 @@ const AccessoryDetails: React.FC = () => {
     { label: 'Größe', dataKey: 'size', width: 100 },
     { label: 'Hochgeladen von', dataKey: 'uploadedBy', width: 150 },
   ];
+
+  // --- Dokumenten-Handling (Platzhalter) ---
+  const handleViewDocument = (id: string) => alert(`Dokument ${id} anzeigen`);
+  const handleDeleteDocument = (id: string) => {
+      // TODO: ConfirmationDialog auch hier verwenden?
+      if(window.confirm('Dokument löschen?')) {
+          // TODO: API Call
+          setDocuments(prev => prev.filter(doc => doc.id !== id));
+      }
+  };
+  // Hinzugefügte Handler für Upload
+  const handleUploadDialogOpen = () => {
+      // TODO: Berechtigungsprüfung hinzufügen, wenn usePermissions funktioniert
+      // if(canUpload) setUploadDialogOpen(true);
+      // else setSnackbar({open: true, message: 'Keine Berechtigung zum Hochladen.', severity: 'error'});
+      setUploadDialogOpen(true); // Temporär ohne Berechtigungsprüfung
+  };
+  const handleUploadComplete = (uploadedFiles: UploadedFile[]) => {
+    // TODO: API Call zum Speichern
+    const newDocs = uploadedFiles.map(f => ({ ...generateMockDocuments(1)[0], id: `new-${f.file.name}`, name: f.file.name, type: f.type, size: `${Math.round(f.file.size/1024)}KB` }));
+    // setDocuments(prev => [...newDocs, ...prev]); // Aktualisierung des States, wenn Typ korrekt ist
+    setSnackbar({ open: true, message: `${uploadedFiles.length} Dokument(e) hochgeladen (simuliert).`, severity: 'success' });
+    setUploadDialogOpen(false); // Dialog nach Upload schließen
+  };
+  // --- Ende Dokumenten-Handling ---
 
   if (loading) {
     return (
@@ -328,14 +371,16 @@ const AccessoryDetails: React.FC = () => {
           Zurück
         </Button>
         <Box>
-          <IconButton
-            color="error"
-            onClick={handleDeleteAccessory}
-            disabled={editMode}
-            sx={{ ml: 2 }}
-          >
-            <DeleteIcon />
-          </IconButton>
+          {accessory && (
+            <IconButton
+              color="error"
+              onClick={handleDeleteAccessory}
+              disabled={editMode}
+              sx={{ ml: 2 }}
+            >
+              <DeleteIcon />
+            </IconButton>
+          )}
           {editMode ? (
             <>
               <IconButton
@@ -678,7 +723,7 @@ const AccessoryDetails: React.FC = () => {
             <Typography variant="h6">
               Zugehörige Dokumente
             </Typography>
-            <Button variant="contained" startIcon={<DocumentIcon />}>
+            <Button variant="contained" startIcon={<DocumentIcon />} onClick={handleUploadDialogOpen}>
               Dokument hochladen
             </Button>
           </Box>
@@ -729,6 +774,27 @@ const AccessoryDetails: React.FC = () => {
           </Box>
         </TabPanel>
       </Paper>
+
+      {/* Upload-Dialog */}
+      <DocumentUploader
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        onUploadComplete={handleUploadComplete}
+        relatedEntityType="accessory"
+        relatedEntityId={accessoryId}
+        isModal={true}
+      />
+
+      {/* Confirmation Dialog für Löschen */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Zubehör löschen"
+        message={`Möchten Sie das Zubehör "${itemToDelete?.name}" (Modell: ${itemToDelete?.modelNumber}) wirklich unwiderruflich löschen?`}
+        confirmText="Löschen"
+        cancelText="Abbrechen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar open={snackbar.open} autoHideDuration={5000} onClose={handleCloseSnackbar}>

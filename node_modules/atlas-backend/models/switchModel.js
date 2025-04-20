@@ -1,268 +1,159 @@
-const db = require('../db');
+const pool = require('../db');
+const { toSnakeCase } = require('../utils/caseConverter');
 
-class SwitchModel {
-  // Switches abfragen
-  async getSwitches() {
+const SwitchModel = {
+  /**
+   * Holt alle Switches aus der Datenbank, sortiert nach Name.
+   * @returns {Promise<Array>} Ein Array von Switch-Objekten.
+   */
+  async getAll() {
+    const query = 'SELECT * FROM network_switches ORDER BY name ASC';
     try {
-      const query = `
-        SELECT
-          s.*,
-          l.name as location_name,
-          r.name as room_name,
-          m.name as manufacturer_name
-        FROM network_switches s
-        LEFT JOIN locations l ON s.location_id = l.id
-        LEFT JOIN rooms r ON s.room_id = r.id
-        LEFT JOIN manufacturers m ON s.manufacturer_id = m.id
-        ORDER BY s.name ASC
-      `;
-      const { rows } = await db.query(query);
-
-      // Ergebnisse zurückgeben und is_active-Feld in isActive konvertieren
-      return rows.map(switchItem => {
-        const { is_active, ...rest } = switchItem;
-        return {
-          ...rest,
-          isActive: is_active !== undefined ? is_active : true,
-          // Optional: Behalte auch das Original-Feld für interne Zwecke?
-          // is_active: is_active !== undefined ? is_active : true
-        };
-      });
+      const result = await pool.query(query);
+      return result.rows;
     } catch (error) {
-      console.error('Fehler beim Abrufen der Switches:', error);
+      console.error('Fehler beim Abrufen aller Switches:', error);
       throw error;
     }
-  }
+  },
 
-  // Switch nach ID abfragen
-  async getSwitchById(id) {
+  /**
+   * Holt einen Switch anhand seiner ID.
+   * @param {number} id - Die ID des Switches.
+   * @returns {Promise<object|null>} Das Switch-Objekt oder null, wenn nicht gefunden.
+   */
+  async getById(id) {
+    const query = 'SELECT * FROM network_switches WHERE id = $1';
     try {
-      const query = `
-        SELECT
-          s.*,
-          l.name as location_name,
-          r.name as room_name,
-          m.name as manufacturer_name
-        FROM network_switches s
-        LEFT JOIN locations l ON s.location_id = l.id
-        LEFT JOIN rooms r ON s.room_id = r.id
-        LEFT JOIN manufacturers m ON s.manufacturer_id = m.id
-        WHERE s.id = $1
-      `;
-      const { rows } = await db.query(query, [id]);
-
-      if (rows.length === 0) {
-        return null;
-      }
-
-      // Ergebnis zurückgeben und is_active-Feld in isActive konvertieren
-      const { is_active, ...rest } = rows[0];
-      return {
-        ...rest,
-        isActive: is_active !== undefined ? is_active : true,
-         // Optional: Behalte auch das Original-Feld für interne Zwecke?
-        // is_active: is_active !== undefined ? is_active : true
-      };
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
     } catch (error) {
-      console.error('Fehler beim Abrufen des Switches nach ID:', error);
+      console.error(`Fehler beim Abrufen des Switches mit ID ${id}:`, error);
       throw error;
     }
-  }
+  },
 
-  // Neuen Switch erstellen
-  async createSwitch(switchData) {
-    const client = await db.pool.connect();
+  /**
+   * Überprüft, ob ein Switch-Name bereits existiert (optional unter Ausschluss einer ID).
+   * Nützlich, um Duplikate beim Erstellen/Aktualisieren zu verhindern.
+   * @param {string} name - Der zu prüfende Name.
+   * @param {number|null} excludeId - Die ID, die bei der Prüfung ignoriert werden soll (beim Update).
+   * @returns {Promise<boolean>} True, wenn der Name existiert, sonst false.
+   */
+  async checkNameExists(name, excludeId = null) {
+    let query = 'SELECT 1 FROM network_switches WHERE lower(name) = lower($1)';
+    const params = [name];
+    if (excludeId !== null) {
+      query += ' AND id != $2';
+      params.push(excludeId);
+    }
+    const { rows } = await pool.query(query, params);
+    const exists = rows.length > 0;
+    return exists;
+  },
 
+  /**
+   * Erstellt einen neuen Switch in der Datenbank.
+   * @param {object} switchData - Die Daten des neuen Switches (snake_case).
+   * @returns {Promise<object>} Das neu erstellte Switch-Objekt.
+   */
+  async create(switchData) {
+    const snakeCaseData = toSnakeCase(switchData);
+    const columns = Object.keys(snakeCaseData).join(', ');
+    const placeholders = Object.keys(snakeCaseData).map((_, i) => `$${i + 1}`).join(', ');
+    const values = Object.values(snakeCaseData);
+
+    const query = `INSERT INTO network_switches (${columns}) VALUES (${placeholders}) RETURNING *`;
     try {
-      await client.query('BEGIN');
-
-      // Prüfen, ob ein Switch mit demselben Namen bereits existiert
-      const checkQuery = `SELECT id, name FROM network_switches WHERE LOWER(name) = LOWER($1)`;
-      const existingSwitch = await client.query(checkQuery, [switchData.name]);
-
-      if (existingSwitch.rows.length > 0) {
-        await client.query('ROLLBACK');
-        const error = new Error(`Ein Switch mit dem Namen "${switchData.name}" existiert bereits`);
-        error.code = 'DUPLICATE_SWITCH';
-        error.details = {
-          existingName: existingSwitch.rows[0].name,
-          existingId: existingSwitch.rows[0].id
-        };
-        throw error;
-      }
-
-      const insertQuery = `
-        INSERT INTO network_switches (
-          name, description, model, manufacturer_id, ip_address, mac_address,
-          management_url, location_id, room_id, cabinet_id, rack_position,
-          port_count, uplink_port, notes, is_active, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
-        RETURNING id
-      `;
-
-      const values = [
-        switchData.name,
-        switchData.description || null,
-        switchData.model || null,
-        switchData.manufacturer_id || null,
-        switchData.ip_address || null,
-        switchData.mac_address || null,
-        switchData.management_url || null,
-        switchData.location_id || null,
-        switchData.room_id || null,
-        switchData.cabinet_id || null,
-        switchData.rack_position || null,
-        switchData.port_count || null,
-        switchData.uplink_port || null,
-        switchData.notes || null,
-        switchData.isActive !== undefined ? switchData.isActive : true // Verwende isActive
-      ];
-
-      const { rows } = await client.query(insertQuery, values);
-      const newSwitchId = rows[0].id;
-
-      await client.query('COMMIT');
-
-      // Hole den neu erstellten Switch mit allen Details
-      const result = await this.getSwitchById(newSwitchId);
-      return result;
-
+      const result = await pool.query(query, values);
+      return result.rows[0];
     } catch (error) {
-      await client.query('ROLLBACK');
       console.error('Fehler beim Erstellen des Switches:', error);
-       if (error.code === '23505') { // Unique constraint violation (könnte auch Name sein)
-          throw new Error(`Ein Switch mit diesem Namen "${switchData.name}" existiert bereits`);
-      }
       throw error;
-    } finally {
-      client.release();
     }
-  }
+  },
 
-  // Switch aktualisieren
-  async updateSwitch(id, switchData) {
-    const client = await db.pool.connect();
+  /**
+   * Aktualisiert einen vorhandenen Switch.
+   * @param {number} id - Die ID des zu aktualisierenden Switches.
+   * @param {object} switchData - Die neuen Daten für den Switch (snake_case).
+   * @returns {Promise<object|null>} Das aktualisierte Switch-Objekt oder null, wenn nicht gefunden.
+   */
+  async update(id, switchData) {
+    const snakeCaseData = toSnakeCase(switchData);
+    // Felder, die nicht aktualisiert werden sollen (z.B. id, created_at)
+    delete snakeCaseData.id;
+    delete snakeCaseData.created_at;
+    delete snakeCaseData.updated_at; // Auch updatedAt entfernen, da es automatisch gesetzt werden sollte
+
+    const setClauses = Object.keys(snakeCaseData).map((key, i) => `${key} = $${i + 1}`).join(', ');
+    const values = Object.values(snakeCaseData);
+
+    // Füge die ID als letzten Parameter für die WHERE-Klausel hinzu
+    values.push(id);
+    const query = `UPDATE network_switches SET ${setClauses}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING *`;
 
     try {
-      await client.query('BEGIN');
-
-      // Prüfen, ob ein anderer Switch bereits den Namen verwendet
-      if (switchData.name) {
-        const checkQuery = `SELECT id FROM network_switches WHERE LOWER(name) = LOWER($1) AND id != $2`;
-        const existingSwitch = await client.query(checkQuery, [switchData.name, id]);
-
-        if (existingSwitch.rows.length > 0) {
-          await client.query('ROLLBACK');
-          const error = new Error(`Ein anderer Switch mit dem Namen "${switchData.name}" existiert bereits`);
-          error.code = 'DUPLICATE_SWITCH';
-          throw error;
-        }
-      }
-
-      const updateQuery = `
-        UPDATE network_switches
-        SET
-          name = COALESCE($1, name),
-          description = COALESCE($2, description),
-          model = COALESCE($3, model),
-          manufacturer_id = COALESCE($4, manufacturer_id),
-          ip_address = COALESCE($5, ip_address),
-          mac_address = COALESCE($6, mac_address),
-          management_url = COALESCE($7, management_url),
-          location_id = COALESCE($8, location_id),
-          room_id = COALESCE($9, room_id),
-          cabinet_id = COALESCE($10, cabinet_id),
-          rack_position = COALESCE($11, rack_position),
-          port_count = COALESCE($12, port_count),
-          uplink_port = COALESCE($13, uplink_port),
-          notes = COALESCE($14, notes),
-          is_active = COALESCE($15, is_active),
-          updated_at = NOW()
-        WHERE id = $16
-        RETURNING id
-      `;
-
-      const values = [
-        switchData.name,
-        switchData.description,
-        switchData.model,
-        switchData.manufacturer_id,
-        switchData.ip_address,
-        switchData.mac_address,
-        switchData.management_url,
-        switchData.location_id,
-        switchData.room_id,
-        switchData.cabinet_id,
-        switchData.rack_position,
-        switchData.port_count,
-        switchData.uplink_port,
-        switchData.notes,
-        switchData.isActive !== undefined ? switchData.isActive : null, // Verwende isActive
-        id
-      ];
-
-      const { rows } = await client.query(updateQuery, values);
-
-      await client.query('COMMIT');
-
-      if (rows.length === 0) {
-        throw new Error('Switch nicht gefunden');
-      }
-
-      // Hole den aktualisierten Switch mit allen Details
-      const result = await this.getSwitchById(id);
-      return result;
-
+      const result = await pool.query(query, values);
+      return result.rows[0];
     } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Fehler beim Aktualisieren des Switches:', error);
-      if (error.code === '23505') { // Unique constraint violation (könnte auch Name sein)
-          throw new Error(`Ein anderer Switch mit dem Namen "${switchData.name}" existiert bereits`);
-      }
+      console.error(`Fehler beim Aktualisieren des Switches mit ID ${id}:`, error);
       throw error;
-    } finally {
-      client.release();
     }
-  }
+  },
 
-  // Switch löschen
-  async deleteSwitch(id) {
+  /**
+   * Löscht einen Switch anhand seiner ID.
+   * @param {number} id - Die ID des zu löschenden Switches.
+   * @returns {Promise<{ message?: string }>} Ein Bestätigungsobjekt oder null, wenn nicht gefunden.
+   */
+  async delete(id) {
+    const query = 'DELETE FROM network_switches WHERE id = $1';
     try {
-      // Prüfen, ob der Switch existiert
-      const { rows: existsResult } = await db.query('SELECT EXISTS(SELECT 1 FROM network_switches WHERE id = $1)', [id]);
-      if (!existsResult[0].exists) {
-        throw new Error('Switch nicht gefunden');
-      }
-
-      // Prüfen, ob Ports mit diesem Switch verbunden sind
-      const checkPortsQuery = `SELECT COUNT(*) FROM network_ports WHERE switch_id = $1`;
-      const portUsage = await db.query(checkPortsQuery, [id]);
-      if (parseInt(portUsage.rows[0].count) > 0) {
-          throw new Error('Switch kann nicht gelöscht werden, da er noch von Netzwerkports verwendet wird.');
-      }
-
-      // Hier könnten weitere Prüfungen erfolgen je nach Anwendungsfall (z.B. verbundene Geräte)
-
-      const query = `DELETE FROM network_switches WHERE id = $1 RETURNING *`;
-      const { rows } = await db.query(query, [id]);
-
-      if (rows.length === 0) {
-        // Sollte durch die Existenzprüfung oben nicht passieren
-        throw new Error('Switch nicht gefunden beim Löschen');
-      }
-
-      const deletedSwitch = rows[0];
-      return { success: true, message: 'Switch gelöscht', data: { ...deletedSwitch, isActive: deletedSwitch.is_active } };
-
+      const result = await pool.query(query, [id]);
+      return result.rowCount > 0; // Gibt true zurück, wenn eine Zeile gelöscht wurde
     } catch (error) {
-      console.error('Fehler beim Löschen des Switches:', error);
-      if (error.code === '23503') { // Foreign key violation
-          throw new Error('Switch kann nicht gelöscht werden, da er noch verwendet wird (z.B. von Ports).');
-      }
+      console.error(`Fehler beim Löschen des Switches mit ID ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Ruft die Anzahl der Switches ab, optional gefiltert nach Status.
+   * @param {string|null} statusFilter - 'active', 'inactive' oder null für alle.
+   * @returns {Promise<number>} Die Anzahl der Switches.
+   */
+  async getCount(statusFilter = null) {
+    let query = 'SELECT COUNT(*) AS count FROM network_switches';
+    const params = [];
+    if (statusFilter === 'active') {
+      query += ' WHERE is_active = true';
+    } else if (statusFilter === 'inactive') {
+      query += ' WHERE is_active = false';
+    }
+    // Weitere Filter könnten hier hinzugefügt werden
+
+    try {
+      const result = await pool.query(query, params);
+      const count = parseInt(result.rows[0].count, 10);
+      return count;
+    } catch (error) {
+      console.error('Fehler beim Zählen der Switches:', error);
+      throw error;
+    }
+  },
+
+  // Zusätzliche Funktionen nach Bedarf, z.B. für Suche oder Validierung
+  async findByName(name) {
+    const query = 'SELECT * FROM network_switches WHERE LOWER(name) = LOWER($1)';
+    try {
+      const result = await pool.query(query, [name]);
+      return result.rows[0];
+    } catch (error) {
+      console.error(`Fehler bei der Suche nach Switch mit Namen "${name}":`, error);
       throw error;
     }
   }
-}
+};
 
-module.exports = new SwitchModel();
+module.exports = SwitchModel;

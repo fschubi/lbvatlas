@@ -19,6 +19,7 @@ import Locations from './Locations';
 import Manufacturers from './Manufacturers';
 import NetworkOutlets from './NetworkOutlets';
 import Ports from './Ports';
+import NetworkPorts from './NetworkPorts';
 import Rooms from './Rooms';
 import Suppliers from './Suppliers';
 import Switches from './Switches';
@@ -46,6 +47,7 @@ const SettingsRoutes: React.FC = () => {
       <Route path="manufacturers" element={<Manufacturers />} />
       <Route path="network-outlets" element={<NetworkOutlets />} />
       <Route path="ports" element={<Ports />} />
+      <Route path="network-ports" element={<NetworkPorts />} />
       <Route path="rooms" element={<Rooms />} />
       <Route path="suppliers" element={<Suppliers />} />
       <Route path="switches" element={<Switches />} />

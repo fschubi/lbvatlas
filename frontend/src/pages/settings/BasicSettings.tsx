@@ -98,7 +98,7 @@ const BasicSettings: React.FC = () => {
       title: 'Ports',
       description: 'Netzwerk-Ports und deren Zuordnungen konfigurieren',
       icon: <PortsIcon />,
-      path: '/settings/ports',
+      path: '/settings/network-ports',
       color: '#00796b'
     },
     {

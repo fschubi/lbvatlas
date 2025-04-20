@@ -36,6 +36,7 @@ import { departmentApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import { Department, DepartmentCreate, DepartmentUpdate } from '../../types/settings';
 import { toCamelCase } from '../../utils/caseConverter';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 const Departments: React.FC = () => {
   // State für die Daten
@@ -68,6 +69,9 @@ const Departments: React.FC = () => {
     mouseY: number;
     departmentId: number;
   } | null>(null);
+
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [departmentToDelete, setDepartmentToDelete] = useState<Department | null>(null);
 
   // Spalten für die Tabelle mit zusätzlicher Aktionsspalte
   const columns: AtlasColumn<Department>[] = [
@@ -117,14 +121,20 @@ const Departments: React.FC = () => {
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
@@ -190,22 +200,26 @@ const Departments: React.FC = () => {
     setDialogOpen(true);
   };
 
-  // Löschen einer Abteilung
-  const handleDelete = async (department: Department) => {
-    if (!window.confirm(`Möchten Sie die Abteilung "${department.name}" wirklich löschen?`)) {
-      return;
-    }
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (department: Department) => {
+    setDepartmentToDelete(department);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!departmentToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const departmentName = departmentToDelete.name; // Store name
 
     try {
       setLoading(true);
-      await departmentApi.delete(department.id);
-
-      // Neu laden statt nur lokale Liste aktualisieren
-      loadDepartments();
-
+      await departmentApi.delete(departmentToDelete.id);
+      loadDepartments(); // Reload data
       setSnackbar({
         open: true,
-        message: `Abteilung "${department.name}" wurde gelöscht.`,
+        message: `Abteilung "${departmentName}" wurde gelöscht.`,
         severity: 'success'
       });
     } catch (error) {
@@ -215,9 +229,17 @@ const Departments: React.FC = () => {
         message: `Fehler beim Löschen der Abteilung: ${errorMessage}`,
         severity: 'error'
       });
+    } finally {
       setLoading(false);
+      setDepartmentToDelete(null); // Clear the department to delete
     }
   };
+
+   // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setDepartmentToDelete(null);
+   };
 
   // Dialog schließen
   const handleCloseDialog = () => {
@@ -338,7 +360,7 @@ const Departments: React.FC = () => {
     if (contextMenu) {
       const department = departments.find(d => d.id === contextMenu.departmentId);
       if (department) {
-        handleDelete(department);
+        handleDeleteRequest(department);
       }
       handleContextMenuClose();
     }
@@ -490,6 +512,16 @@ const Departments: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Abteilung löschen?"
+        message={`Möchten Sie die Abteilung "${departmentToDelete?.name}" wirklich endgültig löschen?`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -13,676 +13,471 @@ import {
   Tooltip,
   Snackbar,
   Alert,
-  FormControlLabel,
-  Switch as MuiSwitch,
   CircularProgress,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Chip,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  SelectChangeEvent
+  Autocomplete,
+  Switch as MuiSwitch,
+  FormControlLabel
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
-  MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Visibility as ViewIcon,
-  Router as NetworkIcon
+  Cable as NetworkOutletIcon // Passendes Icon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { NetworkOutlet, Location, Room } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { NetworkOutlet, Location, Room, NetworkOutletCreate, NetworkOutletUpdate } from '../../types/settings';
+import { networkOutletsApi, locationApi, roomApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { useAuth } from '../../context/AuthContext';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+
+// Typ für Formularfelder
+interface FormField<T> {
+  value: T;
+  error: boolean;
+  helperText: string;
+}
+
+// Typ für Autocomplete-Optionen
+interface SelectOption {
+    id: number;
+    label: string;
+}
 
 const NetworkOutlets: React.FC = () => {
-  // State für die Daten
-  const [networkOutlets, setNetworkOutlets] = useState<NetworkOutlet[]>([]);
+  const { isAuthenticated } = useAuth();
+
+  // State für Daten
+  const [outlets, setOutlets] = useState<NetworkOutlet[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  // UI State
+  const [loading, setLoading] = useState<boolean>(false);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
   const [currentOutlet, setCurrentOutlet] = useState<NetworkOutlet | null>(null);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info'; }>({ open: false, message: '', severity: 'info' });
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [outletToDelete, setOutletToDelete] = useState<NetworkOutlet | null>(null);
 
-  // State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    outletId: number;
-  } | null>(null);
-
-  // Form State
-  const [name, setName] = useState<string>('');
+  // Form State - wallPosition already removed
+  const [outletNumber, setOutletNumber] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
+  const [selectedLocation, setSelectedLocation] = useState<SelectOption | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<SelectOption | null>(null);
   const [description, setDescription] = useState<string>('');
-  const [locationId, setLocationId] = useState<number | ''>('');
-  const [roomId, setRoomId] = useState<number | ''>('');
-  const [outletNumber, setOutletNumber] = useState<string>('');
-  const [socketNumber, setSocketNumber] = useState<string>('');
-  const [wallPosition, setWallPosition] = useState<string>('');
-  const [socketType, setSocketType] = useState<string>('');
-  const [portCount, setPortCount] = useState<number>(1);
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [locationError, setLocationError] = useState<string>('');
 
-  // UI State
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-  }>({
-    open: false,
-    message: '',
-    severity: 'info'
-  });
+  // Gefilterte Räume basierend auf Standort
+  const [filteredRooms, setFilteredRooms] = useState<SelectOption[]>([]);
 
-  // Spalten für die Tabelle
-  const columns: AtlasColumn<NetworkOutlet>[] = [
-    {
-      dataKey: 'id',
-      label: 'ID',
-      width: 70,
-      numeric: true
-    },
+  // Optionen für Autocomplete
+  const locationOptions = locations.map(loc => ({ id: loc.id, label: loc.name }));
+
+  // Daten laden (Outlets, Locations, Rooms)
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [outletsRes, locationsRes, roomsRes] = await Promise.all([
+        networkOutletsApi.getAll(),
+        locationApi.getAll(),
+        roomApi.getAll()
+      ]);
+      setOutlets(Array.isArray(outletsRes) ? outletsRes : []);
+      setLocations(Array.isArray(locationsRes) ? locationsRes : []);
+      setRooms(Array.isArray(roomsRes) ? roomsRes : []);
+    } catch (error) {
+      setSnackbar({ open: true, message: `Fehler beim Laden der Daten: ${handleApiError(error)}`, severity: 'error' });
+      setOutlets([]); setLocations([]); setRooms([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) { loadData(); }
+  }, [isAuthenticated, loadData]);
+
+  // Effekt zum Filtern der Räume
+  useEffect(() => {
+    if (selectedLocation) {
+      const availableRooms = rooms
+        .filter(room => room.locationId === selectedLocation.id)
+        .map(room => ({ id: room.id, label: room.name }));
+      setFilteredRooms(availableRooms);
+      if (selectedRoom && !availableRooms.some(r => r.id === selectedRoom.id)) {
+          setSelectedRoom(null);
+      }
+    } else {
+      setFilteredRooms([]);
+      setSelectedRoom(null);
+    }
+  }, [selectedLocation, rooms]);
+
+  // Mapping for Standort- und Raumnamen
+  const locationMap = locations.reduce((acc, loc) => {
+      acc[loc.id] = loc.name;
+      return acc;
+  }, {} as Record<number, string>);
+
+  const roomMap = rooms.reduce((acc, room) => {
+      acc[room.id] = room.name;
+      return acc;
+  }, {} as Record<number, string>);
+
+  // Aufbereitete Daten für die Tabelle
+  const processedOutlets = useMemo(() => {
+    const locationMap = new Map(locations.map(loc => [loc.id, loc.name]));
+    const roomMap = new Map(rooms.map(room => [room.id, room.name]));
+
+    return outlets.map(outlet => ({
+      ...outlet,
+      locationName: outlet.locationId !== null ? locationMap.get(outlet.locationId) || 'N/A' : '-',
+      roomName: outlet.roomId !== null ? roomMap.get(outlet.roomId) || 'N/A' : '-',
+      isActiveText: outlet.isActive ? 'Ja' : 'Nein',
+    }));
+  }, [outlets, locations, rooms]);
+
+  // Handler für Snackbar schließen
+  const handleCloseSnackbar = () => setSnackbar(prev => ({ ...prev, open: false }));
+
+  // Spaltendefinitionen - removed wallPosition
+  const columns: AtlasColumn<typeof processedOutlets[number]>[] = useMemo(() => [
     {
       dataKey: 'outletNumber',
-      label: 'Name',
+      label: 'Dosennummer',
+      width: 150,
+    },
+    {
+      dataKey: 'locationName',
+      label: 'Standort',
       width: 200,
-      render: (value, row) => (
-        <Box
-          sx={{
-            color: 'primary.main',
-            fontWeight: 500,
-            cursor: 'pointer',
-            '&:hover': {
-              textDecoration: 'underline'
-            }
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewOutlet(row);
-          }}
-        >
-          {value}
-        </Box>
-      )
+    },
+    {
+      dataKey: 'roomName',
+      label: 'Raum',
+      width: 150,
     },
     {
       dataKey: 'description',
       label: 'Beschreibung',
-      width: 300
+      width: 250,
     },
     {
       dataKey: 'isActive',
-      label: 'Status',
-      width: 120,
+      label: 'Aktiv',
+      width: 80,
       render: (value) => (
-        <Chip
-          label={value ? 'Aktiv' : 'Inaktiv'}
-          color={value ? 'success' : 'default'}
-          size="small"
-          variant="outlined"
-        />
+        <MuiSwitch checked={Boolean(value)} readOnly size="small" color={value ? "success" : "default"} />
       )
-    },
-    {
-      dataKey: 'createdAt',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value) => new Date(value).toLocaleDateString('de-DE')
     },
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteConfirmation(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
-  ];
+  ], [locations, rooms]); // Added dependencies
 
-  // Daten laden
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [outletsResponse, locationsResponse, roomsResponse] = await Promise.all([
-        settingsApi.getAllNetworkOutlets(),
-        settingsApi.getAllLocations(),
-        settingsApi.getAllRooms()
-      ]);
-
-      // Daten setzen - leere Arrays als Standardwert, wenn keine Daten vorhanden
-      setNetworkOutlets(outletsResponse?.data || []);
-      setLocations(locationsResponse?.data || []);
-      setRooms(roomsResponse?.data || []);
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Daten: ${errorMessage}`,
-        severity: 'error'
-      });
-
-      // Im Fehlerfall leere Arrays setzen, keine Mock-Daten verwenden
-      setNetworkOutlets([]);
-      setLocations([]);
-      setRooms([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Dialog öffnen für neuen Eintrag
-  const handleAddNew = () => {
-    setEditMode(false);
-    setReadOnly(false);
-    setCurrentOutlet(null);
-    resetForm();
-    setDialogOpen(true);
-  };
-
-  // Dialog öffnen für Bearbeitung
-  const handleEdit = (outlet: NetworkOutlet) => {
-    setEditMode(true);
-    setReadOnly(false);
-    setCurrentOutlet(outlet);
-    setFormData(outlet);
-    setDialogOpen(true);
-  };
-
-  // Outlet anzeigen
-  const handleViewOutlet = (outlet: NetworkOutlet) => {
-    setEditMode(false);
-    setReadOnly(true);
-    setCurrentOutlet(outlet);
-    setFormData(outlet);
-    setDialogOpen(true);
-  };
-
-  // Formular zurücksetzen
+  // Formular zurücksetzen - removed wallPosition
   const resetForm = () => {
-    setName('');
+    setOutletNumber({ value: '', error: false, helperText: '' });
+    setSelectedLocation(null);
+    setSelectedRoom(null);
     setDescription('');
-    setLocationId('');
-    setRoomId('');
-    setOutletNumber('');
-    setSocketNumber('');
-    setWallPosition('');
-    setSocketType('');
-    setPortCount(1);
+    // wallPosition reset removed
     setIsActive(true);
+    setLocationError('');
   };
 
-  // Formulardaten setzen
+  // Formulardaten für Bearbeiten setzen - removed wallPosition access
   const setFormData = (outlet: NetworkOutlet) => {
-    setName(outlet.name || '');
-    setDescription(outlet.description);
-    setLocationId(outlet.locationId || '');
-    setRoomId(outlet.roomId || '');
-    setOutletNumber(outlet.outletNumber);
-    setSocketNumber(outlet.socketNumber || '');
-    setWallPosition(outlet.wallPosition || '');
-    setSocketType(outlet.socketType || '');
-    setPortCount(outlet.portCount || 1);
+    setOutletNumber({ value: outlet.outletNumber || '', error: false, helperText: '' });
+    const currentLocation = locationOptions.find(loc => loc.id === outlet.locationId) || null;
+    setSelectedLocation(currentLocation);
+    const currentRoom = rooms
+        .filter(room => room.locationId === outlet.locationId)
+        .map(room => ({ id: room.id, label: room.name }))
+        .find(room => room.id === outlet.roomId) || null;
+    setSelectedRoom(currentRoom);
+    setDescription(outlet.description || '');
+    // wallPosition access removed
     setIsActive(outlet.isActive);
+    setLocationError('');
   };
 
-  // Speichern
-  const handleSave = async () => {
-    if (!validateForm()) {
-      return;
+  const handleAddNew = () => {
+      resetForm();
+      setEditMode(false);
+      setCurrentOutlet(null);
+      setDialogOpen(true);
+  };
+
+  const handleEdit = (outlet: NetworkOutlet) => {
+      resetForm();
+      setEditMode(true);
+      setCurrentOutlet(outlet);
+      setFormData(outlet);
+      setDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+      setDialogOpen(false);
+  };
+
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setOutletNumber(prev => ({ ...prev, error: false, helperText: '' }));
+    setLocationError('');
+
+    if (!outletNumber.value.trim()) {
+      setOutletNumber({ value: outletNumber.value, error: true, helperText: 'Dosennummer ist erforderlich' });
+      isValid = false;
     }
 
-    const outletData = {
-      name,
-      description,
-      locationId: locationId as number,
-      roomId: roomId as number,
-      outletNumber,
-      socketNumber,
-      wallPosition,
-      socketType,
-      portCount,
-      isActive
+    if (!selectedLocation) {
+        setLocationError('Standort ist erforderlich');
+        isValid = false;
+    }
+
+    // Eindeutigkeitsprüfung für outletNumber
+    if (isValid && outletNumber.value.trim()) {
+        try {
+            const numberExists = await networkOutletsApi.checkOutletNumberExists(
+                outletNumber.value.trim(),
+                editMode ? currentOutlet?.id : undefined
+            );
+            if (numberExists) {
+                setOutletNumber({ value: outletNumber.value, error: true, helperText: 'Diese Dosennummer existiert bereits' });
+                isValid = false;
+            }
+        } catch (error) {
+            setSnackbar({ open: true, message: `Fehler bei Eindeutigkeitsprüfung: ${handleApiError(error)}`, severity: 'error' });
+            isValid = false;
+        }
+    }
+
+    return isValid;
+  };
+
+  // Speichern (Neu oder Update) - removed wallPosition from data object
+  const handleSave = async () => {
+    const isValid = await validateForm();
+    if (!isValid) return;
+
+    const outletData: NetworkOutletCreate | NetworkOutletUpdate = {
+      outletNumber: outletNumber.value.trim(),
+      locationId: selectedLocation!.id, // Assuming validation ensures selectedLocation is not null
+      roomId: selectedRoom?.id || null,
+      description: description.trim() || null,
+      // wallPosition removed from object literal
+      isActive: isActive,
     };
 
+    setLoading(true);
     try {
-      setLoading(true);
+      let savedOutlet;
       if (editMode && currentOutlet) {
-        await settingsApi.updateNetworkOutlet(currentOutlet.id, outletData);
+        savedOutlet = await networkOutletsApi.update(currentOutlet.id, outletData as NetworkOutletUpdate);
+        setSnackbar({ open: true, message: `Netzwerkdose ${savedOutlet.outletNumber} erfolgreich aktualisiert.`, severity: 'success' });
       } else {
-        await settingsApi.createNetworkOutlet(outletData);
+        savedOutlet = await networkOutletsApi.create(outletData as NetworkOutletCreate);
+        setSnackbar({ open: true, message: `Netzwerkdose ${savedOutlet.outletNumber} erfolgreich erstellt.`, severity: 'success' });
       }
-
-      loadData();
+      await loadData();
       handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: `Netzwerkdose wurde erfolgreich ${editMode ? 'aktualisiert' : 'erstellt'}.`,
-        severity: 'success'
-      });
     } catch (error) {
       const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim ${editMode ? 'Aktualisieren' : 'Erstellen'} der Netzwerkdose: ${errorMessage}`,
-        severity: 'error'
-      });
+      if (errorMessage.toLowerCase().includes('existiert bereits')) {
+        setOutletNumber(prev => ({ ...prev, error: true, helperText: errorMessage }));
+      } else {
+        setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Formularvalidierung
-  const validateForm = (): boolean => {
-    if (!outletNumber.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie eine Dosennummer ein.',
-        severity: 'error'
-      });
-      return false;
-    }
-    if (!locationId) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte wählen Sie einen Standort aus.',
-        severity: 'error'
-      });
-      return false;
-    }
-    if (!roomId) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte wählen Sie einen Raum aus.',
-        severity: 'error'
-      });
-      return false;
-    }
-    return true;
+  const handleDeleteConfirmation = (outlet: NetworkOutlet) => {
+      setOutletToDelete(outlet);
+      setConfirmDialogOpen(true);
   };
 
-  // Löschen
-  const handleDelete = async (outlet: NetworkOutlet) => {
-    if (!window.confirm(`Möchten Sie die Netzwerkdose "${outlet.outletNumber}" wirklich löschen?`)) {
-      return;
-    }
+  const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setOutletToDelete(null);
+  };
 
+  // Löschen (angepasst)
+  const handleDelete = async () => {
+     if (!outletToDelete) return;
+      const outletToDeleteFinal = outletToDelete;
+      setConfirmDialogOpen(false);
+      setOutletToDelete(null);
+
+    setLoading(true);
     try {
-      setLoading(true);
-      await settingsApi.deleteNetworkOutlet(outlet.id);
-      loadData();
-      setSnackbar({
-        open: true,
-        message: `Netzwerkdose "${outlet.outletNumber}" wurde gelöscht.`,
-        severity: 'success'
-      });
+      await networkOutletsApi.delete(outletToDeleteFinal.id);
+      setSnackbar({ open: true, message: `Netzwerkdose ${outletToDeleteFinal.outletNumber} wurde gelöscht.`, severity: 'success' });
+      await loadData();
     } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen der Netzwerkdose: ${errorMessage}`,
-        severity: 'error'
-      });
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${handleApiError(error)}`, severity: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
-  // Kontextmenü Handler
-  const handleContextMenu = (event: React.MouseEvent, outletId: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      outletId
-    });
-  };
-
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
-
-  const handleContextMenuView = () => {
-    if (contextMenu) {
-      const outlet = networkOutlets.find(o => o.id === contextMenu.outletId);
-      if (outlet) {
-        handleViewOutlet(outlet);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  const handleContextMenuEdit = () => {
-    if (contextMenu) {
-      const outlet = networkOutlets.find(o => o.id === contextMenu.outletId);
-      if (outlet) {
-        handleEdit(outlet);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  const handleContextMenuDelete = () => {
-    if (contextMenu) {
-      const outlet = networkOutlets.find(o => o.id === contextMenu.outletId);
-      if (outlet) {
-        handleDelete(outlet);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  // Dialog schließen
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-    resetForm();
-  };
-
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
-
+  // JSX für die Seite
   return (
-    <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh', width: '100%' }}>
+    <Box sx={{ p: 3, bgcolor: 'background.default', minHeight: 'calc(100vh - 64px)', width: '100%' }}>
       {/* Header */}
-      <Paper
-        elevation={3}
-        sx={{
-          bgcolor: 'primary.main',
-          color: 'white',
-          p: 2,
-          mb: 3,
-          display: 'flex',
-          alignItems: 'center'
-        }}
-      >
-        <Typography variant="h5" component="h1">
-          Netzwerkdosenverwaltung
-        </Typography>
+      <Paper elevation={1} sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', p: 2, mb: 3, display: 'flex', alignItems: 'center', borderRadius: 1 }}>
+        <NetworkOutletIcon sx={{ fontSize: 32, mr: 1.5 }} />
+        <Typography variant="h5" component="h1">Netzwerkdosen Verwaltung</Typography>
       </Paper>
 
-      {/* Aktionsleiste */}
+      {/* Button für neuen Eintrag */}
       <Box sx={{ mb: 3 }}>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleAddNew}
+          disabled={loading}
         >
           Neue Netzwerkdose
         </Button>
       </Box>
 
       {/* Tabelle */}
-      <Paper elevation={3} sx={{ mb: 3, overflow: 'hidden' }}>
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <AtlasTable
-            columns={columns}
-            rows={networkOutlets}
-            heightPx={600}
-            emptyMessage="Keine Netzwerkdosen vorhanden"
-            initialSortColumn="id"
-            initialSortDirection="asc"
-          />
-        )}
+      <Paper elevation={1} sx={{ mb: 3, overflow: 'hidden', borderRadius: 1 }}>
+        <AtlasTable
+          columns={columns} // columns already updated via useMemo
+          rows={processedOutlets}
+          heightPx={600}
+          emptyMessage="Keine Netzwerkdosen vorhanden"
+          loading={loading}
+        />
       </Paper>
 
-      {/* Kontextmenü */}
-      <Menu
-        open={contextMenu !== null}
-        onClose={handleContextMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-      >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
-          </ListItemIcon>
-          <ListItemText primary="Anzeigen" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-          </ListItemIcon>
-          <ListItemText primary="Bearbeiten" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-          </ListItemIcon>
-          <ListItemText primary="Löschen" />
-        </MenuItem>
-      </Menu>
-
-      {/* Dialog */}
-      <Dialog
-        open={dialogOpen}
-        onClose={handleCloseDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          {readOnly
-            ? `Netzwerkdose anzeigen: ${currentOutlet?.outletNumber}`
-            : editMode
-            ? `Netzwerkdose bearbeiten: ${currentOutlet?.outletNumber}`
-            : 'Neue Netzwerkdose erstellen'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Grid container spacing={2}>
-              {/* Basis-Informationen */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Dosennummer"
-                  fullWidth
-                  required
-                  value={outletNumber}
-                  onChange={(e) => setOutletNumber(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Name"
-                  fullWidth
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              {/* Standort und Raum */}
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Standort</InputLabel>
-                  <Select
-                    value={locationId}
-                    onChange={(e: SelectChangeEvent<number | ''>) => {
-                      const value = e.target.value;
-                      if (typeof value === 'string') {
-                        const parsed = parseInt(value, 10);
-                        setLocationId(isNaN(parsed) ? '' : parsed);
-                      } else {
-                        setLocationId(value);
-                      }
-                    }}
-                    label="Standort"
-                    disabled={readOnly}
-                  >
-                    {locations.map((location) => (
-                      <MenuItem key={location.id} value={location.id}>
-                        {location.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Raum</InputLabel>
-                  <Select
-                    value={roomId}
-                    onChange={(e: SelectChangeEvent<number | ''>) => {
-                      const value = e.target.value;
-                      if (typeof value === 'string') {
-                        const parsed = parseInt(value, 10);
-                        setRoomId(isNaN(parsed) ? '' : parsed);
-                      } else {
-                        setRoomId(value);
-                      }
-                    }}
-                    label="Raum"
-                    disabled={readOnly}
-                  >
-                    {rooms
-                      .filter((room) => !locationId || room.locationId === locationId)
-                      .map((room) => (
-                        <MenuItem key={room.id} value={room.id}>
-                          {room.name}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Technische Details */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Anschlussnummer"
-                  fullWidth
-                  value={socketNumber}
-                  onChange={(e) => setSocketNumber(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Position"
-                  fullWidth
-                  value={wallPosition}
-                  onChange={(e) => setWallPosition(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Anschlusstyp"
-                  fullWidth
-                  value={socketType}
-                  onChange={(e) => setSocketType(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Anzahl Ports"
-                  fullWidth
-                  type="number"
-                  value={portCount}
-                  onChange={(e) => setPortCount(parseInt(e.target.value) || 1)}
-                  InputProps={{
-                    readOnly: readOnly,
-                    inputProps: { min: 1 }
-                  }}
-                />
-              </Grid>
-
-              {/* Beschreibung */}
-              <Grid item xs={12}>
-                <TextField
-                  label="Beschreibung"
-                  fullWidth
-                  multiline
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              {/* Status */}
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <MuiSwitch
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      disabled={readOnly}
-                    />
-                  }
-                  label="Netzwerkdose aktiv"
-                />
-              </Grid>
+      {/* Dialog für Neu/Bearbeiten */}
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>{editMode ? 'Netzwerkdose bearbeiten' : 'Neue Netzwerkdose erstellen'}</DialogTitle>
+        <DialogContent sx={{ pt: '10px !important' }}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* Dosennummer */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                autoFocus
+                required
+                margin="dense"
+                id="outletNumber"
+                label="Dosennummer"
+                type="text"
+                fullWidth
+                value={outletNumber.value}
+                onChange={(e) => setOutletNumber({ value: e.target.value, error: false, helperText: '' })}
+                error={outletNumber.error}
+                helperText={outletNumber.helperText}
+              />
             </Grid>
-          </Box>
+             {/* Aktiv-Schalter */}
+             <Grid item xs={12} sm={6} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                <FormControlLabel
+                    control={<MuiSwitch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} color="success" />}
+                    label="Aktiv"
+                    sx={{ mt: '8px'}} // Etwas margin oben für Ausrichtung
+                />
+            </Grid>
+             {/* Standort */}
+             <Grid item xs={12} sm={6}>
+                 <Autocomplete
+                    options={locationOptions}
+                    getOptionLabel={(option) => option.label}
+                    value={selectedLocation}
+                    onChange={(_, newValue) => {
+                        setSelectedLocation(newValue);
+                        setLocationError(''); // Korrekt: Nur diese States ändern
+                    }}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderInput={(params) => (
+                        <TextField {...params} required margin="dense" label="Standort" error={!!locationError} helperText={locationError} />
+                    )}
+                />
+            </Grid>
+            {/* Raum */}
+            <Grid item xs={12} sm={6}>
+                 <Autocomplete
+                    options={filteredRooms}
+                    getOptionLabel={(option) => option.label}
+                    value={selectedRoom}
+                    onChange={(_, newValue) => setSelectedRoom(newValue)}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    disabled={!selectedLocation} // Deaktivieren, wenn kein Standort gewählt
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            margin="dense"
+                            label="Raum (Optional)"
+                        />
+                    )}
+                />
+            </Grid>
+            {/* Beschreibung */}
+            <Grid item xs={12}>
+              <TextField
+                margin="dense"
+                id="description"
+                label="Beschreibung (Optional)"
+                type="text"
+                fullWidth
+                multiline
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+          <Button onClick={handleCloseDialog} color="inherit">Abbrechen</Button>
+          <Button onClick={handleSave} variant="contained" color="primary" disabled={loading}>
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Speichern'}
           </Button>
-          {!readOnly && (
-            <Button
-              onClick={handleSave}
-              variant="contained"
-              color="primary"
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Speichern'}
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+            open={confirmDialogOpen}
+            onClose={handleCloseConfirmDialog}
+            onConfirm={handleDelete}
+            title="Löschen bestätigen"
+            message={`Möchten Sie die Netzwerkdose "${outletToDelete?.outletNumber}" wirklich löschen?`}
+       />
+
+      {/* Snackbar für Feedback */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
       </Snackbar>

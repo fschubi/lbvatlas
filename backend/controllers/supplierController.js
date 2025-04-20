@@ -1,11 +1,13 @@
-const settingsModel = require('../models/settingsModel'); // Annahme: Model bleibt vorerst gleich
+// const settingsModel = require('../models/settingsModel'); // Veraltet
+const supplierModel = require('../models/supplierModel'); // Korrektes Model importieren
 const { validationResult } = require('express-validator');
 
 class SupplierController {
     // Lieferanten abfragen
     async getAllSuppliers(req, res) {
         try {
-            const suppliers = await settingsModel.getSuppliers();
+            // Verwende das korrekte Model und prüfe den Funktionsnamen (wahrscheinlich .getAll() oder .getAllSuppliers())
+            const suppliers = await supplierModel.getAll(); // Annahme: Funktion heißt getAll
             return res.json({
                 success: true,
                 data: suppliers
@@ -29,7 +31,8 @@ class SupplierController {
             }
 
             const supplierId = req.params.id;
-            const supplier = await settingsModel.getSupplierById(supplierId);
+            // Verwende das korrekte Model und prüfe den Funktionsnamen
+            const supplier = await supplierModel.getById(supplierId); // Annahme: Funktion heißt getById
 
             if (!supplier) {
                 return res.status(404).json({
@@ -72,10 +75,11 @@ class SupplierController {
                 contact_phone: req.body.contact_phone,
                 contract_number: req.body.contract_number,
                 notes: req.body.notes,
-                is_active: req.body.isActive // Ggf. Defaultwert im Model setzen
+                is_active: req.body.is_active // Achte auf korrekten Feldnamen vom Frontend
             };
 
-            const newSupplier = await settingsModel.createSupplier(supplierData);
+            // Verwende das korrekte Model und prüfe den Funktionsnamen
+            const newSupplier = await supplierModel.create(supplierData); // Annahme: Funktion heißt create
 
             return res.status(201).json({
                 success: true,
@@ -119,7 +123,7 @@ class SupplierController {
                 contact_phone: req.body.contact_phone,
                 contract_number: req.body.contract_number,
                 notes: req.body.notes,
-                is_active: req.body.isActive
+                is_active: req.body.is_active // Achte auf korrekten Feldnamen vom Frontend
             };
 
              // Nur definierte Felder übergeben
@@ -129,7 +133,8 @@ class SupplierController {
                  return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben' });
             }
 
-            const updatedSupplier = await settingsModel.updateSupplier(supplierId, supplierData);
+            // Verwende das korrekte Model und prüfe den Funktionsnamen
+            const updatedSupplier = await supplierModel.update(supplierId, supplierData); // Annahme: Funktion heißt update
 
             return res.json({
                 success: true,
@@ -166,12 +171,13 @@ class SupplierController {
             }
 
             const supplierId = req.params.id;
-            const deletedSupplier = await settingsModel.deleteSupplier(supplierId);
+            // Verwende das korrekte Model und prüfe den Funktionsnamen
+            const deletedSupplier = await supplierModel.delete(supplierId); // Annahme: Funktion heißt delete
 
             return res.json({
                 success: true,
                 message: 'Lieferant erfolgreich gelöscht',
-                data: deletedSupplier
+                data: deletedSupplier // Ggf. nur { success: true, message: ... } zurückgeben?
             });
         } catch (error) {
             console.error('Fehler beim Löschen des Lieferanten:', error);
@@ -183,7 +189,7 @@ class SupplierController {
             } else if (error.message.includes('wird von')) { // Oder spezifischere Prüfung
                  return res.status(400).json({
                     success: false,
-                    message: 'Lieferant kann nicht gelöscht werden, da er noch verwendet wird.' // Anpassbare Meldung
+                    message: 'Lieferant kann nicht gelöscht werden, da er noch verwendet wird.'
                 });
             }
             return res.status(500).json({

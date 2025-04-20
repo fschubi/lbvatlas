@@ -1,187 +1,129 @@
-const db = require('../db');
+const pool = require('../db');
+const { toSnakeCase } = require('../utils/caseConverter'); // Obwohl hier nicht direkt verwendet, für Konsistenz
 
-class NetworkPortModel {
-  // Netzwerk-Ports abfragen
-  async getAllNetworkPorts() {
+const NetworkPortModel = {
+  /**
+   * Holt alle Netzwerk-Ports aus der Datenbank, sortiert nach Portnummer.
+   * @returns {Promise<Array>} Ein Array von NetworkPort-Objekten.
+   */
+  async getAll() {
+    const query = 'SELECT * FROM network_ports ORDER BY port_number ASC';
     try {
-      // Füge Joins hinzu, um Switch- und Socket-Informationen zu erhalten
-      const query = `
-        SELECT
-          np.*,
-          ns.name AS switch_name,
-          nk.outlet_number AS socket_outlet_number
-        FROM network_ports np
-        LEFT JOIN network_switches ns ON np.switch_id = ns.id
-        LEFT JOIN network_sockets nk ON np.socket_id = nk.id
-        ORDER BY np.port_number ASC
-      `;
-      const { rows } = await db.query(query);
-      return rows;
+      const result = await pool.query(query);
+      return result.rows;
     } catch (error) {
-      console.error('Datenbankfehler beim Abrufen aller Netzwerk-Ports:', error);
+      console.error('Fehler beim Abrufen aller Netzwerk-Ports:', error);
       throw error;
     }
-  }
+  },
 
-  // Netzwerk-Port nach ID abfragen
-  async getNetworkPortById(portId) {
+  /**
+   * Holt einen Netzwerk-Port anhand seiner ID.
+   * @param {number} id - Die ID des Ports.
+   * @returns {Promise<object|null>} Das NetworkPort-Objekt oder null, wenn nicht gefunden.
+   */
+  async getById(id) {
+    const query = 'SELECT * FROM network_ports WHERE id = $1';
     try {
-      const query = `
-        SELECT
-          np.*,
-          ns.name AS switch_name,
-          nk.outlet_number AS socket_outlet_number
-        FROM network_ports np
-        LEFT JOIN network_switches ns ON np.switch_id = ns.id
-        LEFT JOIN network_sockets nk ON np.socket_id = nk.id
-        WHERE np.id = $1
-      `;
-      const { rows } = await db.query(query, [portId]);
-      return rows[0] || null;
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
     } catch (error) {
-      console.error('Datenbankfehler beim Abrufen des Netzwerk-Ports nach ID:', error);
+      console.error(`Fehler beim Abrufen des Netzwerk-Ports mit ID ${id}:`, error);
       throw error;
     }
-  }
+  },
 
-  // Netzwerk-Port erstellen
-  async createNetworkPort(portData) {
+  /**
+   * Findet einen Netzwerk-Port anhand seiner Portnummer.
+   * @param {number} portNumber - Die zu suchende Portnummer.
+   * @returns {Promise<object|null>} Das NetworkPort-Objekt oder null, wenn nicht gefunden.
+   */
+  async findByPortNumber(portNumber) {
+    const query = 'SELECT * FROM network_ports WHERE port_number = $1';
     try {
-      const { port_number, switch_id, socket_id, description } = portData;
-
-      // Prüfen, ob die Portnummer am gegebenen Switch bereits existiert
-      if (switch_id && port_number) {
-        const checkQuery = `SELECT id FROM network_ports WHERE switch_id = $1 AND port_number = $2`;
-        const { rows: existingPort } = await db.query(checkQuery, [switch_id, port_number]);
-        if (existingPort.length > 0) {
-            throw new Error(`Portnummer ${port_number} existiert bereits auf diesem Switch.`);
-        }
-      }
-
-      // Prüfen, ob der Port mit einer Dose verbunden wird, die bereits verwendet wird
-      if (socket_id) {
-          const socketCheckQuery = `SELECT id FROM network_ports WHERE socket_id = $1`;
-          const { rows: socketInUse } = await db.query(socketCheckQuery, [socket_id]);
-          if (socketInUse.length > 0) {
-              throw new Error('Diese Netzwerkdose ist bereits mit einem anderen Port verbunden.');
-          }
-      }
-
-      const query = `
-        INSERT INTO network_ports (port_number, switch_id, socket_id, description, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
-        RETURNING id
-      `;
-      const values = [
-          port_number,
-          switch_id || null,
-          socket_id || null,
-          description || null
-      ];
-      const { rows } = await db.query(query, values);
-      const newPortId = rows[0].id;
-
-      // Den neu erstellten Port mit Details zurückgeben
-      return await this.getNetworkPortById(newPortId);
-
+      const result = await pool.query(query, [portNumber]);
+      return result.rows[0];
     } catch (error) {
-      console.error('Datenbankfehler beim Erstellen des Netzwerk-Ports:', error);
-      if (error.code === '23505') { // Unique constraint violation
-           throw new Error(`Portnummer ${portData.port_number} existiert bereits auf diesem Switch oder die Dose ist bereits verbunden.`);
-      }
-      if (error.code === '23503') { // Foreign key violation
-            throw new Error('Ungültige Switch-ID oder Socket-ID angegeben.');
+      console.error(`Fehler bei der Suche nach Netzwerk-Port mit Nummer ${portNumber}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Erstellt einen neuen Netzwerk-Port in der Datenbank.
+   * Erwartet 'port_number' im Datenobjekt.
+   * @param {object} portData - Die Daten des neuen Ports (snake_case erwartet, aber hier nur port_number relevant).
+   * @returns {Promise<object>} Das neu erstellte NetworkPort-Objekt.
+   */
+  async create(portData) {
+    // Stelle sicher, dass nur relevante Daten verwendet werden
+    const { port_number } = toSnakeCase(portData); // Konvertiere zur Sicherheit
+
+    if (port_number === undefined || port_number === null) {
+        throw new Error('Portnummer muss angegeben werden.');
+    }
+
+    const query = 'INSERT INTO network_ports (port_number) VALUES ($1) RETURNING *';
+    try {
+      const result = await pool.query(query, [port_number]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Fehler beim Erstellen des Netzwerk-Ports:', error);
+      // Prüfe auf UNIQUE constraint violation
+      if (error.code === '23505') { // PostgreSQL unique violation code
+        throw new Error(`Ein Netzwerk-Port mit der Nummer ${port_number} existiert bereits.`);
       }
       throw error;
     }
-  }
+  },
 
-  // Netzwerk-Port aktualisieren
-  async updateNetworkPort(portId, portData) {
+  /**
+   * Aktualisiert einen vorhandenen Netzwerk-Port.
+   * Erwartet 'port_number' im Datenobjekt.
+   * @param {number} id - Die ID des zu aktualisierenden Ports.
+   * @param {object} portData - Die neuen Daten für den Port (snake_case erwartet).
+   * @returns {Promise<object|null>} Das aktualisierte NetworkPort-Objekt oder null, wenn nicht gefunden.
+   */
+  async update(id, portData) {
+    const { port_number } = toSnakeCase(portData); // Konvertiere zur Sicherheit
+
+    if (port_number === undefined || port_number === null) {
+      throw new Error('Portnummer muss für das Update angegeben werden.');
+    }
+
+    // updated_at wird automatisch durch CURRENT_TIMESTAMP gesetzt
+    const query = 'UPDATE network_ports SET port_number = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *';
     try {
-      const { port_number, switch_id, socket_id, description } = portData;
-
-      // Prüfen, ob der Port existiert
-      const { rows: existsResult } = await db.query('SELECT switch_id, socket_id FROM network_ports WHERE id = $1', [portId]);
-      if (existsResult.length === 0) {
-        throw new Error('Netzwerk-Port nicht gefunden');
-      }
-      const currentPort = existsResult[0];
-
-      // Prüfen, ob die neue Portnummer am gegebenen Switch bereits existiert (außer bei dem aktuellen Port)
-      if (switch_id && port_number) {
-        const checkQuery = `SELECT id FROM network_ports WHERE switch_id = $1 AND port_number = $2 AND id != $3`;
-        const { rows: duplicatePort } = await db.query(checkQuery, [switch_id, port_number, portId]);
-        if (duplicatePort.length > 0) {
-            throw new Error(`Portnummer ${port_number} existiert bereits auf diesem Switch.`);
-        }
-      }
-
-       // Prüfen, ob der Port mit einer Dose verbunden wird, die bereits verwendet wird (von einem *anderen* Port)
-      if (socket_id) {
-          const socketCheckQuery = `SELECT id FROM network_ports WHERE socket_id = $1 AND id != $2`;
-          const { rows: socketInUse } = await db.query(socketCheckQuery, [socket_id, portId]);
-          if (socketInUse.length > 0) {
-              throw new Error('Diese Netzwerkdose ist bereits mit einem anderen Port verbunden.');
-          }
-      }
-
-      // Port aktualisieren
-       const updateQuery = `
-        UPDATE network_ports SET
-          port_number = COALESCE($1, port_number),
-          switch_id = COALESCE($2, switch_id),
-          socket_id = COALESCE($3, socket_id),
-          description = COALESCE($4, description),
-          updated_at = NOW()
-        WHERE id = $5
-        RETURNING id
-      `;
-        const values = [
-          port_number,
-          switch_id,
-          socket_id,
-          description,
-          portId
-        ];
-      const { rows } = await db.query(updateQuery, values);
-
-      // Den aktualisierten Port mit Details zurückgeben
-      return await this.getNetworkPortById(portId);
-
+      const result = await pool.query(query, [port_number, id]);
+      return result.rows[0]; // Gibt das aktualisierte Objekt zurück
     } catch (error) {
-      console.error('Datenbankfehler beim Aktualisieren des Netzwerk-Ports:', error);
-       if (error.code === '23505') { // Unique constraint violation
-           throw new Error(`Portnummer ${portData.port_number} existiert bereits auf diesem Switch oder die Dose ist bereits verbunden.`);
-      }
-       if (error.code === '23503') { // Foreign key violation
-            throw new Error('Ungültige Switch-ID oder Socket-ID angegeben.');
+      console.error(`Fehler beim Aktualisieren des Netzwerk-Ports mit ID ${id}:`, error);
+       // Prüfe auf UNIQUE constraint violation
+       if (error.code === '23505') {
+        throw new Error(`Ein anderer Netzwerk-Port mit der Nummer ${port_number} existiert bereits.`);
       }
       throw error;
     }
-  }
+  },
 
-  // Netzwerk-Port löschen
-  async deleteNetworkPort(portId) {
+  /**
+   * Löscht einen Netzwerk-Port anhand seiner ID.
+   * @param {number} id - Die ID des zu löschenden Ports.
+   * @returns {Promise<boolean>} True, wenn erfolgreich gelöscht, sonst false.
+   */
+  async delete(id) {
+    const query = 'DELETE FROM network_ports WHERE id = $1';
     try {
-      // Prüfen, ob der Port existiert
-      const { rows: existsResult } = await db.query('SELECT * FROM network_ports WHERE id = $1', [portId]);
-      if (existsResult.length === 0) {
-        throw new Error('Netzwerk-Port nicht gefunden');
-      }
-      const deletedPortData = existsResult[0];
-
-      // Port löschen
-      await db.query('DELETE FROM network_ports WHERE id = $1', [portId]);
-
-      return { success: true, message: 'Netzwerk-Port gelöscht', data: deletedPortData };
-
+      const result = await pool.query(query, [id]);
+      return result.rowCount > 0; // Gibt true zurück, wenn eine Zeile gelöscht wurde
     } catch (error) {
-      console.error('Datenbankfehler beim Löschen des Netzwerk-Ports:', error);
-       // Keine direkten Foreign-Key-Constraints erwartet, die das Löschen verhindern
+      // Möglicher Fehler: FK-Verletzung, wenn Ports noch verwendet werden? Prüfen!
+      console.error(`Fehler beim Löschen des Netzwerk-Ports mit ID ${id}:`, error);
+      // Optional: Spezifische Fehler für FK-Verletzungen behandeln
+      // if (error.code === '23503') { ... }
       throw error;
     }
   }
-}
+};
 
-module.exports = new NetworkPortModel();
+module.exports = NetworkPortModel;

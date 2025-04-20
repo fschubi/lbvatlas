@@ -1,113 +1,133 @@
-const switchModel = require('../models/switchModel'); // Geändert
-const { validationResult } = require('express-validator');
+const SwitchModel = require('../models/switchModel');
+const { toCamelCase, toSnakeCase } = require('../utils/caseConverter');
 
-class SwitchController {
-
-  // Alle Switches abrufen
-  async getAllSwitches(req, res) {
+const SwitchController = {
+  /**
+   * Holt alle Switches und gibt sie als JSON zurück.
+   */
+  async getAllSwitches(req, res, next) {
     try {
-      const switches = await switchModel.getSwitches();
-      res.json({ success: true, data: switches });
+      const switches = await SwitchModel.getAll();
+      res.status(200).json(switches.map(toCamelCase));
     } catch (error) {
-      console.error('Fehler beim Abrufen der Switches:', error);
-      res.status(500).json({ success: false, message: 'Fehler beim Abrufen der Switches', error: error.message });
+      console.error('Fehler beim Abrufen aller Switches:', error);
+      next(error);
     }
-  }
+  },
 
-  // Switch nach ID abrufen
-  async getSwitchById(req, res) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+  /**
+   * Holt einen einzelnen Switch anhand der ID.
+   */
+  async getSwitchById(req, res, next) {
     try {
-      const switchId = req.params.id;
-      const switchData = await switchModel.getSwitchById(switchId);
+      const { id } = req.params;
+      const switchData = await SwitchModel.getById(id);
       if (!switchData) {
-        return res.status(404).json({ success: false, message: 'Switch nicht gefunden' });
+        return res.status(404).json({ message: `Switch mit ID ${id} nicht gefunden.` });
       }
-      res.json({ success: true, data: switchData });
+      res.status(200).json(toCamelCase(switchData));
     } catch (error) {
-      console.error('Fehler beim Abrufen des Switches:', error);
-      res.status(500).json({ success: false, message: 'Fehler beim Abrufen des Switches', error: error.message });
+      console.error(`Fehler beim Abrufen des Switches mit ID ${req.params.id}:`, error);
+      next(error);
     }
-  }
+  },
 
-  // Neuen Switch erstellen
-  async createSwitch(req, res) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+  /**
+   * Erstellt einen neuen Switch.
+   */
+  async createSwitch(req, res, next) {
     try {
-      const switchData = req.body;
-      const newSwitch = await switchModel.createSwitch(switchData);
-      res.status(201).json({ success: true, message: 'Switch erfolgreich erstellt', data: newSwitch });
+      const { name } = req.body;
+      // Validierung: Name darf nicht leer sein
+      if (!name || name.trim() === '') {
+          return res.status(400).json({ message: 'Der Switch-Name darf nicht leer sein.' });
+      }
+      // Validierung: Existiert der Name bereits?
+      const existingSwitch = await SwitchModel.findByName(name.trim());
+      if (existingSwitch) {
+          return res.status(409).json({ message: `Ein Switch mit dem Namen "${name}" existiert bereits.` });
+      }
+
+      const newSwitchData = req.body;
+      const newSwitch = await SwitchModel.create(newSwitchData);
+      res.status(201).json(toCamelCase(newSwitch));
     } catch (error) {
       console.error('Fehler beim Erstellen des Switches:', error);
-       if (error.code === 'DUPLICATE_SWITCH' || (error.message && error.message.includes('existiert bereits'))) {
-        return res.status(400).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: 'Fehler beim Erstellen des Switches', error: error.message });
+      next(error);
     }
-  }
+  },
 
-  // Switch aktualisieren
-  async updateSwitch(req, res) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+  /**
+   * Aktualisiert einen vorhandenen Switch.
+   */
+  async updateSwitch(req, res, next) {
     try {
-      const switchId = req.params.id;
+      const { id } = req.params;
       const switchData = req.body;
+      const { name } = switchData;
 
-       // Leere Felder entfernen, außer isActive=false
-      Object.keys(switchData).forEach(key => {
-        if (switchData[key] === undefined || switchData[key] === null || switchData[key] === '') {
-          if (key !== 'isActive') {
-            delete switchData[key];
+      // Validierung: Name darf nicht leer sein, wenn angegeben
+      if (name !== undefined && (!name || name.trim() === '')) {
+         return res.status(400).json({ message: 'Der Switch-Name darf nicht leer sein.' });
+      }
+
+      // Validierung: Existiert der Name bereits (außer für den aktuellen Switch)?
+      if (name) {
+          const existingSwitch = await SwitchModel.findByName(name.trim());
+          if (existingSwitch && existingSwitch.id !== parseInt(id, 10)) {
+              return res.status(409).json({ message: `Ein anderer Switch mit dem Namen "${name}" existiert bereits.` });
           }
-        }
-      });
-
-      if (Object.keys(switchData).length === 0 || (Object.keys(switchData).length === 1 && switchData.hasOwnProperty('id'))) {
-        return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben' });
       }
 
-      const updatedSwitch = await switchModel.updateSwitch(switchId, switchData);
-      res.json({ success: true, message: 'Switch erfolgreich aktualisiert', data: updatedSwitch });
+      const updatedSwitch = await SwitchModel.update(id, switchData);
+      if (!updatedSwitch) {
+        return res.status(404).json({ message: `Switch mit ID ${id} nicht gefunden.` });
+      }
+      res.status(200).json(toCamelCase(updatedSwitch));
     } catch (error) {
-      console.error('Fehler beim Aktualisieren des Switches:', error);
-       if (error.message === 'Switch nicht gefunden') {
-        return res.status(404).json({ success: false, message: error.message });
-      } else if (error.code === 'DUPLICATE_SWITCH' || (error.message && error.message.includes('existiert bereits'))) {
-         return res.status(400).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: 'Fehler beim Aktualisieren des Switches', error: error.message });
+      console.error(`Fehler beim Aktualisieren des Switches mit ID ${req.params.id}:`, error);
+      next(error);
     }
-  }
+  },
 
-  // Switch löschen
-  async deleteSwitch(req, res) {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+  /**
+   * Löscht einen Switch.
+   */
+  async deleteSwitch(req, res, next) {
     try {
-      const switchId = req.params.id;
-      const result = await switchModel.deleteSwitch(switchId);
-       res.json(result);
-    } catch (error) {
-      console.error('Fehler beim Löschen des Switches:', error);
-       if (error.message === 'Switch nicht gefunden') {
-        return res.status(404).json({ success: false, message: error.message });
-      } else if (error.message.includes('verwendet wird')) {
-        return res.status(400).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: 'Fehler beim Löschen des Switches', error: error.message });
-    }
-  }
-}
+      const { id } = req.params;
+      // WICHTIG: Hier sollte idealerweise geprüft werden, ob der Switch noch Abhängigkeiten hat (z.B. Ports, Geräte)!
+      // const dependencies = await checkSwitchDependencies(id); // Beispielhafte Funktion
+      // if (dependencies.hasDependencies) {
+      //    return res.status(409).json({ message: `Switch kann nicht gelöscht werden, da noch Abhängigkeiten bestehen: ${dependencies.details}` });
+      // }
 
-module.exports = new SwitchController();
+      const deleted = await SwitchModel.delete(id);
+      if (!deleted) {
+        // Sollte eigentlich nicht passieren, wenn Abhängigkeitsprüfung oben ist
+        return res.status(404).json({ message: `Switch mit ID ${id} nicht gefunden oder konnte nicht gelöscht werden.` });
+      }
+      res.status(200).json({ message: `Switch mit ID ${id} erfolgreich gelöscht.` });
+    } catch (error) {
+      console.error(`Fehler beim Löschen des Switches mit ID ${req.params.id}:`, error);
+      next(error);
+    }
+  },
+
+    /**
+     * Holt die Anzahl der Switches.
+     */
+    async getSwitchCount(req, res, next) {
+        const { status } = req.query; // Optionaler Filter (?status=active oder ?status=inactive)
+        try {
+            const count = await SwitchModel.getCount(status);
+            console.debug(`[DEBUG] SwitchController (getSwitchCount): Anzahl Switches ${status ? `(${status})` : ''} abgerufen: ${count}.`);
+            res.status(200).json({ data: { count } });
+        } catch (error) {
+            console.error('Fehler im SwitchController (getSwitchCount):', error);
+            next(error);
+        }
+    }
+};
+
+module.exports = SwitchController;

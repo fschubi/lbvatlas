@@ -46,6 +46,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const manufacturerRoutes = require('./routes/manufacturerRoutes');
 const departmentRoutes = require('./routes/departmentRoutes');
 const labelTemplateRoutes = require('./routes/labelTemplateRoutes');
+const networkOutletRoutes = require('./routes/networkOutletRoutes');
 
 // Erstelle Express-App
 const app = express();
@@ -112,6 +113,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/manufacturers', manufacturerRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/label-templates', labelTemplateRoutes);
+app.use('/api/network-outlets', networkOutletRoutes);
 
 // Statische Dateien (für Produktion)
 if (process.env.NODE_ENV === 'production') {

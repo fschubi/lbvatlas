@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,55 +13,21 @@ import {
   Alert,
   IconButton,
   Tooltip,
-  TableContainer,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip,
   CircularProgress,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Autocomplete
+  MenuItem
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Info as InfoIcon,
-  Person as PersonIcon,
   PersonAdd as PersonAddIcon,
   PersonRemove as PersonRemoveIcon
 } from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
-import axios from 'axios';
-
-// API-Basis-URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-
-// Typen
-interface UserGroup {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
-  created_by: number;
-  user_count?: number;
-}
-
-interface User {
-  id: number;
-  name: string;
-  username: string;
-  email: string;
-  added_at?: string;
-  added_by?: number;
-}
+import { UserGroup, User } from '../../types/user'; // Echte Typen verwenden
+import { userGroupApi } from '../../utils/api'; // API importieren
+import handleApiError from '../../utils/errorHandler';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 
 interface SnackbarState {
   open: boolean;
@@ -69,436 +35,310 @@ interface SnackbarState {
   severity: 'success' | 'error' | 'info' | 'warning';
 }
 
-// Aktualisierte Typ-Definition für API-Antworten
-interface ApiResponse<T = any> {
-  success: boolean;
-  message?: string;
-  data?: T;
-}
-
-// Styled-Komponenten
-const StyledTableCell = styled(TableCell)(({ theme }) => ({
-  padding: theme.spacing(1.5),
-}));
-
-const StyledTableRow = styled(TableRow)(({ theme }) => ({
-  '&:nth-of-type(odd)': {
-    backgroundColor: theme.palette.background.default,
-  },
-  '&:nth-of-type(even)': {
-    backgroundColor: theme.palette.action.hover,
-  },
-  '&:hover': {
-    backgroundColor: theme.palette.action.selected,
-  },
-}));
-
-// Helper für Authorization Header
-const getAuthConfig = () => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    console.warn('Kein Auth-Token gefunden');
-    return {};
-  }
-  return {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  };
-};
-
-// Hauptkomponente
 const UserGroupManagement: React.FC = () => {
-  // Zustände
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<UserGroup | null>(null);
-  const [groupMembers, setGroupMembers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [groupUsers, setGroupUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [membersLoading, setMembersLoading] = useState<boolean>(false);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [dialogLoading, setDialogLoading] = useState<boolean>(false);
   const [openDialog, setOpenDialog] = useState<boolean>(false);
   const [openMembersDialog, setOpenMembersDialog] = useState<boolean>(false);
+  const [openEditDialog, setOpenEditDialog] = useState<boolean>(false);
   const [dialogType, setDialogType] = useState<'create' | 'edit'>('create');
   const [groupName, setGroupName] = useState<string>('');
   const [groupDescription, setGroupDescription] = useState<string>('');
-  const [snackbar, setSnackbar] = useState<SnackbarState>({
-    open: false,
-    message: '',
-    severity: 'success'
-  });
+  const [groupInDialog, setGroupInDialog] = useState<Partial<UserGroup>>({ name: '', description: '' });
+  const [addUserDialogOpen, setAddUserDialogOpen] = useState<boolean>(false);
+  const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState<string>('');
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<UserGroup | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
 
-  // Daten laden
-  useEffect(() => {
-    fetchGroups();
-    fetchAllUsers();
-  }, []);
+  const canRead = true;
+  const canCreate = true;
+  const canUpdate = true;
+  const canDelete = true;
+  const canManageMembers = true;
 
-  // Gruppen laden
-  const fetchGroups = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get<ApiResponse<UserGroup[]>>(`${API_BASE_URL}/user-groups`, getAuthConfig());
-
-      if (!response.data.success) {
-        throw new Error('Keine gültige Antwort vom Server');
-      }
-
-      setGroups(response.data.data || []);
-    } catch (error) {
-      console.error('Fehler beim Laden der Benutzergruppen:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Laden der Benutzergruppen: Verbindungsproblem',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Alle Benutzer laden
-  const fetchAllUsers = async () => {
-    try {
-      const response = await axios.get<ApiResponse<User[]>>(`${API_BASE_URL}/users`, getAuthConfig());
-
-      if (!response.data.success) {
-        throw new Error('Keine gültige Antwort vom Server');
-      }
-
-      setAllUsers(response.data.data || []);
-    } catch (error) {
-      console.error('Fehler beim Laden der Benutzer:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Laden der Benutzer: Verbindungsproblem',
-        severity: 'error'
-      });
-    }
-  };
-
-  // Gruppenmitglieder laden
-  const fetchGroupMembers = async (groupId: number) => {
-    try {
-      setMembersLoading(true);
-      const response = await axios.get<ApiResponse<User[]>>(
-        `${API_BASE_URL}/user-groups/${groupId}/members`,
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setGroupMembers(response.data.data || []);
-    } catch (error) {
-      console.error(`Fehler beim Laden der Mitglieder für Gruppe ${groupId}:`, error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Gruppenmitglieder: Verbindungsproblem`,
-        severity: 'error'
-      });
-    } finally {
-      setMembersLoading(false);
-    }
-  };
-
-  // Gruppe auswählen
-  const handleSelectGroup = (group: UserGroup) => {
-    setSelectedGroup(group);
-    fetchGroupMembers(group.id);
-  };
-
-  // Dialog öffnen
-  const handleOpenDialog = (type: 'create' | 'edit', group?: UserGroup) => {
-    setDialogType(type);
-    if (type === 'edit' && group) {
-      setGroupName(group.name);
-      setGroupDescription(group.description || '');
-      setSelectedGroup(group);
-    } else {
-      setGroupName('');
-      setGroupDescription('');
-    }
-    setOpenDialog(true);
-  };
-
-  // Dialog schließen
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-  };
-
-  // Mitglieder-Dialog öffnen
-  const handleOpenMembersDialog = () => {
-    setSelectedUsers([]);
-    setOpenMembersDialog(true);
-  };
-
-  // Mitglieder-Dialog schließen
-  const handleCloseMembersDialog = () => {
-    setOpenMembersDialog(false);
-  };
-
-  // Gruppe erstellen
-  const handleCreateGroup = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.post<ApiResponse<UserGroup>>(
-        `${API_BASE_URL}/user-groups`,
-        {
-          name: groupName,
-          description: groupDescription
-        },
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setGroups([...groups, response.data.data as UserGroup]);
-      handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: 'Benutzergruppe erfolgreich erstellt',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Fehler beim Erstellen der Benutzergruppe:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Erstellen der Benutzergruppe: Verbindungsproblem',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Gruppe aktualisieren
-  const handleUpdateGroup = async () => {
-    if (!selectedGroup) return;
-
-    try {
-      setLoading(true);
-      const response = await axios.put<ApiResponse<UserGroup>>(
-        `${API_BASE_URL}/user-groups/${selectedGroup.id}`,
-        {
-          name: groupName,
-          description: groupDescription
-        },
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setGroups(groups.map(group =>
-        group.id === selectedGroup.id ? (response.data.data as UserGroup) : group
-      ));
-      setSelectedGroup(response.data.data as UserGroup);
-      handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: 'Benutzergruppe erfolgreich aktualisiert',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren der Benutzergruppe:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Aktualisieren der Benutzergruppe: Verbindungsproblem',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Gruppe löschen
-  const handleDeleteGroup = async (groupId: number) => {
-    if (!window.confirm('Möchten Sie diese Benutzergruppe wirklich löschen?')) {
+  const loadGroups = useCallback(async () => {
+    if (!canRead) {
       return;
     }
-
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await axios.delete<ApiResponse<null>>(
-        `${API_BASE_URL}/user-groups/${groupId}`,
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setGroups(groups.filter(group => group.id !== groupId));
-      if (selectedGroup?.id === groupId) {
-        setSelectedGroup(null);
-        setGroupMembers([]);
-      }
-      setSnackbar({
-        open: true,
-        message: 'Benutzergruppe erfolgreich gelöscht',
-        severity: 'success'
-      });
+      console.log('[UserGroupManagement] Lade Benutzergruppen...');
+      const fetchedGroups = await userGroupApi.getAll();
+      setGroups(fetchedGroups || []);
+      console.log('[UserGroupManagement] Benutzergruppen geladen:', fetchedGroups);
     } catch (error) {
-      console.error('Fehler beim Löschen der Benutzergruppe:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Löschen der Benutzergruppe: Verbindungsproblem',
-        severity: 'error'
-      });
+      console.error('[UserGroupManagement] Fehler beim Laden der Gruppen:', error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Laden der Benutzergruppen: ${errorMessage}`, severity: 'error' });
+      setGroups([]);
     } finally {
       setLoading(false);
     }
+  }, [canRead]);
+
+  const loadAllUsers = useCallback(async () => {
+    setLoadingUsers(true);
+    try {
+      console.log('[UserGroupManagement] Lade alle Benutzer...');
+      await new Promise(resolve => setTimeout(resolve, 150));
+      setAllUsers([
+        { id: 'auth0|663bfa8e59f91a237d0d1111', username: 'test.user', first_name: 'Test', last_name: 'User', email: 'test@example.com', role: 'Admin' },
+        { id: 'google-oauth2|112233445566778899000', username: 'anna.dev', first_name: 'Anna', last_name: 'Developer', email: 'anna.dev@example.com', role: 'User' },
+        { id: 'auth0|unique-id-peter-support-123', username: 'peter.support', first_name: 'Peter', last_name: 'Support', email: 'peter.s@example.org', role: 'Support' },
+      ]);
+      console.log('[UserGroupManagement] Alle Benutzer geladen (Mock).');
+    } catch (error) {
+      console.error('[UserGroupManagement] Fehler beim Laden aller Benutzer:', error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Laden der Benutzerliste: ${errorMessage}`, severity: 'error' });
+      setAllUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  const loadGroupUsers = useCallback(async (groupId: number | null) => {
+    if (!groupId || !canRead) {
+        setGroupUsers([]);
+        return;
+    }
+    setLoadingUsers(true);
+    try {
+      console.log(`[UserGroupManagement] Lade Benutzer für Gruppe ${groupId}...`);
+      const fetchedGroupUsers = await userGroupApi.getUsersInGroup(groupId);
+      setGroupUsers(fetchedGroupUsers || []);
+      console.log(`[UserGroupManagement] Benutzer für Gruppe ${groupId} geladen:`, fetchedGroupUsers);
+    } catch (error) {
+      console.error(`[UserGroupManagement] Fehler beim Laden der Benutzer für Gruppe ${groupId}:`, error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Laden der Gruppenmitglieder: ${errorMessage}`, severity: 'error' });
+      setGroupUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [canRead]);
+
+  useEffect(() => {
+    loadGroups();
+    loadAllUsers();
+  }, [loadGroups, loadAllUsers]);
+
+  useEffect(() => {
+    if (selectedGroup) {
+      loadGroupUsers(Number(selectedGroup.id));
+    } else {
+      setGroupUsers([]);
+    }
+  }, [selectedGroup, loadGroupUsers]);
+
+  const handleSelectGroup = (group: UserGroup) => {
+    setSelectedGroup(group);
   };
 
-  // Benutzer zur Gruppe hinzufügen
-  const handleAddUsersToGroup = async () => {
-    if (!selectedGroup || selectedUsers.length === 0) return;
+  const handleOpenEditDialog = (type: 'create' | 'edit', group?: UserGroup) => {
+    setDialogType(type);
+    if (type === 'edit' && group) {
+      setGroupInDialog({ id: group.id, name: group.name, description: group.description || '' });
+    } else {
+      setGroupInDialog({ name: '', description: '' });
+    }
+    setOpenEditDialog(true);
+  };
 
+  const handleCloseEditDialog = () => {
+    setOpenEditDialog(false);
+    setGroupInDialog({ name: '', description: '' });
+  };
+
+  const handleSaveGroup = async () => {
+    const groupName = groupInDialog.name?.trim();
+    if (!groupName) { return; }
+    const action = dialogType === 'create' ? 'erstellen' : 'aktualisieren';
+    const requiredPermission = dialogType === 'create' ? canCreate : canUpdate;
+    if (!requiredPermission) { return; }
+
+    if (dialogType === 'create' || (selectedGroup && groupName !== selectedGroup.name)) {
+        const nameExists = await userGroupApi.checkGroupNameExists(groupName, groupInDialog.id);
+        if (nameExists) {
+            setSnackbar({ open: true, message: `Eine Gruppe mit dem Namen "${groupName}" existiert bereits.`, severity: 'warning' });
+            return;
+        }
+    }
+
+    setDialogLoading(true);
     try {
-      setMembersLoading(true);
-      const userIds = selectedUsers.map(user => user.id);
-      const response = await axios.post<ApiResponse<null>>(
-        `${API_BASE_URL}/user-groups/${selectedGroup.id}/members`,
-        { userIds },
-        getAuthConfig()
-      );
+      console.log(`[UserGroupManagement] Versuche Gruppe zu ${action}...`, groupInDialog);
+      const groupData = { name: groupName, description: groupInDialog.description || '' };
 
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
+      if (dialogType === 'edit' && groupInDialog.id) {
+        await userGroupApi.update(Number(groupInDialog.id), groupData);
+        setSnackbar({ open: true, message: 'Gruppe erfolgreich aktualisiert', severity: 'success' });
+      } else {
+        await userGroupApi.create(groupData);
+        setSnackbar({ open: true, message: 'Gruppe erfolgreich erstellt', severity: 'success' });
       }
-
-      // Gruppenmitglieder neu laden
-      fetchGroupMembers(selectedGroup.id);
-      handleCloseMembersDialog();
-      setSnackbar({
-        open: true,
-        message: `${selectedUsers.length} Benutzer erfolgreich zur Gruppe hinzugefügt`,
-        severity: 'success'
-      });
+      handleCloseEditDialog();
+      await loadGroups();
     } catch (error) {
-      console.error('Fehler beim Hinzufügen von Benutzern zur Gruppe:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Hinzufügen von Benutzern: Verbindungsproblem',
-        severity: 'error'
-      });
+      console.error(`[UserGroupManagement] Fehler beim ${action} der Gruppe:`, error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim ${action} der Gruppe: ${errorMessage}`, severity: 'error' });
     } finally {
-      setMembersLoading(false);
+      setDialogLoading(false);
     }
   };
 
-  // Benutzer aus der Gruppe entfernen
-  const handleRemoveUserFromGroup = async (userId: number) => {
+  const handleDeleteRequest = (group: UserGroup) => {
+    if (!canDelete) { return; }
+    setGroupToDelete(group);
+    setConfirmDeleteDialogOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!groupToDelete) return;
+    const groupIdToDelete = groupToDelete.id;
+    const groupName = groupToDelete.name;
+    setConfirmDeleteDialogOpen(false);
+    setDialogLoading(true);
+    try {
+      console.log(`[UserGroupManagement] Versuche Gruppe ${groupIdToDelete} zu löschen...`);
+      await userGroupApi.delete(groupIdToDelete);
+      setSnackbar({ open: true, message: `Gruppe "${groupName}" erfolgreich gelöscht`, severity: 'success' });
+      await loadGroups();
+      if (selectedGroup?.id === groupIdToDelete) {
+        setSelectedGroup(null);
+      }
+    } catch (error) {
+      console.error(`[UserGroupManagement] Fehler beim Löschen der Gruppe ${groupIdToDelete}:`, error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen der Gruppe: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setDialogLoading(false);
+      setGroupToDelete(null);
+    }
+  };
+
+  const handleCloseConfirmDeleteDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setGroupToDelete(null);
+  };
+
+  const handleOpenAddUserDialog = () => {
+    if (!canManageMembers) { return; }
     if (!selectedGroup) return;
+    setSelectedUserIdToAdd('');
+    setAddUserDialogOpen(true);
+  };
 
+  const handleCloseAddUserDialog = () => {
+    setAddUserDialogOpen(false);
+    setSelectedUserIdToAdd('');
+  };
+
+  const handleAddUserToGroup = async () => {
+    if (!selectedGroup || !selectedUserIdToAdd) return;
+    if (!canManageMembers) { return; }
+    setDialogLoading(true);
     try {
-      setMembersLoading(true);
-      const response = await axios.delete<ApiResponse<null>>(
-        `${API_BASE_URL}/user-groups/${selectedGroup.id}/members/${userId}`,
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      // Gruppenmitglieder neu laden
-      fetchGroupMembers(selectedGroup.id);
-      setSnackbar({
-        open: true,
-        message: 'Benutzer erfolgreich aus der Gruppe entfernt',
-        severity: 'success'
-      });
+      console.log(`[UserGroupManagement] Füge Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id} hinzu...`);
+      await userGroupApi.addUserToGroup(Number(selectedGroup.id), selectedUserIdToAdd);
+      setSnackbar({ open: true, message: 'Benutzer erfolgreich zur Gruppe hinzugefügt', severity: 'success' });
+      handleCloseAddUserDialog();
+      await loadGroupUsers(Number(selectedGroup.id));
+      await loadGroups();
     } catch (error) {
-      console.error('Fehler beim Entfernen des Benutzers aus der Gruppe:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Entfernen des Benutzers: Verbindungsproblem',
-        severity: 'error'
-      });
+      console.error(`[UserGroupManagement] Fehler beim Hinzufügen von Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id}:`, error);
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Hinzufügen des Benutzers: ${errorMessage}`, severity: 'error' });
     } finally {
-      setMembersLoading(false);
+      setDialogLoading(false);
     }
   };
 
-  // Snackbar schließen
+  const handleRemoveUserFromGroup = async (userId: string) => {
+    if (!selectedGroup) return;
+    if (!canManageMembers) { return; }
+
+    const userToRemove = groupUsers.find(u => u.id === userId);
+    if (!window.confirm(`Benutzer "${userToRemove?.first_name} ${userToRemove?.last_name}" (@${userToRemove?.username}) wirklich aus der Gruppe "${selectedGroup.name}" entfernen?`)) return;
+
+    setLoadingUsers(true);
+    try {
+      console.log(`[UserGroupManagement] Entferne Benutzer ${userId} aus Gruppe ${selectedGroup.id}...`);
+      await userGroupApi.removeUserFromGroup(Number(selectedGroup.id), userId);
+      setSnackbar({ open: true, message: 'Benutzer erfolgreich aus Gruppe entfernt', severity: 'success' });
+      await loadGroupUsers(Number(selectedGroup.id));
+      await loadGroups();
+    } catch (error) {
+        console.error(`[UserGroupManagement] Fehler beim Entfernen von Benutzer ${userId} aus Gruppe ${selectedGroup.id}:`, error);
+        const errorMessage = handleApiError(error);
+        setSnackbar({ open: true, message: `Fehler beim Entfernen des Benutzers: ${errorMessage}`, severity: 'error' });
+    } finally {
+        setLoadingUsers(false);
+    }
+  };
+
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  // Dialog-Aktion
-  const handleDialogAction = () => {
-    if (dialogType === 'create') {
-      handleCreateGroup();
-    } else {
-      handleUpdateGroup();
-    }
-  };
-
-  // Nicht-Mitglieder filtern (für Dialog zum Hinzufügen von Benutzern)
-  const getNonMembers = () => {
-    if (!selectedGroup) return allUsers;
-
-    const memberIds = groupMembers.map(member => member.id);
-    return allUsers.filter(user => !memberIds.includes(user.id));
-  };
-
-  const GroupRow = ({ group }: { group: UserGroup }) => {
-    return (
-      <StyledTableRow
-        hover
-        key={group.id}
-        selected={selectedGroup?.id === group.id}
-        onClick={() => handleSelectGroup(group)}
-        sx={{ cursor: 'pointer' }}
-      >
-        <StyledTableCell>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {group.name}
-          </Box>
-        </StyledTableCell>
-        <StyledTableCell>{group.description || '—'}</StyledTableCell>
-        <StyledTableCell align="center">
-          {group.user_count || 0}
-        </StyledTableCell>
-        <StyledTableCell align="right">
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenDialog('edit', group);
-              }}
-            >
+  const groupColumns: AtlasColumn<UserGroup>[] = [
+    { label: 'Name', dataKey: 'name', width: 250 },
+    { label: 'Beschreibung', dataKey: 'description', width: 400 },
+    { label: 'Hinzugefügt am', dataKey: 'added_at', width: 180, render: (value: string | undefined) => value ? new Date(value).toLocaleString('de-DE') : '-' },
+    { label: 'Aktionen', dataKey: 'actions', width: 120, render: (_value: any, row: UserGroup) => (
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Tooltip title="Bearbeiten">
+          <span>
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenEditDialog('edit', row); }} disabled={!canUpdate}>
               <EditIcon fontSize="small" />
             </IconButton>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteGroup(group.id);
-              }}
-            >
-              <DeleteIcon fontSize="small" />
+          </span>
+        </Tooltip>
+        <Tooltip title="Löschen">
+          <span>
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }} disabled={!canDelete}>
+              <DeleteIcon fontSize="small" color="error" />
             </IconButton>
-          </Box>
-        </StyledTableCell>
-      </StyledTableRow>
-    );
-  };
+          </span>
+        </Tooltip>
+      </Box>
+    )}
+  ];
+
+  const userColumns: AtlasColumn<User>[] = [
+    { label: 'Username', dataKey: 'username', width: 200 },
+    { label: 'Vollständiger Name', dataKey: 'fullName', width: 300, render: (_value: any, row: User) => `${row.first_name || ''} ${row.last_name || ''}`.trim() || '-' },
+    { label: 'E-Mail', dataKey: 'email', width: 250, render: (value: string | undefined) => value || '-' },
+    { label: 'Rolle', dataKey: 'role', width: 150 },
+    { label: 'Aktionen', dataKey: 'actions', width: 100, render: (_value: any, row: User) => (
+        <Tooltip title="Aus Gruppe entfernen">
+            <span>
+              <IconButton size="small" onClick={() => handleRemoveUserFromGroup(row.id)} disabled={!canManageMembers || loadingUsers}>
+                  <PersonRemoveIcon fontSize="small" color="warning" />
+              </IconButton>
+            </span>
+        </Tooltip>
+    )}
+  ];
 
   if (loading && groups.length === 0) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 112px)', p: 3 }}>
         <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Lade Benutzergruppen...</Typography>
       </Box>
     );
   }
+
+  const nonMemberUsers = allUsers.filter(user => !groupUsers.some(groupUser => groupUser.id === user.id));
 
   return (
     <Box sx={{ p: 3 }}>
@@ -508,215 +348,156 @@ const UserGroupManagement: React.FC = () => {
           variant="contained"
           color="primary"
           startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog('create')}
+          onClick={() => handleOpenEditDialog('create')}
+          disabled={!canCreate || loading}
         >
           Neue Gruppe erstellen
         </Button>
       </Box>
 
-      {/* Gruppen-Tabelle */}
-      <TableContainer component={Paper} variant="outlined" sx={{ mb: 4 }}>
-        <Table sx={{ minWidth: 650 }} aria-label="Benutzergruppen">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Beschreibung</TableCell>
-              <TableCell align="center">Mitglieder</TableCell>
-              <TableCell align="right">Aktionen</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {groups.map((group) => (
-              <GroupRow key={group.id} group={group} />
-            ))}
-            {groups.length === 0 && !loading && (
-              <TableRow>
-                <TableCell colSpan={4} align="center">
-                  Keine Benutzergruppen verfügbar
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <Paper variant="outlined" sx={{ mb: 4 }}>
+        <AtlasTable<UserGroup>
+           columns={groupColumns}
+           rows={groups}
+           loading={loading}
+           onRowClick={handleSelectGroup}
+           emptyMessage="Keine Benutzergruppen gefunden."
+           height={400}
+           stickyHeader
+        />
+      </Paper>
 
-      {/* Gruppenmitglieder-Liste */}
       {selectedGroup && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">
-              Mitglieder von Gruppe: {selectedGroup.name}
+              Mitglieder der Gruppe: "{selectedGroup.name}"
             </Typography>
             <Button
               variant="contained"
-              color="primary"
+              color="secondary"
               startIcon={<PersonAddIcon />}
-              onClick={handleOpenMembersDialog}
-              disabled={membersLoading}
+              onClick={handleOpenAddUserDialog}
+              disabled={!canManageMembers || loadingUsers || nonMemberUsers.length === 0}
+              size="small"
             >
-              Benutzer hinzufügen
+              Mitglied hinzufügen
             </Button>
           </Box>
 
-          <Paper variant="outlined" sx={{ mb: 2 }}>
-            {membersLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                <CircularProgress size={30} />
-              </Box>
-            ) : (
-              <List>
-                {groupMembers.length > 0 ? (
-                  groupMembers.map((member, index) => (
-                    <React.Fragment key={member.id}>
-                      <ListItem>
-                        <ListItemText
-                          primary={member.name}
-                          secondary={member.email}
-                        />
-                        <ListItemSecondaryAction>
-                          <IconButton
-                            edge="end"
-                            aria-label="delete"
-                            onClick={() => handleRemoveUserFromGroup(member.id)}
-                          >
-                            <PersonRemoveIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                      {index < groupMembers.length - 1 && <Divider />}
-                    </React.Fragment>
-                  ))
-                ) : (
-                  <ListItem>
-                    <ListItemText
-                      primary="Keine Mitglieder in dieser Gruppe"
-                      primaryTypographyProps={{ align: 'center', color: 'text.secondary' }}
-                    />
-                  </ListItem>
-                )}
-              </List>
-            )}
+          <Paper variant="outlined">
+             <AtlasTable<User>
+                columns={userColumns}
+                rows={groupUsers}
+                loading={loadingUsers}
+                emptyMessage="Diese Gruppe hat keine Mitglieder."
+                height={300}
+                stickyHeader
+             />
           </Paper>
-
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-            <InfoIcon fontSize="small" color="info" sx={{ mr: 1, mt: 0.5 }} />
-            <Box>
-              <Typography variant="subtitle2" color="text.primary" gutterBottom>
-                Hinweise zu Benutzergruppen:
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                • Benutzergruppen helfen bei der Organisation und Verwaltung von Benutzern<br />
-                • Jeder Benutzer kann Mitglied in mehreren Gruppen sein<br />
-                • Gruppenmitgliedschaften können jederzeit geändert werden<br />
-                • Für die Zuweisung von Berechtigungen verwenden Sie bitte die Rollenverwaltung
-              </Typography>
-            </Box>
-          </Box>
         </Box>
       )}
 
-      {/* Dialog für Gruppe erstellen/bearbeiten */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={openEditDialog} onClose={handleCloseEditDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {dialogType === 'create' ? 'Neue Benutzergruppe erstellen' : 'Benutzergruppe bearbeiten'}
+          {dialogType === 'create' ? 'Neue Benutzergruppe erstellen' : `Gruppe "${groupInDialog.name}" bearbeiten`}
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              autoFocus
-              margin="dense"
-              id="name"
-              label="Gruppenname"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              margin="dense"
-              id="description"
-              label="Beschreibung"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={groupDescription}
-              onChange={(e) => setGroupDescription(e.target.value)}
-              multiline
-              rows={3}
-            />
-          </Box>
+        <DialogContent dividers>
+          <TextField
+            autoFocus
+            margin="dense"
+            name="name"
+            label="Gruppenname"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={groupInDialog.name || ''}
+            onChange={(e) => setGroupInDialog(prev => ({ ...prev, name: e.target.value }))}
+            required
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            name="description"
+            label="Beschreibung (optional)"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={groupInDialog.description || ''}
+            onChange={(e) => setGroupInDialog(prev => ({ ...prev, description: e.target.value }))}
+            multiline
+            rows={3}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Abbrechen</Button>
+          <Button onClick={handleCloseEditDialog} disabled={dialogLoading}>Abbrechen</Button>
           <Button
-            onClick={handleDialogAction}
+            onClick={handleSaveGroup}
             variant="contained"
             color="primary"
-            disabled={!groupName.trim() || loading}
+            disabled={!groupInDialog.name?.trim() || dialogLoading}
           >
-            {loading ? <CircularProgress size={24} /> : (dialogType === 'create' ? 'Erstellen' : 'Speichern')}
+            {dialogLoading ? <CircularProgress size={24} /> : (dialogType === 'create' ? 'Erstellen' : 'Speichern')}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog für Benutzer hinzufügen */}
-      <Dialog open={openMembersDialog} onClose={handleCloseMembersDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Benutzer zu Gruppe hinzufügen</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <Autocomplete
-              multiple
-              id="user-selector"
-              options={getNonMembers()}
-              getOptionLabel={(option) => `${option.name} (${option.email})`}
-              filterSelectedOptions
-              value={selectedUsers}
-              onChange={(_, newValue) => setSelectedUsers(newValue)}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Benutzer auswählen"
-                  placeholder="Benutzer suchen..."
-                  variant="outlined"
-                />
+      <Dialog open={addUserDialogOpen} onClose={handleCloseAddUserDialog} maxWidth="xs" fullWidth>
+          <DialogTitle>Benutzer zu "{selectedGroup?.name}" hinzufügen</DialogTitle>
+          <DialogContent dividers>
+              {loadingUsers && !allUsers.length ? (
+                  <CircularProgress sx={{ display: 'block', margin: 'auto' }} />
+              ) : (
+                  <TextField
+                      select
+                      fullWidth
+                      label="Benutzer auswählen"
+                      value={selectedUserIdToAdd}
+                      onChange={(e) => setSelectedUserIdToAdd(e.target.value)}
+                      variant="outlined"
+                      margin="normal"
+                      disabled={nonMemberUsers.length === 0 || loadingUsers}
+                      SelectProps={{ displayEmpty: true }}
+                  >
+                      <MenuItem value=""><em>-- Benutzer wählen --</em></MenuItem>
+                      {nonMemberUsers.map(user => (
+                          <MenuItem key={user.id} value={user.id}>
+                              {user.first_name} {user.last_name} (@{user.username})
+                          </MenuItem>
+                      ))}
+                      {nonMemberUsers.length === 0 && <MenuItem value="" disabled><em>Keine weiteren Benutzer verfügbar</em></MenuItem>}
+                  </TextField>
               )}
-              noOptionsText="Keine Benutzer verfügbar"
-            />
-            {getNonMembers().length === 0 && (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Alle verfügbaren Benutzer sind bereits Mitglieder dieser Gruppe.
-              </Alert>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseMembersDialog}>Abbrechen</Button>
-          <Button
-            onClick={handleAddUsersToGroup}
-            variant="contained"
-            color="primary"
-            disabled={selectedUsers.length === 0 || membersLoading}
-          >
-            {membersLoading ? <CircularProgress size={24} /> : 'Hinzufügen'}
-          </Button>
-        </DialogActions>
+          </DialogContent>
+          <DialogActions>
+              <Button onClick={handleCloseAddUserDialog} disabled={dialogLoading}>Abbrechen</Button>
+              <Button
+                  onClick={handleAddUserToGroup}
+                  variant="contained"
+                  color="secondary"
+                  disabled={!selectedUserIdToAdd || dialogLoading || nonMemberUsers.length === 0}
+              >
+                  {dialogLoading ? <CircularProgress size={24} /> : 'Hinzufügen'}
+              </Button>
+          </DialogActions>
       </Dialog>
 
-      {/* Benachrichtigungen */}
+      <ConfirmationDialog
+        open={confirmDeleteDialogOpen}
+        onClose={handleCloseConfirmDeleteDialog}
+        onConfirm={() => { if (!dialogLoading) executeDelete(); }}
+        title="Benutzergruppe löschen?"
+        message={`Möchten Sie die Benutzergruppe "${groupToDelete?.name}" wirklich endgültig löschen? Zugehörige Benutzer werden nicht gelöscht.`}
+        confirmText="Löschen"
+      />
+
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
           {snackbar.message}
         </Alert>
       </Snackbar>

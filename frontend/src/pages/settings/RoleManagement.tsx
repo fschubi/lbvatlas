@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -36,6 +36,11 @@ import {
 } from '@mui/icons-material';
 import { styled, useTheme } from '@mui/material/styles';
 import axios from 'axios';
+import { Role as RoleType } from '../../types/user'; // Assuming types exist
+import { roleApi, permissionApi } from '../../utils/api'; // Assuming API utility
+import handleApiError from '../../utils/errorHandler';
+import ConfirmationDialog from '../../components/ConfirmationDialog'; // Import the dialog
+import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 
 // API-Basis-URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
@@ -160,6 +165,19 @@ const RoleManagement: React.FC = () => {
     message: '',
     severity: 'success'
   });
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
+
+  // TODO: Berechtigungsprüfung aktivieren
+  // const { userPermissions } = usePermissions();
+  // const canCreate = userPermissions.includes('roles.create');
+  // const canUpdate = userPermissions.includes('roles.update');
+  // const canDelete = userPermissions.includes('roles.delete');
+  // const canViewPermissions = userPermissions.includes('permissions.read');
+  const canCreate = true; // Placeholder
+  const canUpdate = true; // Placeholder
+  const canDelete = true; // Placeholder
+  const canViewPermissions = true; // Placeholder
 
   // Daten laden
   useEffect(() => {
@@ -412,43 +430,62 @@ const RoleManagement: React.FC = () => {
   };
 
   // Rolle löschen
-  const handleDeleteRole = async (roleId: string) => {
-    if (!window.confirm('Möchten Sie diese Rolle wirklich löschen?')) {
-      return;
+  const handleDeleteRequest = (role: Role) => {
+    if (role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin') {
+       setSnackbar({ open: true, message: 'Die Admin/Superadmin-Rolle kann nicht gelöscht werden.', severity: 'warning' });
+       return;
     }
+    setRoleToDelete(role);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!roleToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const roleIdToDelete = roleToDelete.id;
+    const roleName = roleToDelete.name; // Store name
 
     try {
       setLoading(true);
-      const response = await axios.delete<ApiResponse<null>>(
-        `${API_BASE_URL}/roles/${roleId}`,
-        getAuthConfig()
-      );
+      // Assuming rolesApi.delete exists and takes an ID
+      await roleApi.delete(roleIdToDelete);
 
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
+      const updatedRoles = roles.filter(role => role.id !== roleIdToDelete);
+      setRoles(updatedRoles);
+
+      // If the deleted role was selected, select the first remaining role or null
+      if (selectedRole?.id === roleIdToDelete) {
+        setSelectedRole(updatedRoles.length > 0 ? updatedRoles[0] : null);
+        // Optionally reset tab value if applicable
+        // setTabValue(0);
       }
 
-      setRoles(roles.filter(role => role.id !== roleId));
-      if (selectedRole?.id === roleId) {
-        setSelectedRole(null);
-        setTabValue(0);
-      }
       setSnackbar({
         open: true,
-        message: 'Rolle erfolgreich gelöscht',
+        message: `Rolle "${roleName}" erfolgreich gelöscht.`,
         severity: 'success'
       });
+
     } catch (error) {
       console.error('Fehler beim Löschen der Rolle:', error);
       setSnackbar({
         open: true,
-        message: 'Fehler beim Löschen der Rolle: Verbindungsproblem',
+        message: `Fehler beim Löschen der Rolle: ${handleApiError(error)}`,
         severity: 'error'
       });
     } finally {
       setLoading(false);
+      setRoleToDelete(null); // Clear the role to delete
     }
   };
+
+  // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setRoleToDelete(null);
+   };
 
   // Berechtigung umschalten
   const handleTogglePermission = async (permissionId: string | null) => {
@@ -567,11 +604,11 @@ const RoleManagement: React.FC = () => {
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                handleDeleteRole(role.id);
+                handleDeleteRequest(role);
               }}
               disabled={isSystemRole}
             >
-              <DeleteIcon fontSize="small" />
+              <DeleteIcon fontSize="small" color={role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin' ? 'disabled' : 'error'} />
             </IconButton>
           </Box>
         </TableCell>
@@ -782,6 +819,16 @@ const RoleManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Rolle löschen?"
+        message={`Möchten Sie die Rolle "${roleToDelete?.name}" wirklich endgültig löschen? Zugeordnete Benutzer verlieren die Berechtigungen dieser Rolle.`}
+        confirmText="Löschen"
+      />
 
       {/* Benachrichtigungen */}
       <Snackbar

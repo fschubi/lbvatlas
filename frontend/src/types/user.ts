@@ -43,6 +43,9 @@ export interface UserGroup {
   description: string;
   added_at: string;
   added_by: string;
+  createdAt?: string;
+  updatedAt?: string;
+  userCount?: number;
 }
 
 export interface Role {

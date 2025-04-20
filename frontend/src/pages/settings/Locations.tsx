@@ -40,6 +40,7 @@ import { locationApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import { Location, LocationCreate, LocationUpdate } from '../../types/settings';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 // Schnittstelle für Formularfelder mit Validierungszustand
 interface FormField<T> {
@@ -94,6 +95,9 @@ const Locations: React.FC = () => {
     mouseY: number;
     locationId: number;
   } | null>(null);
+
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [locationToDelete, setLocationToDelete] = useState<Location | null>(null);
 
   // API-Daten laden
   useEffect(() => {
@@ -156,7 +160,7 @@ const Locations: React.FC = () => {
 
     const handleDeleteClick = (event: React.MouseEvent) => {
       event.stopPropagation();
-      handleDelete(location);
+      handleDeleteRequest(location);
       handleClose();
     };
 
@@ -269,8 +273,21 @@ const Locations: React.FC = () => {
     {
       label: 'Aktionen',
       dataKey: 'actions',
-      width: 70,
-      render: (_, row: Location) => <ActionMenu location={row} />
+      width: 120,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
     }
   ];
 
@@ -328,32 +345,45 @@ const Locations: React.FC = () => {
     setDialogOpen(true);
   };
 
-  // Löschen eines Standorts mit Bestätigung
-  const handleDelete = async (location: Location) => {
-    if (!window.confirm(`Möchten Sie den Standort "${location.name}" wirklich löschen?`)) {
-      return;
-    }
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (location: Location) => {
+    setLocationToDelete(location);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!locationToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const locationName = locationToDelete.name; // Store name
 
     try {
       setLoading(true);
-      await locationApi.delete(location.id);
-
-      // Neu laden statt nur lokale Liste aktualisieren
-      loadLocations();
-
+      await locationApi.delete(locationToDelete.id);
+      loadLocations(); // Reload data
       setSnackbar({
         open: true,
-        message: `Standort "${location.name}" wurde gelöscht.`,
+        message: `Standort "${locationName}" wurde gelöscht.`,
         severity: 'success'
       });
     } catch (error: any) {
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Standorts: ${handleApiError(error)}`,
-        severity: 'error'
-      });
+        const errorMessage = handleApiError(error);
+        setSnackbar({
+            open: true,
+            message: `Fehler beim Löschen des Standorts: ${errorMessage}`,
+            severity: 'error'
+        });
+    } finally {
       setLoading(false);
+      setLocationToDelete(null); // Clear the location to delete
     }
+  };
+
+  // Step 3: Close confirmation dialog without deleting
+  const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setLocationToDelete(null);
   };
 
   // Dialog schließen
@@ -529,7 +559,7 @@ const Locations: React.FC = () => {
     if (contextMenu) {
       const location = locations.find(l => l.id === contextMenu.locationId);
       if (location) {
-        handleDelete(location);
+        handleDeleteRequest(location);
       }
       handleContextMenuClose();
     }
@@ -905,6 +935,16 @@ const Locations: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Standort löschen?"
+        message={`Möchten Sie den Standort "${locationToDelete?.name}" wirklich endgültig löschen? Zugeordnete Elemente (Räume, Geräte etc.) könnten davon betroffen sein.`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

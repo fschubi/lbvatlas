@@ -41,6 +41,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import api from '../utils/api';
 import DocumentUploader, { DocumentType, UploadedFile } from '../components/DocumentUploader';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 
 interface CertificateHistory {
   id: string;
@@ -155,6 +156,8 @@ const CertificateDetails: React.FC = () => {
     severity: 'success'
   });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
 
   // Status-Optionen
   const statusOptions = ['Aktiv', 'Abgelaufen', 'Widerrufen', 'Erneuern'];
@@ -259,35 +262,48 @@ const CertificateDetails: React.FC = () => {
     }
   };
 
-  const handleDeleteCertificate = async () => {
-    if (window.confirm('Sind Sie sicher, dass Sie dieses Zertifikat löschen möchten?')) {
-      try {
-        setLoading(true);
+  const handleDeleteCertificate = () => {
+    if (certificate) {
+      setItemToDelete(certificate);
+      setConfirmDialogOpen(true);
+    }
+  };
 
-        // In einer realen Anwendung würden wir die API verwenden:
-        // await api.certificates.deleteCertificate(certificateId!);
+  const executeDelete = async () => {
+    if (!itemToDelete) return;
 
-        // Für Entwicklungszwecke simulieren wir die Antwort
-        setTimeout(() => {
-          setLoading(false);
-          setSnackbar({
-            open: true,
-            message: 'Zertifikat erfolgreich gelöscht',
-            severity: 'success'
-          });
-          // Zurück zur Übersichtsseite
-          navigate('/certificates');
-        }, 800);
-      } catch (error) {
-        console.error('Fehler beim Löschen des Zertifikats:', error);
+    try {
+      setLoading(true);
+      // In einer realen Anwendung würden wir die API verwenden:
+      // await api.certificates.deleteCertificate(itemToDelete.id);
+
+      // Für Entwicklungszwecke simulieren wir die Antwort
+      setTimeout(() => {
+        setLoading(false);
         setSnackbar({
           open: true,
-          message: 'Fehler beim Löschen des Zertifikats',
-          severity: 'error'
+          message: `Zertifikat "${itemToDelete.name}" erfolgreich gelöscht`,
+          severity: 'success'
         });
-        setLoading(false);
-      }
+        navigate('/certificates');
+      }, 800);
+    } catch (error) {
+      console.error('Fehler beim Löschen des Zertifikats:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Löschen des Zertifikats',
+        severity: 'error'
+      });
+    } finally {
+      setConfirmDialogOpen(false);
+      setItemToDelete(null);
+      setLoading(false);
     }
+  };
+
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialogOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -760,6 +776,17 @@ const CertificateDetails: React.FC = () => {
         onClose={() => setUploadDialogOpen(false)}
         onUploadComplete={handleUploadComplete}
         isModal={true}
+      />
+
+      {/* Add ConfirmationDialog */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Zertifikat löschen"
+        message={`Möchten Sie das Zertifikat "${itemToDelete?.name}" wirklich unwiderruflich löschen?`}
+        confirmText="Löschen"
+        cancelText="Abbrechen"
       />
 
       {/* Snackbar für Benachrichtigungen */}

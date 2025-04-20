@@ -90,9 +90,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       console.log('Token erfolgreich validiert, setze Benutzer:', response.data.user);
       setUser(response.data.user);
-
-      // Axios Default Header setzen
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (err) {
       // Token ungültig - ausloggen
       console.error('Token-Validierung fehlgeschlagen:', err);
@@ -122,9 +119,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Login erfolgreich, Token erhalten:', token.substring(0, 10) + '...');
       localStorage.setItem('token', token);
       setUser(user);
-
-      // Axios Default Header setzen
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (err) {
       console.error('Login fehlgeschlagen:', err);
       setError('Anmeldung fehlgeschlagen');
@@ -135,7 +129,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     console.log('Benutzer wird abgemeldet...');
     localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
   };
 

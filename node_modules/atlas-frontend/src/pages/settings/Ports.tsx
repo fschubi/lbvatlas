@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -18,7 +18,11 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Chip
+  Chip,
+  Grid,
+  FormControlLabel,
+  Switch,
+  Autocomplete
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -26,300 +30,224 @@ import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Router as RouterIcon
+  Router as RouterIcon,
+  SettingsEthernet as PortIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { NetworkPort } from '../../types/network';
-import { networkPortsApi } from '../../utils/api';
+import { NetworkPort, Switch as SwitchType, NetworkPortCreate, NetworkPortUpdate } from '../../types/settings';
+import { networkPortsApi, switchApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 const Ports: React.FC = () => {
-  // State für die Daten
   const [ports, setPorts] = useState<NetworkPort[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [switches, setSwitches] = useState<SwitchType[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
-  const [portNumber, setPortNumber] = useState<string>('');
   const [editMode, setEditMode] = useState<boolean>(false);
   const [currentPort, setCurrentPort] = useState<NetworkPort | null>(null);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info'; }>({ open: false, message: '', severity: 'info' });
 
-  // Neuer State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    portId: number;
-  } | null>(null);
+  // Form state - use camelCase matching the type
+  const [portNumber, setPortNumber] = useState<string>('');
+  const [selectedSwitch, setSelectedSwitch] = useState<SwitchType | null>(null);
+  const [description, setDescription] = useState<string>('');
+  const [isActive, setIsActive] = useState<boolean>(true);
+  const [portNumberError, setPortNumberError] = useState<string>('');
 
-  // UI State
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-  }>({
-    open: false,
-    message: '',
-    severity: 'info'
-  });
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [portToDelete, setPortToDelete] = useState<NetworkPort | null>(null);
 
-  // Spalten für die Tabelle
-  const columns: AtlasColumn<NetworkPort>[] = [
-    {
-      dataKey: 'port_number',
-      label: 'Port #',
-      width: 100,
-      render: (value, row) => (
-        <Box
-          sx={{
-            color: 'primary.main',
-            fontWeight: 500,
-            cursor: 'pointer',
-            '&:hover': {
-              textDecoration: 'underline'
-            }
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewPort(row);
-          }}
-        >
-          {value}
-        </Box>
-      )
-    },
-    {
-      dataKey: 'created_at',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value) => new Date(value).toLocaleDateString('de-DE')
-    },
-    {
-      dataKey: 'actions',
-      label: 'Aktionen',
-      width: 80,
-      render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
-      )
-    }
-  ];
-
-  // Daten laden
-  const loadPorts = async () => {
+  // Load Ports and Switches
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await networkPortsApi.getAll();
-      console.log('API Response:', response);
-
-      if (response.data?.success && Array.isArray(response.data.data)) {
-        setPorts(response.data.data);
-      } else {
-        console.error('Unerwartetes Datenformat:', response);
-        setSnackbar({
-          open: true,
-          message: 'Fehler beim Laden der Daten: Unerwartetes Format',
-          severity: 'error'
-        });
-      }
+      const [portsRes, switchesRes] = await Promise.all([
+        networkPortsApi.getAll(),
+        switchApi.getAll()
+      ]);
+      // Ensure correct types after fetch
+      setPorts(Array.isArray(portsRes) ? portsRes as NetworkPort[] : []);
+      setSwitches(Array.isArray(switchesRes) ? switchesRes as SwitchType[] : []);
     } catch (error) {
-      const errorMessage = handleApiError(error);
-      console.error('Load Error:', error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Ports: ${errorMessage}`,
-        severity: 'error'
-      });
+      // Corrected handleApiError usage - assuming it throws or returns message
+       const message = handleApiError(error);
+       setSnackbar({ open: true, message: `Fehler beim Laden der Daten: ${message}`, severity: 'error' });
+       setPorts([]);
+       setSwitches([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadPorts();
   }, []);
 
-  // Dialog öffnen für neuen Port
-  const handleAddNew = () => {
-    setEditMode(false);
-    setReadOnly(false);
-    setCurrentPort(null);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleCloseSnackbar = () => setSnackbar(prev => ({ ...prev, open: false }));
+
+  const switchMap = useMemo(() => new Map(switches.map(s => [s.id, s.name])), [switches]);
+
+  const processedPorts = useMemo(() => ports.map(port => ({
+    ...port,
+    switchName: port.switchId ? switchMap.get(port.switchId) || 'N/A' : '-',
+  })), [ports, switchMap]);
+
+  const resetForm = () => {
     setPortNumber('');
+    setSelectedSwitch(null);
+    setDescription('');
+    setIsActive(true);
+    setCurrentPort(null);
+    setEditMode(false);
+    setPortNumberError('');
+  };
+
+  const handleAddNew = () => {
+    resetForm();
     setDialogOpen(true);
   };
 
-  // Dialog öffnen für Bearbeitung
   const handleEdit = (port: NetworkPort) => {
+    resetForm();
     setEditMode(true);
-    setReadOnly(false);
     setCurrentPort(port);
-    setPortNumber(port.port_number.toString());
+    // Access fields added to NetworkPort type
+    setPortNumber(port.portNumber?.toString() || '');
+    setSelectedSwitch(switches.find(s => s.id === port.switchId) || null);
+    setDescription(port.description || '');
+    setIsActive(port.isActive ?? true); // Use nullish coalescing for default
     setDialogOpen(true);
   };
 
-  // Port anzeigen
-  const handleViewPort = (port: NetworkPort) => {
-    setEditMode(true);
-    setReadOnly(true);
-    setCurrentPort(port);
-    setPortNumber(port.port_number.toString());
-    setDialogOpen(true);
-  };
-
-  // Kontextmenü öffnen
-  const handleContextMenu = (event: React.MouseEvent, portId: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      portId
-    });
-  };
-
-  // Kontextmenü schließen
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
-
-  // Kontextmenü Aktionen
-  const handleContextMenuView = () => {
-    if (contextMenu) {
-      const port = ports.find(p => p.id === contextMenu.portId);
-      if (port) {
-        handleViewPort(port);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  const handleContextMenuEdit = () => {
-    if (contextMenu) {
-      const port = ports.find(p => p.id === contextMenu.portId);
-      if (port) {
-        handleEdit(port);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  const handleContextMenuDelete = () => {
-    if (contextMenu) {
-      const port = ports.find(p => p.id === contextMenu.portId);
-      if (port) {
-        handleDelete(port);
-      }
-    }
-    handleContextMenuClose();
-  };
-
-  // Dialog schließen
   const handleCloseDialog = () => {
     setDialogOpen(false);
-    setEditMode(false);
-    setReadOnly(false);
-    setCurrentPort(null);
-    setPortNumber('');
+    resetForm();
   };
 
-  // Port löschen
-  const handleDelete = async (port: NetworkPort) => {
-    if (!window.confirm(`Möchten Sie Port ${port.port_number} wirklich löschen?`)) {
-      return;
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setPortNumberError('');
+
+    const num = parseInt(portNumber, 10);
+    if (isNaN(num) || num < 1) {
+        setPortNumberError('Ungültige Portnummer.');
+        isValid = false;
     }
+
+    // Optional: Check uniqueness for portNumber on the selected switch?
+    // This might require an extra API call or client-side logic
+
+    return isValid;
+  };
+
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (port: NetworkPort) => {
+    setPortToDelete(port);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic - use camelCase
+  const executeDelete = async () => {
+    if (!portToDelete) return;
+
+    setConfirmDialogOpen(false);
+    // Use camelCase from type
+    const portNum = portToDelete.portNumber;
 
     try {
       setLoading(true);
-      await networkPortsApi.delete(port.id);
-      loadPorts();
+      await networkPortsApi.delete(portToDelete.id);
+      await loadData(); // Reload data
       setSnackbar({
         open: true,
-        message: `Port ${port.port_number} wurde gelöscht.`,
+        message: `Port ${portNum} wurde gelöscht.`,
         severity: 'success'
       });
     } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Ports: ${errorMessage}`,
-        severity: 'error'
-      });
+      // Corrected handleApiError usage
+      const message = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen des Ports: ${message}`, severity: 'error' });
     } finally {
       setLoading(false);
+      setPortToDelete(null);
     }
   };
 
-  // Port speichern
+  // Step 3: Close confirmation dialog without deleting
+  const handleCloseConfirmDialog = () => {
+     setConfirmDialogOpen(false);
+     setPortToDelete(null);
+  };
+
+  // Save Port - use camelCase
   const handleSave = async () => {
-    const portNumberValue = parseInt(portNumber, 10);
-    if (isNaN(portNumberValue) || portNumberValue < 1 || portNumberValue > 48) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie eine gültige Portnummer zwischen 1 und 48 ein.',
-        severity: 'error'
-      });
-      return;
-    }
+    const isValid = await validateForm();
+    if (!isValid) return;
 
+    // Use the correct NetworkPortCreate/Update types
+    const portData: NetworkPortCreate | NetworkPortUpdate = {
+        portNumber: parseInt(portNumber, 10),
+        switchId: selectedSwitch?.id,
+        description: description.trim() || null,
+        isActive: isActive,
+    };
+
+    setLoading(true);
     try {
-      setLoading(true);
+      let savedPort: NetworkPort;
       if (editMode && currentPort) {
-        // Port aktualisieren
-        const response = await networkPortsApi.update(currentPort.id, { port_number: portNumberValue });
-        if (response.data?.success) {
-          await loadPorts();
-          setSnackbar({
-            open: true,
-            message: `Port wurde aktualisiert.`,
-            severity: 'success'
-          });
-          handleCloseDialog();
-        }
+        savedPort = await networkPortsApi.update(currentPort.id, portData as NetworkPortUpdate);
+         setSnackbar({ open: true, message: `Port ${savedPort.portNumber} erfolgreich aktualisiert.`, severity: 'success' });
       } else {
-        // Neuen Port erstellen
-        const response = await networkPortsApi.create({ port_number: portNumberValue });
-        if (response.data?.success) {
-          await loadPorts();
-          setSnackbar({
-            open: true,
-            message: `Port ${portNumberValue} wurde erstellt.`,
-            severity: 'success'
-          });
-          handleCloseDialog();
-        }
+        savedPort = await networkPortsApi.create(portData as NetworkPortCreate);
+         setSnackbar({ open: true, message: `Port ${savedPort.portNumber} erfolgreich erstellt.`, severity: 'success' });
       }
-    } catch (error: any) {
-      console.error('Save Error:', error);
-      const errorMessage = handleApiError(error);
-      if (errorMessage.includes('existiert bereits')) {
-        setSnackbar({
-          open: true,
-          message: `Port ${portNumberValue} existiert bereits. Bitte wählen Sie eine andere Portnummer.`,
-          severity: 'error'
-        });
-      } else {
-        setSnackbar({
-          open: true,
-          message: `Fehler beim ${editMode ? 'Aktualisieren' : 'Erstellen'} des Ports: ${errorMessage}`,
-          severity: 'error'
-        });
-      }
+      handleCloseDialog();
+      await loadData();
+    } catch (error) {
+       // Corrected handleApiError usage
+       const message = handleApiError(error);
+       setSnackbar({ open: true, message: `${editMode ? 'Fehler beim Aktualisieren' : 'Fehler beim Erstellen'}: ${message}`, severity: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
-  // Aktualisieren der Daten
-  const handleRefresh = () => {
-    loadPorts();
-  };
-
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
+  // Columns definition - use camelCase dataKeys
+  const columns: AtlasColumn<typeof processedPorts[number]>[] = [
+    { dataKey: 'id', label: 'ID', width: 80, numeric: true },
+    { dataKey: 'portNumber', label: 'Port #', width: 100, numeric: true }, // Use camelCase
+    { dataKey: 'switchName', label: 'Switch', width: 200 },
+    { dataKey: 'description', label: 'Beschreibung', width: 300 },
+    {
+        dataKey: 'isActive',
+        label: 'Aktiv',
+        width: 80,
+        render: (value) => (
+            <Switch checked={Boolean(value)} readOnly size="small" color={value ? "success" : "default"} />
+        )
+    },
+    {
+        dataKey: 'actions',
+        label: 'Aktionen',
+        width: 120,
+        render: (_, row) => (
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Tooltip title="Bearbeiten">
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+                        <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+                    </IconButton>
+                </Tooltip>
+                <Tooltip title="Löschen">
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+                        <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+                    </IconButton>
+                </Tooltip>
+            </Box>
+        )
+    }
+];
 
   return (
     <Box>
@@ -368,7 +296,7 @@ const Ports: React.FC = () => {
       >
         <AtlasTable
           columns={columns}
-          rows={ports}
+          rows={processedPorts}
           loading={loading}
           heightPx={600}
           emptyMessage="Keine Ports vorhanden"
@@ -383,72 +311,79 @@ const Ports: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          {editMode ? (readOnly ? 'Port Details' : 'Port bearbeiten') : 'Neuer Port'}
+          {editMode ? 'Port bearbeiten' : 'Neuen Port hinzufügen'}
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              autoFocus={!readOnly}
-              margin="dense"
-              label="Portnummer"
-              type="number"
-              fullWidth
-              value={portNumber}
-              onChange={(e) => setPortNumber(e.target.value)}
-              inputProps={{ min: 1, max: 48 }}
-              error={snackbar.severity === 'error' && snackbar.message.includes('existiert bereits')}
-              helperText={snackbar.severity === 'error' && snackbar.message.includes('existiert bereits') ?
-                'Diese Portnummer existiert bereits' : ''}
-              disabled={readOnly}
-            />
-          </Box>
+        <DialogContent sx={{ pt: '10px !important' }}>
+            <Grid container spacing={2} sx={{mt: 1}}>
+                <Grid item xs={12} sm={6}>
+                    <TextField
+                        autoFocus
+                        required
+                        margin="dense"
+                        id="portNumber"
+                        label="Portnummer"
+                        type="number"
+                        fullWidth
+                        value={portNumber}
+                        onChange={(e) => {
+                            setPortNumber(e.target.value);
+                            if(portNumberError) setPortNumberError('');
+                        }}
+                        error={!!portNumberError}
+                        helperText={portNumberError}
+                        inputProps={{ min: 1 }}
+                    />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                     <Autocomplete<SwitchType, false, false, false>
+                        options={switches}
+                        getOptionLabel={(option: SwitchType) => option.name}
+                        value={selectedSwitch}
+                        onChange={(_, newValue: SwitchType | null) => setSelectedSwitch(newValue)}
+                        isOptionEqualToValue={(option: SwitchType, value: SwitchType) => option.id === value.id}
+                        renderInput={(params) => (
+                            <TextField {...params} margin="dense" label="Zugeordneter Switch (Optional)" />
+                        )}
+                    />
+                </Grid>
+                <Grid item xs={12}>
+                    <TextField
+                        margin="dense"
+                        id="description"
+                        label="Beschreibung (Optional)"
+                        type="text"
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                    />
+                </Grid>
+                <Grid item xs={12}>
+                     <FormControlLabel
+                        control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
+                        label="Aktiv"
+                    />
+                </Grid>
+            </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+          <Button onClick={handleCloseDialog}>Abbrechen</Button>
+          <Button onClick={handleSave} variant="contained" disabled={loading}>
+            {loading ? <CircularProgress size={24} /> : 'Speichern'}
           </Button>
-          {!readOnly && (
-            <Button
-              onClick={handleSave}
-              variant="contained"
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Speichern'}
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
 
-      {/* Kontextmenü */}
-      <Menu
-        open={contextMenu !== null}
-        onClose={handleContextMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-      >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <RouterIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Details anzeigen</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Bearbeiten</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Löschen</ListItemText>
-        </MenuItem>
-      </Menu>
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Port löschen?"
+        message={`Möchten Sie den Port "${portToDelete?.portNumber}" (ID: ${portToDelete?.id}) wirklich endgültig löschen?`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

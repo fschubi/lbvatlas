@@ -22,7 +22,8 @@ import {
   ListItemIcon,
   ListItemText,
   Chip,
-  Grid
+  Grid,
+  Link as MuiLink
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,12 +39,21 @@ import {
   LocationCity as LocationIcon,
   Home as AddressIcon,
   LocalShipping as SupplierIcon,
-  Note as NoteIcon
+  Note as NoteIcon,
+  Refresh as RefreshIcon,
+  Link as LinkIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Supplier } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { supplierApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import { Supplier, SupplierCreate, SupplierUpdate } from '../../types/settings';
+
+interface FormField<T> {
+  value: T;
+  error: boolean;
+  helperText: string;
+}
 
 const Suppliers: React.FC = () => {
   // State für die Daten
@@ -51,18 +61,19 @@ const Suppliers: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentSupplier, setCurrentSupplier] = useState<Supplier | null>(null);
   const [readOnly, setReadOnly] = useState<boolean>(false);
 
   // Form State
-  const [name, setName] = useState<string>('');
+  const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [description, setDescription] = useState<string>('');
-  const [website, setWebsite] = useState<string>('');
+  const [website, setWebsite] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [address, setAddress] = useState<string>('');
   const [city, setCity] = useState<string>('');
   const [postalCode, setPostalCode] = useState<string>('');
   const [contactPerson, setContactPerson] = useState<string>('');
-  const [contactEmail, setContactEmail] = useState<string>('');
+  const [contactEmail, setContactEmail] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [contactPhone, setContactPhone] = useState<string>('');
   const [contractNumber, setContractNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -88,10 +99,10 @@ const Suppliers: React.FC = () => {
 
   // Spalten für die Tabelle
   const columns: AtlasColumn<Supplier>[] = [
-    { dataKey: 'id', label: 'ID', width: 70, numeric: true },
     {
       dataKey: 'name',
       label: 'Name',
+      width: 200,
       render: (value, row) => (
         <Box
           sx={{
@@ -111,22 +122,15 @@ const Suppliers: React.FC = () => {
         </Box>
       )
     },
-    { dataKey: 'description', label: 'Beschreibung' },
     {
-      dataKey: 'address',
-      label: 'Adresse',
-      render: (value, row) => {
-        const addressParts = [];
-        if (value) addressParts.push(value);
-        if (row.postal_code || row.city) {
-          const cityLine = [row.postal_code, row.city].filter(Boolean).join(' ');
-          if (cityLine) addressParts.push(cityLine);
-        }
-        return addressParts.join(', ') || '-';
-      }
+      dataKey: 'website',
+      label: 'Website',
+      width: 200,
+      render: (value) => value ? <MuiLink href={value as string} target="_blank" rel="noopener noreferrer">{value as string}</MuiLink> : '-'
     },
-    { dataKey: 'contactPerson', label: 'Ansprechpartner' },
-    { dataKey: 'contactEmail', label: 'E-Mail' },
+    { dataKey: 'contactPerson', label: 'Ansprechpartner', width: 180, render: (value) => value || '-' },
+    { dataKey: 'contactEmail', label: 'E-Mail', width: 200, render: (value) => value || '-' },
+    { dataKey: 'contactPhone', label: 'Telefon', width: 150, render: (value) => value || '-' },
     {
       dataKey: 'isActive',
       label: 'Status',
@@ -139,36 +143,6 @@ const Suppliers: React.FC = () => {
           variant="outlined"
         />
       )
-    },
-    {
-      dataKey: 'createdAt',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value, row) => {
-        // Verwende den Wert aus dem row Objekt oder den übergebenen value
-        const dateValue = row?.createdAt || row?.created_at || value;
-
-        if (!dateValue) return 'Unbekannt';
-
-        try {
-          // Versuche das Datum zu parsen (funktioniert sowohl mit ISO 8601 als auch mit Postgres-Timestamp)
-          const date = new Date(dateValue as string);
-
-          // Prüfe ob das Datum gültig ist
-          if (isNaN(date.getTime())) {
-            return 'Ungültiges Datum';
-          }
-
-          // Formatiere das Datum auf deutsch
-          return date.toLocaleDateString('de-DE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          });
-        } catch (e) {
-          return 'Fehler beim Parsen';
-        }
-      }
     },
     {
       dataKey: 'actions',
@@ -193,17 +167,26 @@ const Suppliers: React.FC = () => {
   const loadSuppliers = async () => {
     setLoading(true);
     try {
-      const response = await settingsApi.getAllSuppliers();
-      if (response && response.data) {
-        setSuppliers(response.data);
+      // Erwarte das Objekt von der API
+      const response = await supplierApi.getAll();
+      console.log('DEBUG: API Response (raw) for suppliers:', response);
+
+      // Greife auf das data-Array innerhalb der Antwort zu
+      const rawData = response?.data || []; // Hier auf .data zugreifen
+
+      if (Array.isArray(rawData)) { // Prüfe, ob rawData (also response.data) ein Array ist
+        const formattedSuppliers = rawData.map((s: any) => toCamelCase(s) as Supplier);
+        console.log('DEBUG: Formatted suppliers:', formattedSuppliers);
+        setSuppliers(formattedSuppliers);
+      } else {
+        console.error('DEBUG: Expected an array in response.data, but received:', rawData);
+        setSuppliers([]);
       }
     } catch (error) {
       const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Lieferanten: ${errorMessage}`,
-        severity: 'error'
-      });
+      console.error('Fehler beim Laden der Lieferanten:', error);
+      setSnackbar({ open: true, message: `Fehler beim Laden der Lieferanten: ${errorMessage}`, severity: 'error' });
+      setSuppliers([]);
     } finally {
       setLoading(false);
     }
@@ -212,38 +195,27 @@ const Suppliers: React.FC = () => {
   // Dialog öffnen für neuen Eintrag
   const handleAddNew = () => {
     setEditMode(false);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentSupplier(null);
-    setName('');
-    setDescription('');
-    setWebsite('');
-    setAddress('');
-    setCity('');
-    setPostalCode('');
-    setContactPerson('');
-    setContactEmail('');
-    setContactPhone('');
-    setContractNumber('');
-    setNotes('');
-    setIsActive(true);
+    resetForm();
     setDialogOpen(true);
   };
 
   // Dialog öffnen für Bearbeitung
   const handleEdit = (supplier: Supplier) => {
     setEditMode(true);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentSupplier(supplier);
-    setName(supplier.name);
+    setName({ value: supplier.name, error: false, helperText: '' });
     setDescription(supplier.description || '');
-    setWebsite(supplier.website || '');
+    setWebsite({ value: supplier.website || '', error: false, helperText: '' });
     setAddress(supplier.address || '');
     setCity(supplier.city || '');
-    setPostalCode(supplier.postal_code || '');
-    setContactPerson(supplier.contact_person || '');
-    setContactEmail(supplier.contact_email || '');
-    setContactPhone(supplier.contact_phone || '');
-    setContractNumber(supplier.contract_number || '');
+    setPostalCode(supplier.postalCode || '');
+    setContactPerson(supplier.contactPerson || '');
+    setContactEmail({ value: supplier.contactEmail || '', error: false, helperText: '' });
+    setContactPhone(supplier.contactPhone || '');
+    setContractNumber(supplier.contractNumber || '');
     setNotes(supplier.notes || '');
     setIsActive(supplier.isActive);
     setDialogOpen(true);
@@ -257,7 +229,7 @@ const Suppliers: React.FC = () => {
 
     try {
       setLoading(true);
-      await settingsApi.deleteSupplier(supplier.id);
+      await supplierApi.delete(supplier.id);
 
       // Nach erfolgreichem Löschen die Liste aktualisieren
       loadSuppliers();
@@ -285,81 +257,70 @@ const Suppliers: React.FC = () => {
 
   // Speichern des Lieferanten
   const handleSave = async () => {
-    // Validierung
-    if (!name.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie einen Namen ein.',
-        severity: 'error'
-      });
-      return;
-    }
+    const isValid = await validateForm();
+    if (!isValid) return;
 
-    // Validierung der E-Mail-Adresse
-    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
-        severity: 'error'
-      });
-      return;
-    }
-
-    const supplierData = {
-      name,
-      description,
-      website,
-      address,
-      city,
-      postalCode,
-      contactPerson,
-      contactEmail,
-      contactPhone,
-      contractNumber,
-      notes,
-      isActive
+    const supplierData: Partial<Supplier> = {
+      name: name.value.trim(),
+      description: description.trim() || undefined,
+      website: website.value.trim() || undefined,
+      address: address.trim() || undefined,
+      city: city.trim() || undefined,
+      postalCode: postalCode.trim() || undefined,
+      contactPerson: contactPerson.trim() || undefined,
+      contactEmail: contactEmail.value.trim() || undefined,
+      contactPhone: contactPhone.trim() || undefined,
+      contractNumber: contractNumber.trim() || undefined,
+      notes: notes.trim() || undefined,
+      isActive: isActive
     };
+
+    // Konvertiere das Objekt in snake_case für das Backend
+    const backendData = toSnakeCase(supplierData);
+    console.log('DEBUG: Sende Daten an Backend (supplier, snake_case):', backendData);
 
     try {
       setLoading(true);
 
       if (editMode && currentSupplier) {
-        // Bestehenden Lieferanten aktualisieren
-        await settingsApi.updateSupplier(currentSupplier.id, supplierData);
-
-        // Liste der Lieferanten aktualisieren
-        loadSuppliers();
-
-        setSnackbar({
-          open: true,
-          message: `Lieferant "${name}" wurde aktualisiert.`,
-          severity: 'success'
-        });
+        await supplierApi.update(currentSupplier.id, backendData as SupplierUpdate);
+        setSnackbar({ open: true, message: `Lieferant "${name.value}" wurde aktualisiert.`, severity: 'success' });
       } else {
-        // Neuen Lieferanten erstellen
-        await settingsApi.createSupplier(supplierData as any);
-
-        // Liste der Lieferanten aktualisieren
-        loadSuppliers();
-
-        setSnackbar({
-          open: true,
-          message: `Lieferant "${name}" wurde erstellt.`,
-          severity: 'success'
-        });
+        await supplierApi.create(backendData as SupplierCreate);
+        setSnackbar({ open: true, message: `Lieferant "${name.value}" wurde erstellt.`, severity: 'success' });
       }
-
-      // Dialog schließen
+      loadSuppliers();
       setDialogOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       setLoading(false);
       const errorMessage = handleApiError(error);
+      if (errorMessage.toLowerCase().includes('name') && errorMessage.toLowerCase().includes('existiert bereits')) {
+        setName({ ...name, error: true, helperText: errorMessage });
+      } else {
+        setName({ ...name, error: true, helperText: 'Fehler beim Speichern. Prüfen Sie die Eingaben.' });
+      }
       setSnackbar({
         open: true,
-        message: `Fehler beim Speichern des Lieferanten: ${errorMessage}`,
+        message: `Fehler beim Speichern: ${errorMessage}`,
         severity: 'error'
       });
     }
+  };
+
+  // Reset Formularfelder
+  const resetForm = () => {
+    setName({ value: '', error: false, helperText: '' });
+    setDescription('');
+    setWebsite({ value: '', error: false, helperText: '' });
+    setAddress('');
+    setCity('');
+    setPostalCode('');
+    setContactPerson('');
+    setContactEmail({ value: '', error: false, helperText: '' });
+    setContactPhone('');
+    setContractNumber('');
+    setNotes('');
+    setIsActive(true);
   };
 
   // Handlefunktionen für das Kontextmenü
@@ -410,18 +371,18 @@ const Suppliers: React.FC = () => {
   // Neue Funktion für die Anzeige des Lieferanten beim Klick auf den Namen
   const handleViewSupplier = (supplier: Supplier) => {
     setEditMode(false);
-    setReadOnly(true);
+    setViewMode(true);
     setCurrentSupplier(supplier);
-    setName(supplier.name);
+    setName({ value: supplier.name, error: false, helperText: '' });
     setDescription(supplier.description || '');
-    setWebsite(supplier.website || '');
+    setWebsite({ value: supplier.website || '', error: false, helperText: '' });
     setAddress(supplier.address || '');
     setCity(supplier.city || '');
-    setPostalCode(supplier.postal_code || '');
-    setContactPerson(supplier.contact_person || '');
-    setContactEmail(supplier.contact_email || '');
-    setContactPhone(supplier.contact_phone || '');
-    setContractNumber(supplier.contract_number || '');
+    setPostalCode(supplier.postalCode || '');
+    setContactPerson(supplier.contactPerson || '');
+    setContactEmail({ value: supplier.contactEmail || '', error: false, helperText: '' });
+    setContactPhone(supplier.contactPhone || '');
+    setContractNumber(supplier.contractNumber || '');
     setNotes(supplier.notes || '');
     setIsActive(supplier.isActive);
     setDialogOpen(true);
@@ -430,6 +391,51 @@ const Suppliers: React.FC = () => {
   // Snackbar schließen
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Einfache URL-Validierung
+  const isValidUrl = (url: string): boolean => {
+    if (!url) return true;
+    try {
+      new URL(url);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // Einfache E-Mail-Validierung
+  const isValidEmail = (email: string): boolean => {
+    if (!email) return true;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Validierung
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setName(prev => ({ ...prev, error: false, helperText: '' }));
+    setWebsite(prev => ({ ...prev, error: false, helperText: '' }));
+    setContactEmail(prev => ({ ...prev, error: false, helperText: '' }));
+
+    if (!name.value.trim()) {
+      setName({ value: name.value, error: true, helperText: 'Name ist erforderlich' });
+      isValid = false;
+    }
+
+    if (website.value.trim() && !isValidUrl(website.value.trim())) {
+      setWebsite({ value: website.value, error: true, helperText: 'Ungültige URL (z.B. https://beispiel.com)' });
+      isValid = false;
+    }
+
+    if (contactEmail.value.trim() && !isValidEmail(contactEmail.value.trim())) {
+      setContactEmail({ value: contactEmail.value, error: true, helperText: 'Ungültige E-Mail-Adresse' });
+      isValid = false;
+    }
+
+    // Weitere Validierungen (PLZ, Telefon) könnten hier hinzugefügt werden
+
+    return isValid;
   };
 
   return (
@@ -463,6 +469,11 @@ const Suppliers: React.FC = () => {
         >
           Neuer Lieferant
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={loadSuppliers} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -515,210 +526,194 @@ const Suppliers: React.FC = () => {
       </Menu>
 
       {/* Dialog für Erstellen/Bearbeiten/Anzeigen */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="lg" fullWidth>
         <DialogTitle>
-          {readOnly ? `Lieferant anzeigen: ${currentSupplier?.name}` :
-            (editMode ? `Lieferant bearbeiten: ${currentSupplier?.name}` : 'Neuen Lieferanten erstellen')}
+          {viewMode ? 'Lieferantendetails' : (editMode ? 'Lieferant bearbeiten' : 'Neuen Lieferant erstellen')}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TextField
-                  label="Name"
-                  fullWidth
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Beschreibung"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Website"
-                  fullWidth
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="https://www.example.com"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <WebsiteIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Adresse"
-                  fullWidth
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Straße und Hausnummer"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <AddressIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  label="PLZ"
-                  fullWidth
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="12345"
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={8}>
-                <TextField
-                  label="Stadt"
-                  fullWidth
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Berlin"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LocationIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Ansprechpartner"
-                  fullWidth
-                  value={contactPerson}
-                  onChange={(e) => setContactPerson(e.target.value)}
-                  placeholder="Vor- und Nachname"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <ContactPersonIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="E-Mail"
-                  fullWidth
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="name@beispiel.de"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Telefon"
-                  fullWidth
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  placeholder="+49 123 456789"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <PhoneIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Vertragsnummer"
-                  fullWidth
-                  value={contractNumber}
-                  onChange={(e) => setContractNumber(e.target.value)}
-                  placeholder="V-123456"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <ContractIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Notizen"
-                  fullWidth
-                  multiline
-                  rows={3}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Interne Notizen zum Lieferanten..."
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <NoteIcon />
-                      </InputAdornment>
-                    ),
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <MuiSwitch
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      color="primary"
-                      disabled={readOnly}
-                    />
-                  }
-                  label="Lieferant aktiv"
-                />
-              </Grid>
+          <Grid container spacing={3} sx={{ pt: 1 }}>
+            {/* Linke Spalte: Allgemeine Infos & Kontakt */}
+            <Grid item xs={12} md={6}>
+              <Typography variant="h6" gutterBottom>Allgemeine Informationen</Typography>
+              <TextField
+                label="Lieferantenname"
+                fullWidth
+                value={name.value}
+                onChange={(e) => setName({ value: e.target.value, error: false, helperText: '' })}
+                required
+                error={name.error}
+                helperText={name.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                label="Beschreibung"
+                fullWidth
+                multiline
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                label="Website"
+                fullWidth
+                value={website.value}
+                onChange={(e) => setWebsite({ value: e.target.value, error: false, helperText: '' })}
+                error={website.error}
+                helperText={website.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <WebsiteIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Kontakt</Typography>
+              <TextField
+                label="Ansprechpartner"
+                fullWidth
+                value={contactPerson}
+                onChange={(e) => setContactPerson(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ContactPersonIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Kontakt E-Mail"
+                fullWidth
+                value={contactEmail.value}
+                onChange={(e) => setContactEmail({ value: e.target.value, error: false, helperText: '' })}
+                error={contactEmail.error}
+                helperText={contactEmail.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Kontakt Telefon"
+                fullWidth
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PhoneIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Grid>
-          </Box>
+
+            {/* Rechte Spalte: Adresse, Vertrag & Sonstiges */}
+            <Grid item xs={12} md={6}>
+              <Typography variant="h6" gutterBottom>Adresse</Typography>
+              <TextField
+                label="Adresse"
+                fullWidth
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LocationIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={8}>
+                  <TextField
+                    label="Stadt"
+                    fullWidth
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="PLZ"
+                    fullWidth
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+              </Grid>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Vertragsdetails & Notizen</Typography>
+              <TextField
+                label="Vertragsnummer"
+                fullWidth
+                value={contractNumber}
+                onChange={(e) => setContractNumber(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ContractIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Notizen"
+                fullWidth
+                multiline
+                rows={4}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <NoteIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    color="primary"
+                    disabled={viewMode}
+                  />
+                }
+                label="Lieferant aktiv"
+                sx={{ display: 'block', mt: 1 }}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+            {viewMode ? 'Schließen' : 'Abbrechen'}
           </Button>
-          {!readOnly && (
+          {!viewMode && (
             <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
               Speichern
             </Button>
@@ -729,15 +724,11 @@ const Suppliers: React.FC = () => {
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
           {snackbar.message}
         </Alert>
       </Snackbar>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,6 +19,9 @@ import {
   List,
   ListItem,
   ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Tooltip,
   ListItemSecondaryAction
 } from '@mui/material';
 import {
@@ -35,13 +38,15 @@ import {
   EventAvailable as EventAvailableIcon,
   CloudUpload as CloudUploadIcon,
   Download as DownloadIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 import { QRCodeSVG } from 'qrcode.react';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import api from '../utils/api';
 import MainLayout from '../layout/MainLayout';
 import DocumentUploader, { DocumentType, UploadedFile } from '../components/DocumentUploader';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 
 interface LicenseHistory {
   id: string;
@@ -184,6 +189,8 @@ const LicenseDetails: React.FC = () => {
     severity: 'success'
   });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<License | null>(null);
 
   // Status-Optionen und Software-Optionen
   const statusOptions = ['Aktiv', 'Abgelaufen', 'Gekündigt', 'Wartend'];
@@ -325,35 +332,47 @@ const LicenseDetails: React.FC = () => {
     }
   };
 
-  const handleDeleteLicense = async () => {
-    if (window.confirm('Sind Sie sicher, dass Sie diese Lizenz löschen möchten?')) {
-      try {
-        setLoading(true);
+  const handleDeleteLicense = () => {
+    if (license && confirmDialogOpen) {
+      setItemToDelete(license);
+    }
+  };
 
-        // In einer realen Anwendung würden wir die API verwenden:
-        // await api.licenses.deleteLicense(licenseId!);
+  const executeDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      setLoading(true);
 
-        // Für Entwicklungszwecke simulieren wir die Antwort
-        setTimeout(() => {
-          setLoading(false);
-          setSnackbar({
-            open: true,
-            message: 'Lizenz erfolgreich gelöscht',
-            severity: 'success'
-          });
-          // Zurück zur Übersichtsseite
-          navigate('/licenses');
-        }, 800);
-      } catch (error) {
-        console.error('Fehler beim Löschen der Lizenz:', error);
+      // In einer realen Anwendung würden wir die API verwenden:
+      // await api.licenses.deleteLicense(itemToDelete.id);
+
+      // Für Entwicklungszwecke simulieren wir die Antwort
+      setTimeout(() => {
+        setLoading(false);
         setSnackbar({
           open: true,
-          message: 'Fehler beim Löschen der Lizenz',
-          severity: 'error'
+          message: 'Lizenz erfolgreich gelöscht',
+          severity: 'success'
         });
-        setLoading(false);
-      }
+        navigate('/licenses');
+      }, 800);
+    } catch (error) {
+      console.error('Fehler beim Löschen der Lizenz:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Löschen der Lizenz',
+        severity: 'error'
+      });
+    } finally {
+      setConfirmDialogOpen(false);
+      setItemToDelete(null);
+      setLoading(false);
     }
+  };
+
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialogOpen(false);
+    setItemToDelete(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -666,6 +685,24 @@ const LicenseDetails: React.FC = () => {
         onUploadComplete={handleUploadComplete}
         isModal={true}
       />
+
+      {/* Confirmation Dialog für Löschen */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Lizenz löschen"
+        message={`Möchten Sie die Lizenz "${itemToDelete?.name}" (Produkt: ${itemToDelete?.type}) wirklich unwiderruflich löschen?`}
+        confirmText="Löschen"
+        cancelText="Abbrechen"
+      />
+
+      {/* Snackbar */}
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </MainLayout>
   );
 };

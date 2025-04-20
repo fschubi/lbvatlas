@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -20,7 +20,10 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Chip
+  Chip,
+  Grid,
+  Link as MuiLink,
+  InputAdornment,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -28,12 +31,25 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  Refresh as RefreshIcon,
+  Link as LinkIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Manufacturer } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { manufacturerApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import { Manufacturer, ManufacturerCreate, ManufacturerUpdate } from '../../types/settings';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+
+// Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
+interface FormField<T> {
+  value: T;
+  error: boolean;
+  helperText: string;
+}
 
 const Manufacturers: React.FC = () => {
   // State für die Daten
@@ -41,16 +57,18 @@ const Manufacturers: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentManufacturer, setCurrentManufacturer] = useState<Manufacturer | null>(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [manufacturerToDelete, setManufacturerToDelete] = useState<Manufacturer | null>(null);
 
   // Form State
-  const [name, setName] = useState<string>('');
+  const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [description, setDescription] = useState<string>('');
-  const [website, setWebsite] = useState<string>('');
-  const [contactInfo, setContactInfo] = useState<string>('');
-  const [logoUrl, setLogoUrl] = useState<string>('');
+  const [website, setWebsite] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
+  const [contactEmail, setContactEmail] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
+  const [contactPhone, setContactPhone] = useState<string>('');
   const [isActive, setIsActive] = useState<boolean>(true);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
 
   // UI State
   const [snackbar, setSnackbar] = useState<{
@@ -63,16 +81,42 @@ const Manufacturers: React.FC = () => {
     severity: 'info'
   });
 
-  // Neuer State für das Kontextmenü
+  // Kontextmenü
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
     mouseY: number;
     manufacturerId: number;
   } | null>(null);
 
-  // Spalten für die Tabelle
+  // Load manufacturers
+  const loadManufacturers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await manufacturerApi.getAll();
+      // Assume getAll() directly returns Manufacturer[] now
+      const fetchedManufacturers: Manufacturer[] = Array.isArray(response) ? response : [];
+      setManufacturers(fetchedManufacturers);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      setSnackbar({
+        open: true,
+        message: `Fehler beim Laden der Hersteller: ${errorMessage}`,
+        severity: 'error'
+      });
+      setManufacturers([]); // Clear on error
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // API-Daten laden
+  useEffect(() => {
+    loadManufacturers();
+  }, [loadManufacturers]);
+
+  // Spalten für die AtlasTable-Komponente
   const columns: AtlasColumn<Manufacturer>[] = [
-    { dataKey: 'id', label: 'ID', width: 70, numeric: true },
+    // { dataKey: 'id', label: 'ID', width: 70, numeric: true }, // ID-Spalte ausgeblendet
     {
       dataKey: 'name',
       label: 'Name',
@@ -95,8 +139,14 @@ const Manufacturers: React.FC = () => {
         </Box>
       )
     },
-    { dataKey: 'description', label: 'Beschreibung' },
-    { dataKey: 'website', label: 'Website', width: 180 },
+    {
+      dataKey: 'website',
+      label: 'Website',
+      width: 250,
+      render: (value) => value ? <MuiLink href={value as string} target="_blank" rel="noopener noreferrer">{value as string}</MuiLink> : '-'
+    },
+    { dataKey: 'contactEmail', label: 'Kontakt E-Mail', width: 200, render: (value) => value || '-' },
+    { dataKey: 'contactPhone', label: 'Kontakt Telefon', width: 150, render: (value) => value || '-' },
     {
       dataKey: 'isActive',
       label: 'Status',
@@ -111,130 +161,107 @@ const Manufacturers: React.FC = () => {
       )
     },
     {
-      dataKey: 'createdAt',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value, row) => {
-        // Verwende den Wert aus dem row Objekt oder den übergebenen value
-        const dateValue = row?.createdAt || value;
-
-        if (!dateValue) return 'Unbekannt';
-
-        try {
-          // Versuche das Datum zu parsen (funktioniert sowohl mit ISO 8601 als auch mit Postgres-Timestamp)
-          const date = new Date(dateValue as string);
-
-          // Prüfe ob das Datum gültig ist
-          if (isNaN(date.getTime())) {
-            return 'Ungültiges Datum';
-          }
-
-          // Formatiere das Datum auf deutsch
-          return date.toLocaleDateString('de-DE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          });
-        } catch (e) {
-          return 'Fehler beim Parsen';
-        }
-      }
-    },
-    {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
 
-  // Daten laden
-  useEffect(() => {
-    loadManufacturers();
-  }, []);
-
-  const loadManufacturers = async () => {
-    setLoading(true);
-    try {
-      const response = await settingsApi.getAllManufacturers();
-      if (response && response.data) {
-        setManufacturers(response.data);
-      }
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Hersteller: ${errorMessage}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
+  // Reset Formularfelder
+  const resetForm = () => {
+    setName({ value: '', error: false, helperText: '' });
+    setDescription('');
+    setWebsite({ value: '', error: false, helperText: '' });
+    setContactEmail({ value: '', error: false, helperText: '' });
+    setContactPhone('');
+    setIsActive(true);
   };
 
-  // Dialog öffnen für neuen Eintrag
+  // Dialog öffnen für neuen Hersteller
   const handleAddNew = () => {
     setEditMode(false);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentManufacturer(null);
-    setName('');
-    setDescription('');
-    setWebsite('');
-    setContactInfo('');
-    setLogoUrl('');
-    setIsActive(true);
+    resetForm();
     setDialogOpen(true);
   };
 
   // Dialog öffnen für Bearbeitung
   const handleEdit = (manufacturer: Manufacturer) => {
     setEditMode(true);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentManufacturer(manufacturer);
-    setName(manufacturer.name);
+    setName({ value: manufacturer.name, error: false, helperText: '' });
     setDescription(manufacturer.description || '');
-    setWebsite(manufacturer.website || '');
-    setContactInfo(manufacturer.contactInfo || '');
-    setLogoUrl(manufacturer.logoUrl || '');
+    setWebsite({ value: manufacturer.website || '', error: false, helperText: '' });
+    setContactEmail({ value: manufacturer.contactEmail || '', error: false, helperText: '' });
+    setContactPhone(manufacturer.contactPhone || '');
     setIsActive(manufacturer.isActive);
     setDialogOpen(true);
   };
 
-  // Löschen eines Herstellers
-  const handleDelete = async (manufacturer: Manufacturer) => {
-    if (!window.confirm(`Möchten Sie den Hersteller "${manufacturer.name}" wirklich löschen?`)) {
-      return;
-    }
+  // Anzeigen eines Herstellers
+  const handleViewManufacturer = (manufacturer: Manufacturer) => {
+    setEditMode(false);
+    setViewMode(true);
+    setCurrentManufacturer(manufacturer);
+    setName({ value: manufacturer.name, error: false, helperText: '' });
+    setDescription(manufacturer.description || '');
+    setWebsite({ value: manufacturer.website || '', error: false, helperText: '' });
+    setContactEmail({ value: manufacturer.contactEmail || '', error: false, helperText: '' });
+    setContactPhone(manufacturer.contactPhone || '');
+    setIsActive(manufacturer.isActive);
+    setDialogOpen(true);
+  };
+
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (manufacturer: Manufacturer) => {
+    setManufacturerToDelete(manufacturer);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!manufacturerToDelete) return;
+
+    // Close the confirmation dialog first
+    setConfirmDialogOpen(false);
+    const manufacturerName = manufacturerToDelete.name; // Store name before clearing
 
     try {
       setLoading(true);
-      await settingsApi.deleteManufacturer(manufacturer.id);
-
-      // Nach erfolgreichem Löschen die Liste aktualisieren
-      loadManufacturers();
-
-      setSnackbar({
-        open: true,
-        message: `Hersteller "${manufacturer.name}" wurde gelöscht.`,
-        severity: 'success'
-      });
-    } catch (error) {
+      await manufacturerApi.delete(manufacturerToDelete.id);
+      loadManufacturers(); // Reload data
+      setSnackbar({ open: true, message: `Hersteller "${manufacturerName}" wurde gelöscht.`, severity: 'success' });
+    } catch (error: any) {
+      const specificMessage = error?.data?.message || error?.message;
+      const errorMessage = specificMessage || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
       setLoading(false);
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Herstellers: ${errorMessage}`,
-        severity: 'error'
-      });
+      setManufacturerToDelete(null); // Clear the manufacturer to delete
     }
   };
+
+  // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setManufacturerToDelete(null);
+   };
 
   // Dialog schließen
   const handleCloseDialog = () => {
@@ -243,65 +270,92 @@ const Manufacturers: React.FC = () => {
 
   // Speichern des Herstellers
   const handleSave = async () => {
-    // Validierung
-    if (!name.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie einen Namen ein.',
-        severity: 'error'
-      });
-      return;
-    }
+    const isValid = await validateForm();
+    if (!isValid) return;
 
-    const manufacturerData = {
-      name,
-      description,
-      website,
-      logoUrl,
-      contactInfo,
-      isActive
+    const manufacturerData: Partial<Manufacturer> = {
+      name: name.value.trim(),
+      description: description.trim() || undefined,
+      website: website.value.trim() || undefined,
+      contactEmail: contactEmail.value.trim() || undefined,
+      contactPhone: contactPhone.trim() || undefined,
+      isActive: isActive
     };
+
+    const backendData = toSnakeCase(manufacturerData);
+    console.log('DEBUG: Sende Daten an Backend (manufacturer, snake_case):', backendData);
 
     try {
       setLoading(true);
-
       if (editMode && currentManufacturer) {
-        // Bestehenden Hersteller aktualisieren
-        await settingsApi.updateManufacturer(currentManufacturer.id, manufacturerData);
-
-        // Liste der Hersteller aktualisieren
-        loadManufacturers();
-
-        setSnackbar({
-          open: true,
-          message: `Hersteller "${name}" wurde aktualisiert.`,
-          severity: 'success'
-        });
+        await manufacturerApi.update(currentManufacturer.id, backendData as ManufacturerUpdate);
+        setSnackbar({ open: true, message: `Hersteller "${name.value}" wurde aktualisiert.`, severity: 'success' });
       } else {
-        // Neuen Hersteller erstellen
-        await settingsApi.createManufacturer(manufacturerData);
-
-        // Liste der Hersteller aktualisieren
-        loadManufacturers();
-
-        setSnackbar({
-          open: true,
-          message: `Hersteller "${name}" wurde erstellt.`,
-          severity: 'success'
-        });
+        await manufacturerApi.create(backendData as ManufacturerCreate);
+        setSnackbar({ open: true, message: `Hersteller "${name.value}" wurde erstellt.`, severity: 'success' });
       }
-
-      // Dialog schließen
+      loadManufacturers();
       setDialogOpen(false);
-    } catch (error) {
-      setLoading(false);
+    } catch (error: any) {
       const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Speichern des Herstellers: ${errorMessage}`,
-        severity: 'error'
-      });
+      if (errorMessage.toLowerCase().includes('name') && errorMessage.toLowerCase().includes('existiert bereits')) {
+          setName({ ...name, error: true, helperText: errorMessage });
+      } else {
+          setName({ ...name, error: true, helperText: 'Fehler beim Speichern. Prüfen Sie die Eingaben.' });
+      }
+      setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Snackbar schließen
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Einfache URL-Validierung
+  const isValidUrl = (url: string): boolean => {
+    if (!url) return true; // Leer ist erlaubt
+    try {
+      new URL(url);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // Einfache E-Mail-Validierung
+  const isValidEmail = (email: string): boolean => {
+    if (!email) return true; // Leer ist erlaubt
+    // Einfacher Regex - für Produktion ggf. komplexeren verwenden
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Validierung
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setName(prev => ({ ...prev, error: false, helperText: '' }));
+    setWebsite(prev => ({ ...prev, error: false, helperText: '' }));
+    setContactEmail(prev => ({ ...prev, error: false, helperText: '' }));
+
+    if (!name.value.trim()) {
+      setName({ value: name.value, error: true, helperText: 'Name ist erforderlich' });
+      isValid = false;
+    }
+
+    if (website.value.trim() && !isValidUrl(website.value.trim())) {
+      setWebsite({ value: website.value, error: true, helperText: 'Ungültige URL (z.B. https://beispiel.com)' });
+      isValid = false;
+    }
+
+    if (contactEmail.value.trim() && !isValidEmail(contactEmail.value.trim())) {
+      setContactEmail({ value: contactEmail.value, error: true, helperText: 'Ungültige E-Mail-Adresse' });
+      isValid = false;
+    }
+
+    return isValid;
   };
 
   // Handlefunktionen für das Kontextmenü
@@ -343,29 +397,10 @@ const Manufacturers: React.FC = () => {
     if (contextMenu) {
       const manufacturer = manufacturers.find(m => m.id === contextMenu.manufacturerId);
       if (manufacturer) {
-        handleDelete(manufacturer);
+        handleDeleteRequest(manufacturer);
       }
       handleContextMenuClose();
     }
-  };
-
-  // Neue Funktion für die Anzeige des Herstellers beim Klick auf den Namen
-  const handleViewManufacturer = (manufacturer: Manufacturer) => {
-    setEditMode(false);
-    setReadOnly(true);
-    setCurrentManufacturer(manufacturer);
-    setName(manufacturer.name);
-    setDescription(manufacturer.description || '');
-    setWebsite(manufacturer.website || '');
-    setContactInfo(manufacturer.contactInfo || '');
-    setLogoUrl(manufacturer.logoUrl || '');
-    setIsActive(manufacturer.isActive);
-    setDialogOpen(true);
-  };
-
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -399,6 +434,11 @@ const Manufacturers: React.FC = () => {
         >
           Neuer Hersteller
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={loadManufacturers} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -450,86 +490,109 @@ const Manufacturers: React.FC = () => {
         </MenuItem>
       </Menu>
 
-      {/* Dialog für Erstellen/Bearbeiten */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      {/* Dialog */}
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
-          {readOnly ? `Hersteller anzeigen: ${currentManufacturer?.name}` :
-            (editMode ? `Hersteller bearbeiten: ${currentManufacturer?.name}` : 'Neuen Hersteller erstellen')}
+          {viewMode ? 'Herstellerdetails' : (editMode ? 'Hersteller bearbeiten' : 'Neuen Hersteller erstellen')}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Name"
-              fullWidth
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <TextField
-              label="Beschreibung"
-              fullWidth
-              multiline
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <TextField
-              label="Website"
-              fullWidth
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://www.example.com"
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <TextField
-              label="Logo URL"
-              fullWidth
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://example.com/logo.png"
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-            <TextField
-              label="Kontaktinformationen"
-              fullWidth
-              multiline
-              rows={2}
-              value={contactInfo}
-              onChange={(e) => setContactInfo(e.target.value)}
-              placeholder="E-Mail, Telefon, Ansprechpartner, etc."
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
+          <Grid container spacing={3} sx={{ pt: 1 }}>
+            {/* Linke Spalte */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Herstellername"
+                fullWidth
+                value={name.value}
+                onChange={(e) => setName({ value: e.target.value, error: false, helperText: '' })}
+                required
+                error={name.error}
+                helperText={name.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                label="Beschreibung"
+                fullWidth
+                multiline
+                rows={4}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+              />
+               <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    color="primary"
+                    disabled={viewMode}
+                  />
+                }
+                label="Hersteller aktiv"
+                sx={{ mb: 2 }}
+              />
+            </Grid>
 
-            <FormControlLabel
-              control={
-                <MuiSwitch
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  color="primary"
-                  disabled={readOnly}
-                />
-              }
-              label="Hersteller aktiv"
-            />
-          </Box>
+            {/* Rechte Spalte */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Website"
+                fullWidth
+                value={website.value}
+                onChange={(e) => setWebsite({ value: e.target.value, error: false, helperText: '' })}
+                error={website.error}
+                helperText={website.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LinkIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Kontakt E-Mail"
+                fullWidth
+                value={contactEmail.value}
+                onChange={(e) => setContactEmail({ value: e.target.value, error: false, helperText: '' })}
+                error={contactEmail.error}
+                helperText={contactEmail.helperText}
+                disabled={viewMode}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Kontakt Telefon"
+                fullWidth
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                disabled={viewMode}
+                 sx={{ mb: 2 }}
+                 InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PhoneIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+            {viewMode ? 'Schließen' : 'Abbrechen'}
           </Button>
-          {!readOnly && (
+          {!viewMode && (
             <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
               Speichern
             </Button>
@@ -537,18 +600,24 @@ const Manufacturers: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Hersteller löschen?"
+        message={`Möchten Sie den Hersteller "${manufacturerToDelete?.name}" wirklich endgültig löschen? Dies kann nicht rückgängig gemacht werden.`}
+        confirmText="Löschen"
+      />
+
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
           {snackbar.message}
         </Alert>
       </Snackbar>

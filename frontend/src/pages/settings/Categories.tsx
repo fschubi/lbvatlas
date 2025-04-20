@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -32,42 +32,71 @@ import {
   Category as CategoryIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { categoryApi } from '../../utils/api';
+import { categoryApi } from '../../api/api';
 import handleApiError from '../../utils/errorHandler';
 import { Category, CategoryCreate, CategoryUpdate } from '../../types/settings';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
-const Categories: React.FC = () => {
+// Add missing type/interface if needed from the file
+interface SelectOption {
+  id: number;
+  label: string;
+}
+
+// Interface für ContextMenu-Status
+interface ContextMenuState {
+  mouseX: number;
+  mouseY: number;
+  item: Category | null;
+}
+
+// Interface für Snackbar-Status
+interface SnackbarState {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'info' | 'warning';
+}
+
+const Categories = () => {
   // State für die Daten
   const [categories, setCategories] = useState<Category[]>([]);
+  const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
-  const [editMode, setEditMode] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
   const [currentCategory, setCurrentCategory] = useState<Category | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState<string>('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState<string>('');
+  const [newCategoryParentId, setNewCategoryParentId] = useState<number | ''>('');
+  const [newCategoryIsActive, setNewCategoryIsActive] = useState<boolean>(true);
+  const [parentCategoryOptions, setParentCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [nameError, setNameError] = useState<string>('');
+  const [parentError, setParentError] = useState<string>('');
 
-  // Form State
-  const [name, setName] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
-  const [isActive, setIsActive] = useState<boolean>(true);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
-
-  // UI State
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-  }>({
+  // State für Snackbar
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
     severity: 'info'
   });
 
-  // Neuer State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    categoryId: number;
-  } | null>(null);
+  // State für ConfirmationDialog
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
+  const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
+
+  // State für ContextMenu
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // State für Suche
+  const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // Platzhalter für Berechtigungen
+  const { hasPermission } = { hasPermission: (p: string) => true }; // usePermissions(); // Auskommentiert
+  const canCreate = hasPermission('categories.create');
+  const canUpdate = hasPermission('categories.update');
+  const canDelete = hasPermission('categories.delete');
 
   // Spalten für die Tabelle
   const columns: AtlasColumn<Category>[] = [
@@ -117,37 +146,51 @@ const Categories: React.FC = () => {
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
 
-  // Daten laden
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  const loadCategories = async () => {
+  // Daten laden (mit Korrektur für API-Antwort und Typisierung)
+  const loadCategories = useCallback(async () => {
+    console.log('[Categories] Loading categories...');
     setLoading(true);
+    setCategories([]); // Clear existing data before loading
+    setParentCategoryOptions([]);
     try {
-      const response = await categoryApi.getAll();
-      console.log('DEBUG: Rohdaten von API (Categories Response Objekt):', response);
-      if (response && response.data) {
-        const formattedCategories = response.data.map(cat => toCamelCase(cat) as Category);
-        console.log('DEBUG: Konvertierte Kategorien (camelCase):', formattedCategories);
-        setCategories(formattedCategories);
-      } else {
-        console.warn('Unerwartete Datenstruktur von categoryApi.getAll:', response);
-        setCategories([]);
+      // categoryApi.getAll() gibt direkt Category[] zurück (gemäß api.ts)
+      const fetchedCategories: Category[] = await categoryApi.getAll();
+      // Korrigiere die Zuweisung
+      setCategories(fetchedCategories || []); // Stelle sicher, dass es ein Array ist, falls API undefined liefert
+      console.log('[Categories] Fetched categories:', fetchedCategories);
+
+      // Create options for parent category dropdown
+      if (Array.isArray(fetchedCategories)) { // Prüfe zur Sicherheit
+        const options = fetchedCategories.reduce((acc: SelectOption[], cat: Category) => {
+            if (cat.isActive) {
+                acc.push({ id: cat.id, label: cat.name });
+            }
+            return acc;
+        }, []);
+        setParentCategoryOptions(options);
+        console.log('[Categories] Parent category options set:', options);
       }
+
     } catch (error) {
+      console.error('[Categories] Error loading categories:', error);
       const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
@@ -155,45 +198,61 @@ const Categories: React.FC = () => {
         severity: 'error'
       });
       setCategories([]);
+      setParentCategoryOptions([]);
     } finally {
+      console.log('[Categories] Finished loading, setLoading(false)');
       setLoading(false);
     }
-  };
+  }, []);
+
+  // --- useEffect Hook hinzufügen --- //
+  useEffect(() => {
+    console.log('[Categories] Component mounted, calling loadCategories.');
+    loadCategories();
+  }, [loadCategories]); // Dependency array includes the useCallback function
 
   // Dialog öffnen für neuen Eintrag
   const handleAddNew = () => {
-    setEditMode(false);
-    setReadOnly(false);
+    setIsEditing(false);
     setCurrentCategory(null);
-    setName('');
-    setDescription('');
-    setIsActive(true);
-    setDialogOpen(true);
+    setNewCategoryName('');
+    setNewCategoryDescription('');
+    setNewCategoryParentId('');
+    setNewCategoryIsActive(true);
+    setModalOpen(true);
   };
 
   // Dialog öffnen für Bearbeitung
   const handleEdit = (category: Category) => {
-    setEditMode(true);
-    setReadOnly(false);
+    setIsEditing(true);
     setCurrentCategory(category);
-    setName(category.name);
-    setDescription(category.description);
-    setIsActive(category.isActive ?? true);
-    setDialogOpen(true);
+    setNewCategoryName(category.name);
+    setNewCategoryDescription(category.description || '');
+    setNewCategoryParentId(category.parentId || '');
+    setNewCategoryIsActive(category.isActive ?? true);
+    setModalOpen(true);
   };
 
-  // Löschen einer Kategorie
-  const handleDelete = async (category: Category) => {
-    if (!window.confirm(`Möchten Sie die Kategorie "${category.name}" wirklich löschen?`)) {
-      return;
-    }
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (category: Category) => {
+    setItemToDelete(category);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!itemToDelete) return;
+
+    // Close the confirmation dialog first
+    setConfirmDialogOpen(false);
+
     try {
       setLoading(true);
-      await categoryApi.delete(category.id);
-      loadCategories(); // Daten neu laden
+      await categoryApi.delete(itemToDelete.id);
+      loadCategories(); // Reload data
       setSnackbar({
         open: true,
-        message: `Kategorie "${category.name}" wurde gelöscht.`,
+        message: `Kategorie "${itemToDelete.name}" wurde gelöscht.`,
         severity: 'success'
       });
     } catch (error) {
@@ -203,64 +262,68 @@ const Categories: React.FC = () => {
         message: `Fehler beim Löschen der Kategorie: ${errorMessage}`,
         severity: 'error'
       });
+    } finally {
       setLoading(false);
+      setItemToDelete(null); // Clear the category to delete
     }
   };
 
+  // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setItemToDelete(null);
+   };
+
   // Dialog schließen
   const handleCloseDialog = () => {
-    setDialogOpen(false);
+    setModalOpen(false);
   };
 
   // Speichern der Kategorie
   const handleSave = async () => {
-    if (!name.trim()) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie einen Namen ein.',
-        severity: 'error'
-      });
+    if (!newCategoryName.trim()) {
+      setSnackbar({ open: true, message: 'Bitte geben Sie einen Namen ein.', severity: 'error' });
       return;
     }
 
+    // Prevent saving if name already exists (check only if name changed or new category)
+    const isNew = !isEditing;
+    const nameChanged = isEditing && currentCategory && newCategoryName !== currentCategory.name;
+
+    if (isNew || nameChanged) {
+        const nameExists = await categoryApi.checkCategoryNameExists(newCategoryName, currentCategory?.id);
+        if (nameExists) {
+            setSnackbar({ open: true, message: `Eine Kategorie mit dem Namen "${newCategoryName}" existiert bereits.`, severity: 'warning' });
+            return;
+        }
+    }
+
     const categoryData: CategoryCreate | CategoryUpdate = {
-      name: name.trim(),
-      description: description.trim(),
-      isActive: isActive
-      // parentId fehlt hier noch, falls benötigt
+      name: newCategoryName.trim(),
+      description: newCategoryDescription.trim(),
+      isActive: newCategoryIsActive,
+      parentId: typeof newCategoryParentId === 'number' ? newCategoryParentId : null,
     };
 
-    // Konvertiere zu snake_case für das Backend
-    const backendData = toSnakeCase(categoryData);
-
+    setLoading(true); // Indicate loading during save
     try {
-      setLoading(true);
-      if (editMode && currentCategory) {
-        await categoryApi.update(currentCategory.id, backendData as CategoryUpdate);
-        loadCategories(); // Daten neu laden
-        setSnackbar({
-          open: true,
-          message: `Kategorie "${name}" wurde aktualisiert.`,
-          severity: 'success'
-        });
+      if (isEditing && currentCategory) {
+        console.log('[Categories] Updating category:', currentCategory.id, categoryData);
+        await categoryApi.update(currentCategory.id, categoryData as CategoryUpdate);
+        setSnackbar({ open: true, message: 'Kategorie erfolgreich aktualisiert.', severity: 'success' });
       } else {
-        await categoryApi.create(backendData as CategoryCreate);
-        loadCategories(); // Daten neu laden
-        setSnackbar({
-          open: true,
-          message: `Kategorie "${name}" wurde erstellt.`,
-          severity: 'success'
-        });
+        console.log('[Categories] Creating category:', categoryData);
+        await categoryApi.create(categoryData as CategoryCreate);
+        setSnackbar({ open: true, message: 'Kategorie erfolgreich erstellt.', severity: 'success' });
       }
-      setDialogOpen(false);
+      setModalOpen(false);
+      loadCategories(); // Reload data after saving
     } catch (error) {
-      setLoading(false);
+      console.error('[Categories] Error saving category:', error);
       const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Speichern der Kategorie: ${errorMessage}`,
-        severity: 'error'
-      });
+      setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setLoading(false); // Ensure loading is set to false
     }
   };
 
@@ -281,7 +344,7 @@ const Categories: React.FC = () => {
     setContextMenu({
       mouseX: event.clientX,
       mouseY: event.clientY,
-      categoryId
+      item: categories.find(c => c.id === categoryId) || null
     });
   };
 
@@ -291,7 +354,7 @@ const Categories: React.FC = () => {
 
   const handleContextMenuView = () => {
     if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.categoryId);
+      const category = categories.find(c => c.id === contextMenu.item?.id);
       if (category) {
         handleViewCategory(category);
       }
@@ -301,7 +364,7 @@ const Categories: React.FC = () => {
 
   const handleContextMenuEdit = () => {
     if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.categoryId);
+      const category = categories.find(c => c.id === contextMenu.item?.id);
       if (category) {
         handleEdit(category);
       }
@@ -311,9 +374,9 @@ const Categories: React.FC = () => {
 
   const handleContextMenuDelete = () => {
     if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.categoryId);
+      const category = categories.find(c => c.id === contextMenu.item?.id);
       if (category) {
-        handleDelete(category);
+        handleDeleteRequest(category);
       }
       handleContextMenuClose();
     }
@@ -321,13 +384,13 @@ const Categories: React.FC = () => {
 
   // Neue Funktion für die Anzeige der Kategorie beim Klick auf den Namen
   const handleViewCategory = (category: Category) => {
-    setEditMode(false);
-    setReadOnly(true);
+    setIsEditing(false);
     setCurrentCategory(category);
-    setName(category.name);
-    setDescription(category.description);
-    setIsActive(category.isActive ?? true);
-    setDialogOpen(true);
+    setNewCategoryName(category.name);
+    setNewCategoryDescription(category.description || '');
+    setNewCategoryParentId(category.parentId || '');
+    setNewCategoryIsActive(category.isActive ?? true);
+    setModalOpen(true);
   };
 
   return (
@@ -419,42 +482,33 @@ const Categories: React.FC = () => {
       </Menu>
 
       {/* Dialog für Erstellen/Bearbeiten */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={modalOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {readOnly ? `Kategorie anzeigen: ${currentCategory?.name}` :
-            (editMode ? `Kategorie bearbeiten: ${currentCategory?.name}` : 'Neue Kategorie erstellen')}
+          {isEditing ? `Kategorie bearbeiten: ${currentCategory?.name}` : 'Neue Kategorie erstellen'}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="Name"
               fullWidth
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
               required
-              InputProps={{
-                readOnly: readOnly
-              }}
             />
             <TextField
               label="Beschreibung"
               fullWidth
               multiline
               rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              InputProps={{
-                readOnly: readOnly
-              }}
+              value={newCategoryDescription}
+              onChange={(e) => setNewCategoryDescription(e.target.value)}
             />
-
             <FormControlLabel
               control={
                 <MuiSwitch
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
+                  checked={newCategoryIsActive}
+                  onChange={(e) => setNewCategoryIsActive(e.target.checked)}
                   color="primary"
-                  disabled={readOnly}
                 />
               }
               label="Kategorie aktiv"
@@ -463,15 +517,23 @@ const Categories: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
+            Abbrechen
           </Button>
-          {!readOnly && (
-            <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
-              Speichern
-            </Button>
-          )}
+          <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
+            Speichern
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Kategorie löschen?"
+        message={`Möchten Sie die Kategorie "${itemToDelete?.name}" wirklich endgültig löschen? Dies kann nicht rückgängig gemacht werden.`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

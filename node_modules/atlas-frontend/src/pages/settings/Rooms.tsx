@@ -44,6 +44,7 @@ import { roomApi, locationApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import { Room, RoomCreate, RoomUpdate, Location } from '../../types/settings';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 // Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
 interface FormField<T> {
@@ -62,6 +63,8 @@ const Rooms: React.FC = () => {
   const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [readOnly, setReadOnly] = useState<boolean>(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
 
   // Form State
   const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
@@ -216,14 +219,20 @@ const Rooms: React.FC = () => {
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
@@ -414,6 +423,41 @@ const Rooms: React.FC = () => {
       handleContextMenuClose();
     }
   };
+
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (room: Room) => {
+    setRoomToDelete(room);
+    setConfirmDialogOpen(true);
+  };
+
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!roomToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const roomName = roomToDelete.name; // Store name
+
+    try {
+      setLoading(true);
+      await roomApi.delete(roomToDelete.id);
+      loadRooms(); // Reload data
+      setSnackbar({ open: true, message: `Raum "${roomName}" wurde gelöscht.`, severity: 'success' });
+    } catch (error: any) {
+        // Extract specific message if available
+        const specificMessage = error?.data?.message || error?.message;
+        const errorMessage = specificMessage || handleApiError(error);
+        setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setLoading(false);
+      setRoomToDelete(null); // Clear the room to delete
+    }
+  };
+
+   // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setRoomToDelete(null);
+   };
 
   return (
     <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh', width: '100%' }}>
@@ -620,6 +664,16 @@ const Rooms: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Raum löschen?"
+        message={`Möchten Sie den Raum "${roomToDelete?.name}" wirklich endgültig löschen? Zugeordnete Elemente könnten davon betroffen sein.`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

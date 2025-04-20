@@ -1,441 +1,507 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Paper,
   Typography,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  TextField,
-  IconButton,
-  Tooltip,
-  Snackbar,
-  Alert,
-  FormControlLabel,
-  Switch as MuiSwitch,
   CircularProgress,
+  Alert,
+  Snackbar,
   Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  SelectChangeEvent,
+  TextField,
+  IconButton,
+  Tooltip,
+  FormControlLabel,
+  Switch as MuiSwitch,
+  InputAdornment,
   Autocomplete,
-  InputAdornment
+  Link as MuiLink,
+  Chip,
 } from '@mui/material';
 import {
   Add as AddIcon,
-  MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Router as RouterIcon,
-  Business as BuildingIcon
+  Router as SwitchIcon,
+  Refresh as RefreshIcon,
+  MoreVert as MoreVertIcon,
+  AccountTree as ManufacturerIcon,
+  LocationOn as LocationIcon,
+  MeetingRoom as RoomIcon,
+  Notes as NotesIcon,
+  SettingsEthernet as EthernetIcon,
+  Inventory as CabinetIcon,
+  Height as RackPositionIcon,
 } from '@mui/icons-material';
-import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
-import { Switch, Location, Manufacturer, Room } from '../../types/settings';
-import { settingsApi } from '../../utils/api';
+import { locationApi, manufacturerApi, roomApi, switchApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
+import { Location, Manufacturer } from '../../types/settings';
+import { Room } from '../../types/settings';
+import { Switch, SwitchCreate, SwitchUpdate } from '../../types/network';
+import { useAuth } from '../../context/AuthContext';
+import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
+
+interface FormField<T> {
+  value: T;
+  error: boolean;
+  helperText: string;
+}
+
+// Type für Sortierkonfiguration
+interface SortConfig {
+  column: keyof (Switch & { locationName?: string, roomName?: string, manufacturerName?: string }) | null;
+  direction: 'asc' | 'desc';
+}
+
+const defaultLocation: Location = { id: 0, name: '', description: '', address: '', city: '', postalCode: '', country: '', createdAt: '', updatedAt: '', isActive: true };
+const defaultRoom: Room = { id: 0, name: '', description: '', locationId: 0, createdAt: '', updatedAt: '', active: true };
+const defaultManufacturer: Manufacturer = { id: 0, name: '', description: '', website: '', contactEmail: '', contactPhone: '', isActive: true, createdAt: '', updatedAt: '' };
 
 const Switches: React.FC = () => {
-  // State für die Daten
+  const { isAuthenticated } = useAuth();
   const [switches, setSwitches] = useState<Switch[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [filteredRooms, setFilteredRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [initialLoadDone, setInitialLoadDone] = useState<boolean>(false);
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentSwitch, setCurrentSwitch] = useState<Switch | null>(null);
-  const [loadingLocations, setLoadingLocations] = useState<boolean>(false);
-
-  // Form State
-  const [name, setName] = useState<string>('');
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info'; }>({ open: false, message: '', severity: 'info' });
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; switchId: number; } | null>(null);
+  const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
   const [description, setDescription] = useState<string>('');
+  const [manufacturer, setManufacturer] = useState<FormField<Manufacturer | null>>({ value: null, error: false, helperText: '' });
   const [model, setModel] = useState<string>('');
-  const [manufacturerId, setManufacturerId] = useState<number | ''>('');
-  const [locationId, setLocationId] = useState<number | ''>('');
-  const [roomId, setRoomId] = useState<number | ''>('');
-  const [cabinetId, setCabinetId] = useState<number | ''>('');
+  const [location, setLocation] = useState<FormField<Location | null>>({ value: null, error: false, helperText: '' });
+  const [room, setRoom] = useState<FormField<Room | null>>({ value: null, error: false, helperText: '' });
+  const [cabinetLabel, setCabinetLabel] = useState<string>('');
   const [rackPosition, setRackPosition] = useState<string>('');
-  const [portCount, setPortCount] = useState<number | ''>('');
-  const [notes, setNotes] = useState<string>('');
+  const [portCount, setPortCount] = useState<FormField<number | ''>>({ value: '', error: false, helperText: '' });
   const [isActive, setIsActive] = useState<boolean>(true);
-  const [readOnly, setReadOnly] = useState<boolean>(false);
+  const [notes, setNotes] = useState<string>('');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ column: 'name', direction: 'asc' }); // Initial sort by name
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [switchToDelete, setSwitchToDelete] = useState<Switch | null>(null);
 
-  // UI State
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-  }>({
-    open: false,
-    message: '',
-    severity: 'info'
-  });
+  // Callback für Sortierung von AtlasTable
+  const handleSort = useCallback((columnKey: string, direction: 'asc' | 'desc') => {
+    setSortConfig({
+      column: columnKey as keyof (Switch & { locationName?: string, roomName?: string, manufacturerName?: string }),
+      direction: direction
+    });
+  }, []);
 
-  // Neuer State für das Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    switchId: number;
-  } | null>(null);
+  // Datenaufbereitung und Sortierung mit useMemo
+  const processedSwitches = useMemo(() => {
+    const mappedSwitches = switches.map(switchItem => ({
+      ...switchItem,
+      locationName: locations.find(l => l.id === switchItem.locationId)?.name || '-',
+      roomName: rooms.find(r => r.id === switchItem.roomId)?.name || '-',
+      manufacturerName: manufacturers.find(m => m.id === switchItem.manufacturerId)?.name || '-'
+    }));
 
-  // Spalten für die Tabelle
-  const columns: AtlasColumn<Switch>[] = [
-    { dataKey: 'id', label: 'ID', width: 70, numeric: true },
+    // Sortierung anwenden
+    if (sortConfig.column) {
+      const sortKey = sortConfig.column;
+      mappedSwitches.sort((a, b) => {
+        const aValue = a[sortKey];
+        const bValue = b[sortKey];
+
+        // Grundlegende Typbehandlung für Sortierung (String/Nummer)
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (bValue == null) return sortConfig.direction === 'asc' ? 1 : -1;
+
+        let comparison = 0;
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          comparison = aValue.localeCompare(bValue);
+        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+          comparison = aValue - bValue;
+        } else if (typeof aValue === 'boolean' && typeof bValue === 'boolean') {
+            comparison = aValue === bValue ? 0 : aValue ? 1 : -1; // true nach false
+        } else {
+            // Fallback für andere Typen oder Mischtypen (als String behandeln)
+            comparison = String(aValue).localeCompare(String(bValue));
+        }
+
+        return sortConfig.direction === 'asc' ? comparison : comparison * -1;
+      });
+    }
+
+    return mappedSwitches;
+  }, [switches, locations, rooms, manufacturers, sortConfig]);
+
+  const loadRooms = async () => {
+    try {
+      const roomRes = await roomApi.getAll() as unknown as { success?: boolean, data?: Room[] };
+      const finalRooms = roomRes && Array.isArray(roomRes.data) ? roomRes.data : [];
+      setRooms(finalRooms);
+    } catch (error) {
+        setSnackbar({ open: true, message: `Fehler Rooms: ${handleApiError(error)}`, severity: 'error' });
+        setRooms([]);
+    }
+  };
+
+  const loadSwitches = async () => {
+    try {
+      const switchRes = await switchApi.getAll() as unknown as Switch[];
+      const finalSwitches = Array.isArray(switchRes) ? switchRes : [];
+      setSwitches(finalSwitches as Switch[]);
+    } catch (error) {
+      setSnackbar({ open: true, message: `Fehler Switches: ${handleApiError(error)}`, severity: 'error' });
+      setSwitches([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && !initialLoadDone) {
+      setLoading(true);
+      const loadAllDataSequentially = async () => {
+        let criticalSuccess = true;
+        try {
+          const locRes = await locationApi.getAll() as unknown as { success?: boolean, data?: Location[] };
+          const finalLocations = locRes && Array.isArray(locRes.data) ? locRes.data : [];
+          setLocations(finalLocations);
+        } catch (error) {
+          criticalSuccess = false;
+          setLocations([]);
+          setSnackbar({ open: true, message: `Fehler Locations: ${handleApiError(error)}`, severity: 'error' });
+        }
+        try {
+          const mfgRes = await manufacturerApi.getAll() as unknown as { success?: boolean, data?: Manufacturer[] };
+          const finalManufacturers = mfgRes && Array.isArray(mfgRes.data) ? mfgRes.data : [];
+          setManufacturers(finalManufacturers);
+        } catch (error) {
+          criticalSuccess = false;
+          setManufacturers([]);
+          setSnackbar({ open: true, message: `Fehler Manufacturers: ${handleApiError(error)}`, severity: 'error' });
+        }
+        await loadRooms();
+        await loadSwitches();
+        return criticalSuccess;
+      };
+      loadAllDataSequentially()
+        .then((loadedSuccessfully) => {
+            setInitialLoadDone(true);
+        })
+        .catch((error) => {
+            console.error("Fehler beim Laden der initialen Daten:", error);
+            setInitialLoadDone(true);
+        })
+        .finally(() => {
+            setLoading(false);
+        });
+    } else if (!isAuthenticated) {
+       setSwitches([]);
+       setLocations([]);
+       setRooms([]);
+       setManufacturers([]);
+       setFilteredRooms([]);
+       setInitialLoadDone(false);
+       setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (location.value) {
+      setFilteredRooms(rooms.filter(r => r.locationId === location.value?.id));
+    } else {
+      setFilteredRooms([]);
+    }
+    if (room.value && room.value.locationId !== location.value?.id) {
+        setRoom({ value: null, error: false, helperText: '' });
+    }
+  }, [location.value, rooms]);
+
+  const handleCloseSnackbar = () => setSnackbar(prev => ({ ...prev, open: false }));
+
+  const columns: AtlasColumn<Switch & { locationName?: string, roomName?: string, manufacturerName?: string }>[] = [
     {
       dataKey: 'name',
       label: 'Name',
+      width: 200,
+      sortable: true,
       render: (value, row) => (
         <Box
-          sx={{
-            color: 'primary.main',
-            fontWeight: 500,
-            cursor: 'pointer',
-            '&:hover': {
-              textDecoration: 'underline'
-            }
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleViewSwitch(row);
-          }}
+          sx={{ color: 'primary.main', fontWeight: 500, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+          onClick={(e) => { e.stopPropagation(); handleView(row); }}
         >
           {value}
         </Box>
       )
     },
-    { dataKey: 'description', label: 'Beschreibung' },
-    { dataKey: 'model', label: 'Modell', width: 140 },
-    { dataKey: 'manufacturer_name', label: 'Hersteller', width: 140 },
-    { dataKey: 'location_name', label: 'Standort', width: 140 },
-    { dataKey: 'room_name', label: 'Raum', width: 140 },
+    {
+        dataKey: 'locationName',
+        label: 'Standort',
+        width: 150,
+        sortable: true,
+        render: (value) => value || '-'
+    },
+    {
+        dataKey: 'roomName',
+        label: 'Raum',
+        width: 120,
+        sortable: true,
+        render: (value) => value || '-'
+    },
+    {
+      dataKey: 'portCount',
+      label: 'Ports',
+      width: 80,
+      numeric: true,
+      sortable: true,
+    },
+    {
+        dataKey: 'manufacturerName',
+        label: 'Hersteller',
+        width: 150,
+        sortable: true,
+        render: (value) => value || '-'
+    },
+    {
+      dataKey: 'model',
+      label: 'Modell',
+      width: 150,
+      sortable: true,
+      render: (value) => value || '-'
+    },
     {
       dataKey: 'isActive',
       label: 'Status',
-      width: 120,
-      render: (value, row) => (
-        <Chip
-          label={row.isActive ? 'Aktiv' : 'Inaktiv'}
-          color={row.isActive ? 'success' : 'default'}
-          size="small"
-          variant="outlined"
-        />
+      width: 100,
+      sortable: true,
+      render: (value) => (
+        <Chip label={value ? 'Aktiv' : 'Inaktiv'} color={value ? 'success' : 'default'} size="small" variant="outlined" />
       )
-    },
-    {
-      dataKey: 'created_at',
-      label: 'Erstellt am',
-      width: 180,
-      render: (value, row) => {
-        const dateValue = row.created_at;
-
-        if (!dateValue) {
-          return 'Unbekannt';
-        }
-
-        try {
-          const date = new Date(dateValue);
-
-          if (isNaN(date.getTime())) {
-            return 'Ungültiges Datum';
-          }
-
-          return new Intl.DateTimeFormat('de-DE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-          }).format(date);
-        } catch (e) {
-          console.error('Fehler beim Parsen des Datums:', e);
-          return 'Fehler beim Parsen';
-        }
-      }
     },
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 120,
+      sortable: false,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
 
-  // Daten laden
-  useEffect(() => {
-    loadSwitches();
-    loadLocations();
-    loadManufacturers();
-    loadRooms();
-  }, []);
-
-  // Wenn sich der Standort ändert, filtern wir die Räume
-  useEffect(() => {
-    if (locationId) {
-      const location = Number(locationId);
-      setFilteredRooms(rooms.filter(room => room.location_id === location || room.locationId === location));
-    } else {
-      setFilteredRooms([]);
-    }
-
-    // Wenn ein Standort ausgewählt wird, aber kein Raum darin verfügbar ist,
-    // geben wir einen Hinweis aus
-    if (locationId && rooms.length > 0 && filteredRooms.length === 0) {
-      console.log(`Keine Räume für den ausgewählten Standort gefunden.`);
-    }
-  }, [locationId, rooms]);
-
-  const loadSwitches = async () => {
-    setLoading(true);
-    try {
-      const response = await settingsApi.getAllSwitches();
-      if (response && response.data) {
-        setSwitches(response.data);
-      }
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Switches: ${errorMessage}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
+  const resetForm = () => {
+    setName({ value: '', error: false, helperText: '' });
+    setDescription('');
+    setManufacturer({ value: null, error: false, helperText: '' });
+    setModel('');
+    setLocation({ value: null, error: false, helperText: '' });
+    setRoom({ value: null, error: false, helperText: '' });
+    setCabinetLabel('');
+    setRackPosition('');
+    setPortCount({ value: '', error: false, helperText: '' });
+    setIsActive(true);
+    setNotes('');
   };
 
-  const loadLocations = async () => {
-    try {
-      setLoadingLocations(true);
-      const response = await settingsApi.getAllLocations();
-      if (response && response.data) {
-        // Sortiere die Standorte nach Namen
-        const sortedLocations = response.data.sort((a: Location, b: Location) =>
-          a.name.localeCompare(b.name, 'de-DE')
+  const validateForm = async (): Promise<boolean> => {
+    let isValid = true;
+    setName(prev => ({ ...prev, error: false, helperText: '' }));
+    setManufacturer(prev => ({ ...prev, error: false, helperText: '' }));
+    setLocation(prev => ({ ...prev, error: false, helperText: '' }));
+    setPortCount(prev => ({ ...prev, error: false, helperText: '' }));
+
+    if (!name.value.trim()) {
+      setName({ value: name.value, error: true, helperText: 'Name ist erforderlich' });
+      isValid = false;
+    }
+    if (!manufacturer.value) {
+        setManufacturer({ value: null, error: true, helperText: 'Hersteller ist erforderlich' });
+        isValid = false;
+    }
+    if (!location.value) {
+        setLocation({ value: null, error: true, helperText: 'Standort ist erforderlich' });
+        isValid = false;
+    }
+    if (portCount.value === '' || (typeof portCount.value === 'number' && portCount.value <= 0)) {
+        setPortCount({ value: portCount.value, error: true, helperText: 'Portanzahl muss größer 0 sein' });
+        isValid = false;
+    }
+
+    if (name.value.trim() && isValid && !viewMode) {
+      try {
+        const nameExists = await switchApi.checkSwitchNameExists(
+            name.value.trim(),
+            editMode ? currentSwitch?.id : undefined
         );
-        setLocations(sortedLocations);
+        if (nameExists) {
+          setName({ value: name.value, error: true, helperText: 'Ein Switch mit diesem Namen existiert bereits' });
+          isValid = false;
+        }
+      } catch (error) {
+        console.error("Fehler bei der Namensprüfung:", error);
+        setName({ value: name.value, error: true, helperText: 'Fehler bei der Namensprüfung' });
+        isValid = false;
       }
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      console.error('Fehler beim Laden der Standorte:', errorMessage);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Laden der Standorte: ${errorMessage}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoadingLocations(false);
     }
+
+    return isValid;
   };
 
-  const loadManufacturers = async () => {
-    try {
-      const response = await settingsApi.getAllManufacturers();
-      if (response && response.data) {
-        setManufacturers(response.data);
-      }
-    } catch (error) {
-      console.error('Fehler beim Laden der Hersteller:', error);
-    }
-  };
-
-  const loadRooms = async () => {
-    try {
-      const response = await settingsApi.getAllRooms();
-      if (response && response.data) {
-        setRooms(response.data);
-      }
-    } catch (error) {
-      console.error('Fehler beim Laden der Räume:', error);
-    }
-  };
-
-  // Dialog öffnen für neuen Eintrag
   const handleAddNew = () => {
-    setEditMode(false);
-    setReadOnly(false);
-    setCurrentSwitch(null);
     resetForm();
+    setEditMode(false);
+    setViewMode(false);
+    setCurrentSwitch(null);
     setDialogOpen(true);
   };
 
-  // Dialog öffnen für Bearbeitung
   const handleEdit = (switchItem: Switch) => {
+    resetForm();
     setEditMode(true);
-    setReadOnly(false);
+    setViewMode(false);
     setCurrentSwitch(switchItem);
-    fillFormWithSwitch(switchItem);
+
+    setName({ value: switchItem.name, error: false, helperText: '' });
+    setDescription(switchItem.description || '');
+    const currentMfg = manufacturers.find(m => m.id === switchItem.manufacturerId) || null;
+    setManufacturer({ value: currentMfg, error: false, helperText: '' });
+    setModel(switchItem.model || '');
+    const currentLoc = locations.find(l => l.id === switchItem.locationId) || null;
+    setLocation({ value: currentLoc, error: false, helperText: '' });
+    const currentFilteredRooms = currentLoc ? rooms.filter(r => r.locationId === currentLoc.id) : [];
+    const currentRoom = currentFilteredRooms.find(r => r.id === switchItem.roomId) || null;
+    setRoom({ value: currentRoom, error: false, helperText: '' });
+    setCabinetLabel(switchItem.cabinetLabel || '');
+    setRackPosition(switchItem.rackPosition?.toString() || '');
+    setPortCount({ value: switchItem.portCount ?? '', error: false, helperText: '' });
+    setIsActive(switchItem.isActive);
+    setNotes(switchItem.notes || '');
+
     setDialogOpen(true);
   };
 
-  // Löschen eines Switches
-  const handleDelete = async (switchItem: Switch) => {
-    if (!window.confirm(`Möchten Sie den Switch "${switchItem.name}" wirklich löschen?`)) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await settingsApi.deleteSwitch(switchItem.id);
-
-      // Nach erfolgreichem Löschen die Liste aktualisieren
-      loadSwitches();
-
-      setSnackbar({
-        open: true,
-        message: `Switch "${switchItem.name}" wurde gelöscht.`,
-        severity: 'success'
-      });
-    } catch (error) {
-      setLoading(false);
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Switches: ${errorMessage}`,
-        severity: 'error'
-      });
-    }
+  const handleView = (switchItem: Switch) => {
+    handleEdit(switchItem);
+    setViewMode(true);
   };
 
-  // Dialog schließen
   const handleCloseDialog = () => {
     setDialogOpen(false);
   };
 
-  // Speichern des Switches
   const handleSave = async () => {
-    try {
-      if (!name) {
-        setSnackbar({
-          open: true,
-          message: 'Bitte geben Sie einen Namen ein',
-          severity: 'error'
-        });
+    const isValid = await validateForm();
+    if (!isValid) return;
+
+    if (!manufacturer.value || !location.value) {
+        setSnackbar({ open: true, message: 'Fehler: Hersteller oder Standort fehlt.', severity: 'error' });
         return;
-      }
+    }
 
-      const switchData = {
-        name,
-        description,
-        model,
-        manufacturer_id: manufacturerId || undefined,
-        location_id: locationId || undefined,
-        room_id: roomId || undefined,
-        cabinet_id: cabinetId || undefined,
-        rack_position: rackPosition,
-        port_count: portCount || undefined,
-        notes,
-        is_active: isActive
-      };
+    const switchData: Omit<SwitchCreate | SwitchUpdate, 'id' | 'ipAddress' | 'macAddress' | 'managementUrl' | 'uplinkPort'> & { ipAddress?: string | null, macAddress?: string | null, managementUrl?: string | null, uplinkPort?: string | null } = {
+      name: name.value.trim(),
+      description: description.trim() || null,
+      manufacturerId: manufacturer.value.id,
+      model: model.trim() || null,
+      locationId: location.value.id,
+      roomId: room.value?.id || null,
+      cabinetLabel: cabinetLabel,
+      rackPosition: rackPosition ? parseInt(rackPosition) : null,
+      portCount: typeof portCount.value === 'number' ? portCount.value : 0,
+      isActive: isActive,
+      notes: notes.trim() || null,
+    };
 
-      let response;
-
+    setLoading(true);
+    try {
+      let savedSwitch;
       if (editMode && currentSwitch) {
-        response = await settingsApi.updateSwitch(currentSwitch.id, switchData);
-        setSnackbar({
-          open: true,
-          message: `Switch ${name} erfolgreich aktualisiert`,
-          severity: 'success'
-        });
+        savedSwitch = await switchApi.update(currentSwitch.id, switchData as SwitchUpdate);
+        setSnackbar({ open: true, message: `Switch "${savedSwitch.name}" erfolgreich aktualisiert.`, severity: 'success' });
       } else {
-        response = await settingsApi.createSwitch(switchData);
-        setSnackbar({
-          open: true,
-          message: `Switch ${name} erfolgreich erstellt`,
-          severity: 'success'
-        });
+        savedSwitch = await switchApi.create(switchData as SwitchCreate);
+        setSnackbar({ open: true, message: `Switch "${savedSwitch.name}" erfolgreich erstellt.`, severity: 'success' });
       }
-
-      loadSwitches();
+      await loadSwitches();
       handleCloseDialog();
     } catch (error) {
-      console.error('Fehler beim Speichern des Switches:', error);
       const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Speichern des Switches: ${errorMessage}`,
-        severity: 'error'
-      });
+      if (errorMessage.toLowerCase().includes('existiert bereits')) {
+         setName(prev => ({ ...prev, error: true, helperText: errorMessage }));
+      } else {
+         setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
+      }
+    } finally {
+        setLoading(false);
     }
   };
 
-  // Formular zurücksetzen
-  const resetForm = () => {
-    setName('');
-    setDescription('');
-    setModel('');
-    setManufacturerId('');
-    setLocationId('');
-    setRoomId('');
-    setCabinetId('');
-    setRackPosition('');
-    setPortCount('');
-    setNotes('');
-    setIsActive(true);
-    setReadOnly(false);
+  // Step 1: Prepare for delete confirmation
+  const handleDeleteRequest = (switchToDel: Switch) => {
+    setSwitchToDelete(switchToDel);
+    setConfirmDialogOpen(true);
   };
 
-  // Formular mit Switch-Daten füllen
-  const fillFormWithSwitch = (switchItem: Switch) => {
-    setName(switchItem.name);
-    setDescription(switchItem.description || '');
-    setModel(switchItem.model || '');
-    setManufacturerId(switchItem.manufacturer_id || '');
-    setLocationId(switchItem.location_id || '');
-    setRoomId(switchItem.room_id || '');
-    setCabinetId(switchItem.cabinet_id || '');
-    setRackPosition(switchItem.rack_position || '');
-    setPortCount(switchItem.port_count || '');
-    setNotes(switchItem.notes || '');
-    setIsActive(switchItem.is_active !== false);
+  // Step 2: Actual delete logic
+  const executeDelete = async () => {
+    if (!switchToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const switchName = switchToDelete.name; // Store name
+
+    setLoading(true);
+    try {
+      await switchApi.delete(switchToDelete.id);
+      setSnackbar({ open: true, message: `Switch "${switchName}" wurde gelöscht.`, severity: 'success' });
+      await loadSwitches(); // Reload data
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
+        setLoading(false);
+        setSwitchToDelete(null); // Clear the switch to delete
+    }
   };
 
-  // Snackbar schließen
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
+   // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setSwitchToDelete(null);
+   };
 
-  // Handlefunktionen für das Kontextmenü
   const handleContextMenu = (event: React.MouseEvent, switchId: number) => {
     event.preventDefault();
     event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      switchId
-    });
+    setContextMenu({ mouseX: event.clientX, mouseY: event.clientY, switchId });
   };
 
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
+  const handleContextMenuClose = () => setContextMenu(null);
 
   const handleContextMenuView = () => {
     if (contextMenu) {
       const switchItem = switches.find(s => s.id === contextMenu.switchId);
-      if (switchItem) {
-        setEditMode(false);
-        setReadOnly(true);
-        setCurrentSwitch(switchItem);
-        fillFormWithSwitch(switchItem);
-        setDialogOpen(true);
-      }
+      if (switchItem) handleView(switchItem);
       handleContextMenuClose();
     }
   };
@@ -443,9 +509,7 @@ const Switches: React.FC = () => {
   const handleContextMenuEdit = () => {
     if (contextMenu) {
       const switchItem = switches.find(s => s.id === contextMenu.switchId);
-      if (switchItem) {
-        handleEdit(switchItem);
-      }
+      if (switchItem) handleEdit(switchItem);
       handleContextMenuClose();
     }
   };
@@ -453,79 +517,32 @@ const Switches: React.FC = () => {
   const handleContextMenuDelete = () => {
     if (contextMenu) {
       const switchItem = switches.find(s => s.id === contextMenu.switchId);
-      if (switchItem) {
-        handleDelete(switchItem);
-      }
+      if (switchItem) handleDeleteRequest(switchItem); // Use request function
       handleContextMenuClose();
-    }
-  };
-
-  // Neue Funktion für die Anzeige des Switches beim Klick auf den Namen
-  const handleViewSwitch = (switchItem: Switch) => {
-    setEditMode(false);
-    setReadOnly(true);
-    setCurrentSwitch(switchItem);
-    fillFormWithSwitch(switchItem);
-    setDialogOpen(true);
-  };
-
-  // Handler für Änderungen bei Select-Feldern
-  const handleManufacturerChange = (event: SelectChangeEvent<number | string>) => {
-    setManufacturerId(event.target.value as number | '');
-  };
-
-  const handleLocationChange = (_: React.SyntheticEvent, newValue: Location | null) => {
-    setLocationId(newValue ? newValue.id : '');
-    // Wenn sich der Standort ändert, setzen wir den Raum zurück
-    setRoomId('');
-  };
-
-  const handleRoomChange = (event: SelectChangeEvent<number | string>) => {
-    setRoomId(event.target.value as number | '');
-  };
-
-  const handlePortCountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // Nur numerische Eingaben oder leere Zeichenfolgen akzeptieren
-    const value = event.target.value;
-    if (value === '' || /^[0-9]+$/.test(value)) {
-      setPortCount(value === '' ? '' : parseInt(value, 10));
     }
   };
 
   return (
     <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh', width: '100%' }}>
-      {/* Header */}
-      <Paper
-        elevation={3}
-        sx={{
-          bgcolor: '#1976d2',
-          color: 'white',
-          p: 2,
-          mb: 3,
-          display: 'flex',
-          alignItems: 'center'
-        }}
-      >
+      <Paper elevation={3} sx={{ bgcolor: '#1976d2', color: 'white', p: 2, mb: 3, display: 'flex', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <RouterIcon sx={{ fontSize: 32, mr: 2, color: 'white' }} />
-          <Typography variant="h5" component="h1">
-            Switch-Verwaltung
-          </Typography>
+          <SwitchIcon sx={{ fontSize: 32, mr: 2, color: 'white' }} />
+          <Typography variant="h5" component="h1">Switch-Verwaltung</Typography>
         </Box>
       </Paper>
 
-      {/* Aktionsleiste */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleAddNew}
+          disabled={!initialLoadDone || loading || locations.length === 0 || manufacturers.length === 0}
         >
           Neuer Switch
         </Button>
+        {loading && <CircularProgress size={24} sx={{ ml: 1 }} />}
       </Box>
 
-      {/* Tabelle */}
       <Paper elevation={3} sx={{ mb: 3, overflow: 'hidden' }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -534,311 +551,164 @@ const Switches: React.FC = () => {
         ) : (
           <AtlasTable
             columns={columns}
-            rows={switches}
+            rows={processedSwitches}
             heightPx={600}
             emptyMessage="Keine Switches vorhanden"
-            initialSortColumn="name"
-            initialSortDirection="asc"
+            sortColumn={sortConfig.column || undefined}
+            sortDirection={sortConfig.direction}
+            onSort={handleSort}
           />
         )}
       </Paper>
 
-      {/* Kontextmenü */}
       <Menu
         open={contextMenu !== null}
         onClose={handleContextMenuClose}
         anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
+        anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
       >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
-          </ListItemIcon>
-          <ListItemText primary="Anzeigen" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-          </ListItemIcon>
-          <ListItemText primary="Bearbeiten" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-          </ListItemIcon>
-          <ListItemText primary="Löschen" />
-        </MenuItem>
+        <MenuItem onClick={handleContextMenuView}><ListItemIcon><ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} /></ListItemIcon><ListItemText primary="Anzeigen" /></MenuItem>
+        <MenuItem onClick={handleContextMenuEdit}><ListItemIcon><EditIcon fontSize="small" sx={{ color: '#4CAF50' }} /></ListItemIcon><ListItemText primary="Bearbeiten" /></MenuItem>
+        <MenuItem onClick={handleContextMenuDelete}><ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#F44336' }} /></ListItemIcon><ListItemText primary="Löschen" /></MenuItem>
       </Menu>
 
-      {/* Dialog für Erstellen/Bearbeiten */}
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
       >
-        <DialogTitle>
-          {readOnly
-            ? `Switch anzeigen: ${currentSwitch?.name}`
-            : (editMode
-              ? `Switch bearbeiten: ${currentSwitch?.name}`
-              : 'Neuen Switch erstellen'
-            )
-          }
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Grid container spacing={2}>
-              {/* Erste Zeile */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Name"
-                  fullWidth
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Modell"
-                  fullWidth
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              {/* Zweite Zeile */}
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth disabled={readOnly}>
-                  <InputLabel id="manufacturer-select-label">Hersteller</InputLabel>
-                  <Select
-                    labelId="manufacturer-select-label"
-                    id="manufacturer-select"
-                    value={manufacturerId}
-                    label="Hersteller"
-                    onChange={handleManufacturerChange}
-                  >
-                    <MenuItem value="">
-                      <em>Kein Hersteller</em>
-                    </MenuItem>
-                    {manufacturers.map((manufacturer) => (
-                      <MenuItem key={manufacturer.id} value={manufacturer.id}>
-                        {manufacturer.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Autocomplete
-                  id="location-autocomplete"
-                  options={locations}
-                  getOptionLabel={(option) => option.name}
-                  value={locations.find(loc => loc.id === locationId) || null}
-                  onChange={handleLocationChange}
-                  disabled={readOnly || loadingLocations}
-                  disablePortal
-                  fullWidth
-                  filterSelectedOptions
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  noOptionsText="Keine Standorte verfügbar"
-                  loadingText="Standorte werden geladen..."
-                  loading={loadingLocations}
-                  renderOption={(props, option) => (
-                    <li {...props} key={option.id}>
-                      <Box
-                        component="span"
-                        sx={{
-                          width: '100%',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}
-                      >
-                        <Typography>{option.name}</Typography>
-                        {option.city && (
-                          <Typography variant="body2" color="text.secondary">
-                            {option.city}
-                          </Typography>
-                        )}
-                      </Box>
-                    </li>
-                  )}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Standort"
-                      InputProps={{
-                        ...params.InputProps,
-                        startAdornment: (
-                          <>
-                            <InputAdornment position="start">
-                              <BuildingIcon />
-                            </InputAdornment>
-                            {params.InputProps.startAdornment}
-                          </>
-                        ),
-                        endAdornment: (
-                          <>
-                            {loadingLocations ? <CircularProgress color="inherit" size={20} /> : null}
-                            {params.InputProps.endAdornment}
-                          </>
-                        )
-                      }}
-                      helperText={loadingLocations ? "Standorte werden geladen..." : ""}
-                    />
-                  )}
-                />
-              </Grid>
-
-              {/* Neue Zeile für Raumauswahl */}
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth disabled={!locationId || readOnly}>
-                  <InputLabel id="room-select-label">Raum</InputLabel>
-                  <Select
-                    labelId="room-select-label"
-                    id="room-select"
-                    value={roomId}
-                    label="Raum"
-                    onChange={handleRoomChange}
-                  >
-                    <MenuItem value="">
-                      <em>Kein Raum</em>
-                    </MenuItem>
-                    {filteredRooms.length > 0 ? (
-                      filteredRooms.map((room: Room) => (
-                        <MenuItem key={room.id} value={room.id}>
-                          {room.name} {room.floor ? `(${room.floor})` : ''}
-                        </MenuItem>
-                      ))
-                    ) : (
-                      locationId ? (
-                        <MenuItem disabled>
-                          <em>Keine Räume für diesen Standort verfügbar</em>
-                        </MenuItem>
-                      ) : null
-                    )}
-                  </Select>
-                  {locationId && filteredRooms.length === 0 && !readOnly && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      Bitte fügen Sie zuerst Räume für diesen Standort hinzu.
-                    </Typography>
-                  )}
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Rack-Position"
-                  fullWidth
-                  value={rackPosition}
-                  onChange={(e) => setRackPosition(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              {/* Management-Zeile */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Anzahl Ports"
-                  fullWidth
-                  type="number"
-                  value={portCount}
-                  onChange={handlePortCountChange}
-                  InputProps={{
-                    readOnly: readOnly,
-                    inputProps: { min: 1 }
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                {/* Platzhalter für Symmetrie - hier war früher das zweite Feld */}
-              </Grid>
-
-              {/* Beschreibung und Notizen */}
-              <Grid item xs={12}>
-                <TextField
-                  label="Beschreibung"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  label="Notizen"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  InputProps={{
-                    readOnly: readOnly
-                  }}
-                />
-              </Grid>
-
-              {/* Status */}
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <MuiSwitch
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      color="primary"
-                      disabled={readOnly}
-                    />
-                  }
-                  label="Switch aktiv"
-                />
-              </Grid>
+        <DialogTitle>{viewMode ? 'Switch-Details' : (editMode ? 'Switch bearbeiten' : 'Neuen Switch erstellen')}</DialogTitle>
+        <DialogContent sx={{ pt: '10px !important' }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Name"
+                fullWidth required margin="dense"
+                value={name.value}
+                onChange={(e) => setName({ value: e.target.value, error: false, helperText: '' })}
+                error={name.error}
+                helperText={name.helperText}
+                disabled={viewMode}
+              />
+              <Autocomplete
+                options={manufacturers}
+                getOptionLabel={(option) => option.name}
+                value={manufacturer.value}
+                onChange={(_, newValue) => setManufacturer({ value: newValue, error: false, helperText: '' })}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                renderInput={(params) => (
+                  <TextField {...params} label="Hersteller" fullWidth required margin="dense" error={manufacturer.error} helperText={manufacturer.helperText} />
+                )}
+                disabled={viewMode}
+              />
+              <TextField
+                label="Modell"
+                fullWidth margin="dense"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={viewMode}
+              />
+              <TextField
+                label="Anzahl Ports"
+                fullWidth required margin="dense" type="number"
+                value={portCount.value}
+                onChange={(e) => setPortCount({ value: e.target.value === '' ? '' : Number(e.target.value), error: false, helperText: '' })}
+                error={portCount.error}
+                helperText={portCount.helperText}
+                disabled={viewMode}
+                InputProps={{ startAdornment: <InputAdornment position="start"><EthernetIcon fontSize="small" /></InputAdornment> }}
+              />
+              <TextField
+                label="Beschreibung"
+                fullWidth multiline rows={3} margin="dense"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={viewMode}
+              />
             </Grid>
-          </Box>
+            <Grid item xs={12} md={6}>
+              <Autocomplete
+                options={locations}
+                getOptionLabel={(option) => option.name}
+                value={location.value}
+                onChange={(_, newValue) => setLocation({ value: newValue, error: false, helperText: '' })}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                renderInput={(params) => (
+                  <TextField {...params} label="Standort" fullWidth required margin="dense" error={location.error} helperText={location.helperText} />
+                )}
+                disabled={viewMode}
+              />
+              <Autocomplete
+                options={filteredRooms}
+                getOptionLabel={(option) => option.name}
+                value={room.value}
+                onChange={(_, newValue) => setRoom({ value: newValue, error: false, helperText: '' })}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                renderInput={(params) => (
+                  <TextField {...params} label="Raum" fullWidth margin="dense" error={room.error} helperText={room.helperText} />
+                )}
+                disabled={viewMode || !location.value}
+              />
+              <TextField
+                label="Schrank"
+                fullWidth margin="dense"
+                value={cabinetLabel}
+                onChange={(e) => setCabinetLabel(e.target.value)}
+                placeholder="Schrank z.B. 26815.01"
+                disabled={viewMode}
+              />
+              <TextField
+                label="Rack Position (HE)"
+                fullWidth margin="dense" type="number"
+                value={rackPosition}
+                onChange={(e) => setRackPosition(e.target.value)}
+                disabled={viewMode}
+                InputProps={{ startAdornment: <InputAdornment position="start"><RackPositionIcon fontSize="small" /></InputAdornment> }}
+              />
+              <TextField
+                label="Notizen"
+                fullWidth multiline rows={3} margin="dense"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={viewMode}
+                InputProps={{ startAdornment: <InputAdornment position="start"><NotesIcon fontSize="small" /></InputAdornment> }}
+              />
+              <FormControlLabel
+                control={<MuiSwitch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} color="primary" disabled={viewMode} />}
+                label="Switch aktiv"
+                sx={{ display: 'block', mt: 1 }}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="inherit">
-            {readOnly ? 'Schließen' : 'Abbrechen'}
-          </Button>
-          {!readOnly && (
-            <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
-              Speichern
+          <Button onClick={handleCloseDialog} color="inherit">{viewMode ? 'Schließen' : 'Abbrechen'}</Button>
+          {!viewMode && (
+            <Button onClick={handleSave} variant="contained" color="primary" disabled={loading} >
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Speichern'}
             </Button>
           )}
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar für Benachrichtigungen */}
+      {/* Confirmation Dialog for Delete */}
+      <ConfirmationDialog
+        open={confirmDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Switch löschen?"
+        message={`Möchten Sie den Switch "${switchToDelete?.name}" wirklich endgültig löschen? Zugeordnete Ports könnten davon betroffen sein.`}
+        confirmText="Löschen"
+      />
+
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
-          {snackbar.message}
-        </Alert>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>{snackbar.message}</Alert>
       </Snackbar>
     </Box>
   );

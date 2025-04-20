@@ -27,14 +27,16 @@ export interface Manufacturer {
   description?: string;
   logoUrl?: string;
   website?: string;
-  contactInfo?: string;
+  contactEmail?: string;
+  contactPhone?: string;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
   created_at?: string;
   updated_at?: string;
   logo_url?: string;
-  contact_info?: string;
+  contact_email?: string;
+  contact_phone?: string;
 }
 
 export interface ManufacturerCreate {
@@ -42,7 +44,8 @@ export interface ManufacturerCreate {
   description?: string;
   logoUrl?: string;
   website?: string;
-  contactInfo?: string;
+  contactEmail?: string;
+  contactPhone?: string;
   isActive?: boolean;
 }
 
@@ -51,7 +54,8 @@ export interface ManufacturerUpdate {
   description?: string;
   logoUrl?: string;
   website?: string;
-  contactInfo?: string;
+  contactEmail?: string;
+  contactPhone?: string;
   isActive?: boolean;
 }
 
@@ -73,6 +77,36 @@ export interface Supplier {
   updatedAt?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SupplierCreate {
+  name: string;
+  description?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  contactPerson?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contractNumber?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface SupplierUpdate {
+  name?: string;
+  description?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  contactPerson?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contractNumber?: string;
+  notes?: string;
+  isActive?: boolean;
 }
 
 export interface Room {
@@ -189,41 +223,55 @@ export interface Switch {
 
 export interface NetworkOutlet {
   id: number;
-  name?: string;
-  description: string;
-  locationId?: number;
-  locationName?: string;
-  roomId?: number;
-  roomName?: string;
   outletNumber: string;
-  socketNumber?: string;
-  wallPosition?: string;
-  socketType?: string;
-  portCount?: number;
-  createdAt: string;
-  updatedAt: string;
+  locationId: number | null;
+  locationName?: string;
+  roomId: number | null;
+  roomName?: string;
+  description: string | null;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export interface Port {
-  id: number;
-  name: string;
-  description: string;
-  switchId?: number;
-  networkOutletId?: number;
-  vlan?: number;
-  patchField?: string;
-  patchPort?: string;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
+export interface NetworkOutletCreate {
+  outletNumber: string;
+  locationId: number | null;
+  roomId: number | null;
+  description: string | null;
+  isActive?: boolean;
+}
+
+export interface NetworkOutletUpdate {
+  outletNumber?: string;
+  locationId?: number | null;
+  roomId?: number | null;
+  description?: string | null;
+  isActive?: boolean;
 }
 
 export interface NetworkPort {
   id: number;
   portNumber: number;
+  switchId?: number;
+  description?: string;
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NetworkPortCreate {
+  portNumber: number;
+  switchId?: number | null;
+  description?: string | null;
+  isActive?: boolean;
+}
+
+export interface NetworkPortUpdate {
+  portNumber?: number;
+  switchId?: number | null;
+  description?: string | null;
+  isActive?: boolean;
 }
 
 export interface DepartmentCreate {
