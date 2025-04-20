@@ -206,23 +206,25 @@ class NetworkSocketModel {
         throw new Error('Netzwerkdose nicht gefunden');
       }
 
-      // Prüfen, ob die Netzwerkdose von Ports verwendet wird
-      const { rows: usedByPorts } = await db.query('SELECT EXISTS(SELECT 1 FROM network_ports WHERE socket_id = $1)', [socketId]);
-      if (usedByPorts[0].exists) {
-        throw new Error('Diese Netzwerkdose wird von Ports verwendet und kann nicht gelöscht werden');
+      // Netzwerkdose löschen
+      const result = await db.query('DELETE FROM network_sockets WHERE id = $1', [socketId]);
+
+      // Überprüfen, ob die Löschung erfolgreich war (mindestens eine Zeile betroffen)
+      if (result.rowCount === 0) {
+          // Sollte durch die Existenzprüfung oben eigentlich nicht passieren, aber sicher ist sicher.
+          throw new Error('Netzwerkdose konnte nicht gelöscht werden (nicht gefunden nach Prüfung).');
       }
 
-      // Netzwerkdose löschen
-      const { rows } = await db.query('DELETE FROM network_sockets WHERE id = $1 RETURNING *', [socketId]);
-
-      const deletedSocket = rows[0];
-      return { success: true, message: 'Netzwerkdose gelöscht', data: { ...deletedSocket, isActive: deletedSocket.is_active } };
+      // Bei Erfolg: Einfach zurückkehren, kein expliziter Rückgabewert nötig.
+      // Der Controller interpretiert das Fehlen eines Fehlers als Erfolg.
 
     } catch (error) {
       console.error('Datenbankfehler beim Löschen der Netzwerkdose:', error);
-      if (error.code === '23503') { // Foreign key violation
-          throw new Error('Netzwerkdose kann nicht gelöscht werden, da sie noch verwendet wird (z.B. von Ports).');
+      // Prüfen, ob es *andere* FK-Verletzungen gibt (falls die Dose woanders referenziert wird)
+      if (error.code === '23503') { // Foreign key violation (allgemein)
+          throw new Error('Netzwerkdose kann nicht gelöscht werden, da sie noch an anderer Stelle verwendet wird.');
       }
+      // Werfe den Originalfehler oder die spezifischen Fehler von oben weiter
       throw error;
     }
   }

@@ -26,6 +26,9 @@ import handleApiError from '../../utils/errorHandler';
 import { NetworkPort, NetworkPortCreate, NetworkPortUpdate } from '../../types/network';
 import { useAuth } from '../../context/AuthContext';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import { toCamelCase } from '../../utils/caseConverter';
+import { ApiResponse } from '../../utils/api';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 // Einfache FormField-Struktur für die Portnummer
 interface FormField<T> {
@@ -50,16 +53,24 @@ const NetworkPorts: React.FC = () => {
   const [portNumber, setPortNumber] = useState<FormField<number | ''>>({ value: '', error: false, helperText: '' });
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info'; }>({ open: false, message: '', severity: 'info' });
   const [sortConfig, setSortConfig] = useState<SortConfig>({ column: 'portNumber', direction: 'asc' });
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [portToDelete, setPortToDelete] = useState<NetworkPort | null>(null);
 
   // Funktion zum Laden der Ports
   const loadPorts = useCallback(async () => {
     setLoading(true);
     try {
-      const portRes = await networkPortsApi.getAll();
-      const finalPorts = Array.isArray(portRes) ? portRes : [];
-      setPorts(finalPorts);
-    } catch (error) {
-      setSnackbar({ open: true, message: `Fehler beim Laden der Ports: ${handleApiError(error)}`, severity: 'error' });
+      const response = await networkPortsApi.getAll(); // Gibt ApiResponse<NetworkPort[]> zurück
+      if (response.success && Array.isArray(response.data)) {
+        setPorts(response.data.map(p => toCamelCase(p) as NetworkPort)); // Konvertierung hier
+      } else {
+        console.warn('Laden der Ports nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        setSnackbar({ open: true, message: response.message || 'Fehler beim Laden der Ports.', severity: 'error' });
+        setPorts([]);
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Laden der Ports: ${errorMessage}`, severity: 'error' });
       setPorts([]);
     } finally {
       setLoading(false);
@@ -121,7 +132,7 @@ const NetworkPorts: React.FC = () => {
           {value}
         </Box>
       ),
-      headerSx: { textAlign: 'center' }
+      // headerSx: { textAlign: 'center' } // Auskommentiert
     },
     // { // Erstellt am Spalte auskommentiert/entfernt
     //     dataKey: 'createdAt',
@@ -150,13 +161,12 @@ const NetworkPorts: React.FC = () => {
             </IconButton>
           </Tooltip>
           <Tooltip title="Löschen">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDelete(row); }}>
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
               <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
             </IconButton>
           </Tooltip>
         </Box>
       ),
-      headerSx: { textAlign: 'right' }
     }
   ];
 
@@ -224,42 +234,63 @@ const NetworkPorts: React.FC = () => {
 
     setLoading(true);
     try {
-      let savedPort;
+      let response: ApiResponse<NetworkPort>;
       if (editMode && currentPort) {
-        savedPort = await networkPortsApi.update(currentPort.id, portData as NetworkPortUpdate);
-        setSnackbar({ open: true, message: `Port ${savedPort.portNumber} erfolgreich aktualisiert.`, severity: 'success' });
+        response = await networkPortsApi.update(currentPort.id, portData as NetworkPortUpdate);
+        setSnackbar({ open: true, message: response.message || `Port ${portData.portNumber} erfolgreich aktualisiert.`, severity: 'success' });
       } else {
-        savedPort = await networkPortsApi.create(portData as NetworkPortCreate);
-        setSnackbar({ open: true, message: `Port ${savedPort.portNumber} erfolgreich erstellt.`, severity: 'success' });
+        response = await networkPortsApi.create(portData as NetworkPortCreate);
+        setSnackbar({ open: true, message: response.message || `Port ${portData.portNumber} erfolgreich erstellt.`, severity: 'success' });
       }
-      await loadPorts();
-      handleCloseDialog();
-    } catch (error) {
-      const errorMessage = handleApiError(error);
+
+      if (response.success) {
+        await loadPorts();
+        handleCloseDialog();
+      } else {
+        setSnackbar({ open: true, message: response.message || 'Fehler beim Speichern des Ports.', severity: 'error' });
+        if (response.message?.toLowerCase().includes('existiert bereits')) {
+           setPortNumber(prev => ({ ...prev, error: true, helperText: response.message || 'Fehler' }));
+        }
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
       if (errorMessage.toLowerCase().includes('existiert bereits')) {
         setPortNumber(prev => ({ ...prev, error: true, helperText: errorMessage }));
-      } else {
-        setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (portToDelete: NetworkPort) => {
-    if (!window.confirm(`Möchten Sie den Port ${portToDelete.portNumber} (ID: ${portToDelete.id}) wirklich löschen?`)) {
-      return;
-    }
+  const handleDeleteRequest = (port: NetworkPort) => {
+    setPortToDelete(port);
+    setConfirmDeleteDialogOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!portToDelete) return;
+
+    setConfirmDeleteDialogOpen(false);
+    const portNum = portToDelete.portNumber;
+
     setLoading(true);
     try {
       await networkPortsApi.delete(portToDelete.id);
-      setSnackbar({ open: true, message: `Port ${portToDelete.portNumber} wurde gelöscht.`, severity: 'success' });
+      setSnackbar({ open: true, message: `Port ${portNum} wurde gelöscht.`, severity: 'success' });
       await loadPorts();
-    } catch (error) {
-      setSnackbar({ open: true, message: `Fehler beim Löschen: ${handleApiError(error)}`, severity: 'error' });
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
     } finally {
       setLoading(false);
+      setPortToDelete(null);
     }
+  };
+
+  const handleCloseConfirmDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setPortToDelete(null);
   };
 
   return (
@@ -320,6 +351,15 @@ const NetworkPorts: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmationDialog
+        open={confirmDeleteDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Netzwerk-Port löschen?"
+        message={`Möchten Sie den Port ${portToDelete?.portNumber} (ID: ${portToDelete?.id}) wirklich endgültig löschen?`}
+        confirmText="Löschen"
+      />
 
       <Snackbar
         open={snackbar.open}

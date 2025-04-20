@@ -8,10 +8,18 @@ const SwitchController = {
   async getAllSwitches(req, res, next) {
     try {
       const switches = await SwitchModel.getAll();
-      res.status(200).json(switches.map(toCamelCase));
+      res.status(200).json({
+        success: true,
+        data: switches.map(toCamelCase)
+      });
     } catch (error) {
       console.error('Fehler beim Abrufen aller Switches:', error);
-      next(error);
+      // Sende standardisierte Fehlerantwort
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Ein interner Serverfehler ist aufgetreten.'
+      });
+      // next(error) wird hier nicht benötigt, da wir die Antwort senden
     }
   },
 
@@ -40,20 +48,31 @@ const SwitchController = {
       const { name } = req.body;
       // Validierung: Name darf nicht leer sein
       if (!name || name.trim() === '') {
-          return res.status(400).json({ message: 'Der Switch-Name darf nicht leer sein.' });
+          // Sende Fehler im ApiResponse-Format
+          return res.status(400).json({ success: false, message: 'Der Switch-Name darf nicht leer sein.' });
       }
       // Validierung: Existiert der Name bereits?
       const existingSwitch = await SwitchModel.findByName(name.trim());
       if (existingSwitch) {
-          return res.status(409).json({ message: `Ein Switch mit dem Namen "${name}" existiert bereits.` });
+          // Sende Fehler im ApiResponse-Format
+          return res.status(409).json({ success: false, message: `Ein Switch mit dem Namen "${name}" existiert bereits.` });
       }
 
       const newSwitchData = req.body;
       const newSwitch = await SwitchModel.create(newSwitchData);
-      res.status(201).json(toCamelCase(newSwitch));
+      // Sende Erfolg im ApiResponse-Format
+      res.status(201).json({
+        success: true,
+        data: toCamelCase(newSwitch),
+        message: `Switch "${newSwitch.name}" erfolgreich erstellt.`
+      });
     } catch (error) {
       console.error('Fehler beim Erstellen des Switches:', error);
-      next(error);
+      // Sende Fehler im ApiResponse-Format
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Fehler beim Erstellen des Switches.'
+      });
     }
   },
 
@@ -68,25 +87,37 @@ const SwitchController = {
 
       // Validierung: Name darf nicht leer sein, wenn angegeben
       if (name !== undefined && (!name || name.trim() === '')) {
-         return res.status(400).json({ message: 'Der Switch-Name darf nicht leer sein.' });
+         // Sende Fehler im ApiResponse-Format
+         return res.status(400).json({ success: false, message: 'Der Switch-Name darf nicht leer sein.' });
       }
 
       // Validierung: Existiert der Name bereits (außer für den aktuellen Switch)?
       if (name) {
           const existingSwitch = await SwitchModel.findByName(name.trim());
           if (existingSwitch && existingSwitch.id !== parseInt(id, 10)) {
-              return res.status(409).json({ message: `Ein anderer Switch mit dem Namen "${name}" existiert bereits.` });
+              // Sende Fehler im ApiResponse-Format
+              return res.status(409).json({ success: false, message: `Ein anderer Switch mit dem Namen "${name}" existiert bereits.` });
           }
       }
 
       const updatedSwitch = await SwitchModel.update(id, switchData);
       if (!updatedSwitch) {
-        return res.status(404).json({ message: `Switch mit ID ${id} nicht gefunden.` });
+        // Sende Fehler im ApiResponse-Format
+        return res.status(404).json({ success: false, message: `Switch mit ID ${id} nicht gefunden.` });
       }
-      res.status(200).json(toCamelCase(updatedSwitch));
+      // Sende Erfolg im ApiResponse-Format
+      res.status(200).json({
+        success: true,
+        data: toCamelCase(updatedSwitch),
+        message: `Switch "${updatedSwitch.name}" erfolgreich aktualisiert.`
+      });
     } catch (error) {
       console.error(`Fehler beim Aktualisieren des Switches mit ID ${req.params.id}:`, error);
-      next(error);
+      // Sende Fehler im ApiResponse-Format
+      res.status(500).json({
+        success: false,
+        message: error.message || `Fehler beim Aktualisieren des Switches mit ID ${req.params.id}.`
+      });
     }
   },
 
@@ -105,12 +136,17 @@ const SwitchController = {
       const deleted = await SwitchModel.delete(id);
       if (!deleted) {
         // Sollte eigentlich nicht passieren, wenn Abhängigkeitsprüfung oben ist
-        return res.status(404).json({ message: `Switch mit ID ${id} nicht gefunden oder konnte nicht gelöscht werden.` });
+        return res.status(404).json({ success: false, message: `Switch mit ID ${id} nicht gefunden oder konnte nicht gelöscht werden.` });
       }
-      res.status(200).json({ message: `Switch mit ID ${id} erfolgreich gelöscht.` });
+      // Sende Erfolg im ApiResponse-Format
+      res.status(200).json({ success: true, message: `Switch mit ID ${id} erfolgreich gelöscht.` });
     } catch (error) {
       console.error(`Fehler beim Löschen des Switches mit ID ${req.params.id}:`, error);
-      next(error);
+       // Sende Fehler im ApiResponse-Format
+       res.status(500).json({
+        success: false,
+        message: error.message || `Fehler beim Löschen des Switches mit ID ${req.params.id}.`
+      });
     }
   },
 

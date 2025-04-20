@@ -44,8 +44,6 @@ const authenticateToken = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Zugriff verweigert. Ungültiger Token.' });
     }
 
-    logger.debug(`Auth Middleware: Token validiert für User ID ${userId}. Lade Benutzerdaten...`);
-
     // Benutzerdaten und Rollen aus der Datenbank laden
     const userQuery = 'SELECT id, username, active FROM users WHERE id = $1';
     const roleQuery = `
@@ -81,7 +79,6 @@ const authenticateToken = async (req, res, next) => {
       roles: roles // Array von Rollennamen
     };
 
-    logger.debug(`Auth Middleware: Benutzer ${user.username} (ID: ${user.id}) erfolgreich authentifiziert. Rollen: ${roles.join(', ')}`);
     next(); // Authentifizierung erfolgreich
 
   } catch (error) {

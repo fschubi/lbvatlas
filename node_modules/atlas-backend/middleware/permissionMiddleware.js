@@ -189,7 +189,6 @@ const authorize = (...requiredPermissions) => {
     }
 
     const userId = req.user.id;
-    logger.debug(`Authorization Middleware: Prüfe Berechtigungen für User ${userId}. Erforderlich: ${requiredPermissions.join(', ')}`);
 
     try {
       // 1. Hole die Rollen des Benutzers
@@ -210,15 +209,12 @@ const authorize = (...requiredPermissions) => {
       const userPermissionNamesSet = new Set(allPermissionObjects.map(p => p.name).filter(Boolean));
       const userPermissionNames = Array.from(userPermissionNamesSet);
 
-      logger.debug(`Authorization Middleware: Benutzer ${userId} hat effektive Berechtigungen: ${userPermissionNames.join(', ')}`);
-
       // 4. Prüfe, ob ALLE erforderlichen Berechtigungen vorhanden sind
       const hasAllPermissions = requiredPermissions.every(requiredPerm =>
         userPermissionNames.includes(requiredPerm)
       );
 
       if (hasAllPermissions) {
-        logger.debug(`Authorization Middleware: Benutzer ${userId} hat Zugriff gewährt.`);
         next();
       } else {
         const missingPermissions = requiredPermissions.filter(rp => !userPermissionNames.includes(rp));

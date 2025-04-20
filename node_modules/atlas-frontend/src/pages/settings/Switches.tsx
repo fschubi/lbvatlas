@@ -50,6 +50,8 @@ import { Switch, SwitchCreate, SwitchUpdate } from '../../types/network';
 import { useAuth } from '../../context/AuthContext';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
+import { ApiResponse } from '../../utils/api';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 
 interface FormField<T> {
   value: T;
@@ -158,11 +160,17 @@ const Switches: React.FC = () => {
 
   const loadSwitches = async () => {
     try {
-      const switchRes = await switchApi.getAll() as unknown as Switch[];
-      const finalSwitches = Array.isArray(switchRes) ? switchRes : [];
-      setSwitches(finalSwitches as Switch[]);
-    } catch (error) {
-      setSnackbar({ open: true, message: `Fehler Switches: ${handleApiError(error)}`, severity: 'error' });
+      const response = await switchApi.getAll(); // Gibt ApiResponse<Switch[]> zurück
+      if (response.success && Array.isArray(response.data)) {
+        setSwitches(response.data.map(s => toCamelCase(s) as Switch)); // Konvertierung hier
+      } else {
+        console.warn('Laden der Switches nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        setSnackbar({ open: true, message: response.message || 'Fehler beim Laden der Switches.', severity: 'error' });
+        setSwitches([]);
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler Switches: ${errorMessage}`, severity: 'error' });
       setSwitches([]);
     }
   };
@@ -435,22 +443,34 @@ const Switches: React.FC = () => {
 
     setLoading(true);
     try {
-      let savedSwitch;
+      let response: ApiResponse<Switch>; // Typ für die Antwort definieren
       if (editMode && currentSwitch) {
-        savedSwitch = await switchApi.update(currentSwitch.id, switchData as SwitchUpdate);
-        setSnackbar({ open: true, message: `Switch "${savedSwitch.name}" erfolgreich aktualisiert.`, severity: 'success' });
+        response = await switchApi.update(currentSwitch.id, switchData as SwitchUpdate);
+        // Verwende Namen aus switchData
+        setSnackbar({ open: true, message: response.message || `Switch "${switchData.name}" erfolgreich aktualisiert.`, severity: 'success' });
       } else {
-        savedSwitch = await switchApi.create(switchData as SwitchCreate);
-        setSnackbar({ open: true, message: `Switch "${savedSwitch.name}" erfolgreich erstellt.`, severity: 'success' });
+        response = await switchApi.create(switchData as SwitchCreate);
+        // Verwende Namen aus switchData
+        setSnackbar({ open: true, message: response.message || `Switch "${switchData.name}" erfolgreich erstellt.`, severity: 'success' });
       }
-      await loadSwitches();
-      handleCloseDialog();
-    } catch (error) {
-      const errorMessage = handleApiError(error);
+
+      // Prüfe response.success
+      if (response.success) {
+        await loadSwitches(); // await hinzufügen
+        handleCloseDialog();
+      } else {
+        // Fehlerfall, wenn success: false vom Backend kommt
+        setSnackbar({ open: true, message: response.message || 'Fehler beim Speichern des Switches.', severity: 'error' });
+         if (response.message?.toLowerCase().includes('existiert bereits')) {
+             setName(prev => ({ ...prev, error: true, helperText: response.message || 'Fehler' }));
+         }
+      }
+    } catch (error: any) {
+      // Fehler vom apiRequest (Netzwerk etc.)
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
       if (errorMessage.toLowerCase().includes('existiert bereits')) {
          setName(prev => ({ ...prev, error: true, helperText: errorMessage }));
-      } else {
-         setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
       }
     } finally {
         setLoading(false);

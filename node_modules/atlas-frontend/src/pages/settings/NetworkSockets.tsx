@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -25,7 +25,8 @@ import {
   ListItemText,
   SelectChangeEvent,
   CircularProgress,
-  Chip
+  Chip,
+  FormHelperText
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,10 +37,13 @@ import {
   Visibility as ViewIcon,
   Router as RouterIcon
 } from '@mui/icons-material';
-import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
-import { NetworkOutlet, Room, Location } from '../types/settings';
-import { settingsApi } from '../utils/api';
-import handleApiError from '../utils/errorHandler';
+import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import { NetworkOutlet, Room, Location, NetworkOutletCreate, NetworkOutletUpdate } from '../../types/settings';
+import { settingsApi } from '../../utils/api';
+import handleApiError from '../../utils/errorHandler';
+import { ApiResponse } from '../../utils/api';
+import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 const NetworkSockets: React.FC = () => {
   // State für die Daten
@@ -60,14 +64,10 @@ const NetworkSockets: React.FC = () => {
   } | null>(null);
 
   // Form State
-  const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [locationId, setLocationId] = useState<number | ''>('');
   const [roomId, setRoomId] = useState<number | ''>('');
-  const [wallPosition, setWallPosition] = useState<string>('');
   const [outletNumber, setOutletNumber] = useState<string>('');
-  const [socketType, setSocketType] = useState<string>('ethernet');
-  const [portCount, setPortCount] = useState<number>(1);
   const [isActive, setIsActive] = useState<boolean>(true);
 
   // UI State
@@ -81,50 +81,83 @@ const NetworkSockets: React.FC = () => {
     severity: 'info'
   });
 
-  // Daten laden
-  useEffect(() => {
-    loadData();
-  }, []);
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [socketToDelete, setSocketToDelete] = useState<NetworkOutlet | null>(null);
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
+    // Reset states initially
+    setNetworkSockets([]);
+    setLocations([]);
+    setRooms([]);
+
     try {
-      // Laden der Standorte, Räume und Netzwerkdosen parallel
-      const [locationsResponse, roomsResponse, networkSocketsResponse] = await Promise.all([
-        settingsApi.getAllLocations(),
-        settingsApi.getAllRooms(),
-        settingsApi.getAllNetworkOutlets()
+      const [socketsResponse, locationsResponse, roomsResponse] = await Promise.all([
+        settingsApi.getAllNetworkOutlets(),
+        settingsApi.getAllLocations(), // Load locations
+        settingsApi.getAllRooms()       // Load rooms
       ]);
 
-      setLocations(locationsResponse.data as Location[]);
-      setRooms(roomsResponse.data as Room[]);
-      setNetworkSockets(networkSocketsResponse.data as NetworkOutlet[]);
+      // Validate all responses
+      const socketsValid = socketsResponse?.success && Array.isArray(socketsResponse.data);
+      const locationsValid = locationsResponse?.success && Array.isArray(locationsResponse.data);
+      const roomsValid = roomsResponse?.success && Array.isArray(roomsResponse.data);
+
+      if (socketsValid && locationsValid && roomsValid) {
+        // Set states only if all requests were successful
+        setNetworkSockets(socketsResponse.data);
+        setLocations(locationsResponse.data);
+        setRooms(roomsResponse.data);
+      } else {
+        // Handle specific errors or generic message
+        let errorMessages: string[] = [];
+        if (!socketsValid) errorMessages.push(`Netzwerkdosen: ${socketsResponse?.message || 'Ungültige Daten'}`);
+        if (!locationsValid) errorMessages.push(`Standorte: ${locationsResponse?.message || 'Ungültige Daten'}`);
+        if (!roomsValid) errorMessages.push(`Räume: ${roomsResponse?.message || 'Ungültige Daten'}`);
+
+        console.error("[NetworkSockets LoadData] Failed to load some data:", errorMessages.join(', '));
+        setSnackbar({
+          open: true,
+          message: `Fehler beim Laden der Daten: ${errorMessages.join('; ')}`,
+          severity: 'error'
+        });
+        // Keep states empty or handle partially loaded data if necessary
+        setNetworkSockets([]);
+        setLocations([]);
+        setRooms([]);
+      }
     } catch (error) {
       const errorMessage = handleApiError(error);
+      console.error("[NetworkSockets LoadData] CATCH BLOCK ERROR during combined loading:", errorMessage, error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Laden der Daten: ${errorMessage}`,
+        message: `Schwerwiegender Fehler beim Laden der Daten: ${errorMessage}`,
         severity: 'error'
       });
+      setNetworkSockets([]);
+      setLocations([]);
+      setRooms([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Leeres Array ist korrekt hier
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Dialog öffnen für neuen Eintrag
   const handleAddNew = () => {
     setEditMode(false);
     setReadOnly(false);
     setCurrentSocket(null);
-    setName('');
+    setOutletNumber('');
     setDescription('');
     setLocationId('');
     setRoomId('');
-    setWallPosition('');
-    setOutletNumber('');
-    setSocketType('ethernet');
-    setPortCount(1);
     setIsActive(true);
+    setFormErrors({});
     setDialogOpen(true);
   };
 
@@ -133,45 +166,67 @@ const NetworkSockets: React.FC = () => {
     setEditMode(true);
     setReadOnly(false);
     setCurrentSocket(socket);
-    setName(socket.name || '');
+    setOutletNumber(socket.outletNumber || '');
     setDescription(socket.description || '');
     setLocationId(socket.locationId || '');
     setRoomId(socket.roomId || '');
-    setWallPosition(socket.wallPosition || '');
-    setOutletNumber(socket.outletNumber || '');
-    setSocketType(socket.socketType || 'ethernet');
-    setPortCount(socket.portCount || 1);
     setIsActive(socket.isActive);
+    setFormErrors({});
     setDialogOpen(true);
   };
 
-  // Löschen einer Netzwerkdose
-  const handleDelete = async (socket: NetworkOutlet) => {
+  // Löschen vorbereiten
+  const handleDeleteRequest = (socket: NetworkOutlet) => {
+    setSocketToDelete(socket);
+    setConfirmDeleteDialogOpen(true);
+  };
+
+  // Löschen ausführen
+  const executeDelete = async () => {
+    if (!socketToDelete) return;
+    setConfirmDeleteDialogOpen(false);
+    const socketNum = socketToDelete.outletNumber;
+
+    setLoading(true);
     try {
-      await settingsApi.deleteNetworkOutlet(socket.id);
-
-      // Nach erfolgreichem Löschen die Liste aktualisieren
-      const updatedSockets = networkSockets.filter(s => s.id !== socket.id);
-      setNetworkSockets(updatedSockets);
-
-      setSnackbar({
-        open: true,
-        message: `Netzwerkdose "${socket.name}" wurde gelöscht.`,
-        severity: 'success'
-      });
+      const response = await settingsApi.deleteNetworkOutlet(socketToDelete.id);
+      if (response.success) {
+         setSnackbar({
+           open: true,
+           message: response.message || `Netzwerkdose "${socketNum}" wurde gelöscht.`,
+           severity: 'success'
+         });
+         await loadData();
+      } else {
+         setSnackbar({
+            open: true,
+            message: response.message || 'Fehler beim Löschen der Netzwerkdose.',
+            severity: 'error'
+         });
+      }
     } catch (error) {
       const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Löschen der Netzwerkdose: ${errorMessage}`,
+        message: `Fehler beim Löschen: ${errorMessage}`,
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
+      setSocketToDelete(null);
     }
+  };
+
+  // Bestätigungsdialog schließen
+  const handleCloseConfirmDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setSocketToDelete(null);
   };
 
   // Dialog schließen
   const handleCloseDialog = () => {
     setDialogOpen(false);
+    setFormErrors({});
   };
 
   // Handlefunktionen für das Kontextmenü
@@ -196,15 +251,12 @@ const NetworkSockets: React.FC = () => {
         setEditMode(false);
         setReadOnly(true);
         setCurrentSocket(socket);
-        setName(socket.name || '');
+        setOutletNumber(socket.outletNumber || '');
         setDescription(socket.description || '');
         setLocationId(socket.locationId || '');
         setRoomId(socket.roomId || '');
-        setWallPosition(socket.wallPosition || '');
-        setOutletNumber(socket.outletNumber || '');
-        setSocketType(socket.socketType || 'ethernet');
-        setPortCount(socket.portCount || 1);
         setIsActive(socket.isActive);
+        setFormErrors({});
         setDialogOpen(true);
       }
       handleContextMenuClose();
@@ -225,7 +277,7 @@ const NetworkSockets: React.FC = () => {
     if (contextMenu) {
       const socket = networkSockets.find(s => s.id === contextMenu.socketId);
       if (socket) {
-        handleDelete(socket);
+        handleDeleteRequest(socket);
       }
       handleContextMenuClose();
     }
@@ -233,72 +285,62 @@ const NetworkSockets: React.FC = () => {
 
   // Speichern der Netzwerkdose
   const handleSave = async () => {
-    // Validierung
+    setFormErrors({});
+    let errors: { [key: string]: string } = {};
     const trimmedOutletNumber = outletNumber.trim();
 
     if (!trimmedOutletNumber) {
-      setSnackbar({
-        open: true,
-        message: 'Bitte geben Sie eine Dosennummer ein.',
-        severity: 'error'
-      });
-      return;
+      errors.outletNumber = 'Dosennummer ist erforderlich.';
+    }
+    if (!locationId) {
+       errors.locationId = 'Standort ist erforderlich.';
+    }
+    if (Object.keys(errors).length > 0) {
+       setFormErrors(errors);
+       return;
     }
 
-    const socketData = {
-      description,
-      locationId: locationId ? Number(locationId) : undefined,
-      roomId: roomId ? Number(roomId) : undefined,
-      wallPosition: wallPosition || undefined,
+    const socketData: Partial<NetworkOutletCreate | NetworkOutletUpdate> = {
       outletNumber: trimmedOutletNumber,
-      socketNumber: trimmedOutletNumber,
-      outlet_number: trimmedOutletNumber,
-      socketType,
-      portCount,
-      isActive
+      description: description.trim() || null,
+      locationId: locationId ? Number(locationId) : null,
+      roomId: roomId ? Number(roomId) : null,
+      isActive: isActive,
     };
 
-    // Debug-Ausgabe, um zu prüfen, was gesendet wird
-    console.log('Sende Daten an API:', socketData);
-
+    setLoading(true);
     try {
+      let response: ApiResponse<NetworkOutlet>;
       if (editMode && currentSocket) {
-        // Bestehende Netzwerkdose aktualisieren
-        const response = await settingsApi.updateNetworkOutlet(currentSocket.id, socketData);
-
-        // Liste der Netzwerkdosen aktualisieren
-        const updatedSockets = networkSockets.map(s =>
-          s.id === currentSocket.id ? response.data as NetworkOutlet : s
-        );
-
-        setNetworkSockets(updatedSockets);
-        setSnackbar({
-          open: true,
-          message: `Netzwerkdose "${name}" wurde aktualisiert.`,
-          severity: 'success'
-        });
+        response = await settingsApi.updateNetworkOutlet(currentSocket.id, socketData as NetworkOutletUpdate);
       } else {
-        // Neue Netzwerkdose erstellen
-        const response = await settingsApi.createNetworkOutlet(socketData);
-
-        // Neue Netzwerkdose zur Liste hinzufügen
-        setNetworkSockets([...networkSockets, response.data as NetworkOutlet]);
-        setSnackbar({
-          open: true,
-          message: `Netzwerkdose "${name}" wurde erstellt.`,
-          severity: 'success'
-        });
+        response = await settingsApi.createNetworkOutlet(socketData as NetworkOutletCreate);
       }
 
-      // Dialog schließen
-      setDialogOpen(false);
+      if (response.success && response.data) {
+        setSnackbar({
+          open: true,
+          message: response.message || `Netzwerkdose ${response.data.outletNumber} erfolgreich ${editMode ? 'aktualisiert' : 'erstellt'}.`,
+          severity: 'success'
+        });
+        handleCloseDialog();
+        await loadData();
+      } else {
+        setSnackbar({
+          open: true,
+          message: response.message || `Fehler beim Speichern der Netzwerkdose.`,
+          severity: 'error'
+        });
+      }
     } catch (error) {
       const errorMessage = handleApiError(error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Speichern der Netzwerkdose: ${errorMessage}`,
+        message: `Fehler beim Speichern: ${errorMessage}`,
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -306,7 +348,6 @@ const NetworkSockets: React.FC = () => {
   const handleLocationChange = (event: SelectChangeEvent<number | ''>) => {
     const newLocationId = event.target.value as number | '';
     setLocationId(newLocationId);
-    // Wenn Standort geändert wird, setzen wir den Raum zurück
     setRoomId('');
   };
 
@@ -317,16 +358,13 @@ const NetworkSockets: React.FC = () => {
 
   // Spalten für die Tabelle
   const columns: AtlasColumn<NetworkOutlet>[] = [
-    { dataKey: 'id', label: 'ID', width: 70, numeric: true },
-    { dataKey: 'name', label: 'Bezeichnung' },
-    {
-      dataKey: 'outletNumber',
-      label: 'Dosennummer',
-      width: 150
-    },
+    { dataKey: 'id', label: 'ID', width: 70, numeric: true, sortable: true },
+    { dataKey: 'outletNumber', label: 'Dosennummer', width: 150, sortable: true },
+    { dataKey: 'description', label: 'Beschreibung', sortable: true },
     {
       dataKey: 'locationId',
       label: 'Standort',
+      sortable: true,
       render: (value) => {
         if (!value) return '-';
         const location = locations.find(l => l.id === value);
@@ -336,46 +374,18 @@ const NetworkSockets: React.FC = () => {
     {
       dataKey: 'roomId',
       label: 'Raum',
+      sortable: true,
       render: (value) => {
         if (!value) return '-';
         const room = rooms.find(r => r.id === value);
         return room ? room.name : `ID: ${value}`;
       }
     },
-    { dataKey: 'wallPosition', label: 'Position an Wand' },
-    {
-      dataKey: 'socketType',
-      label: 'Typ',
-      width: 120,
-      render: (value) => {
-        const types: Record<string, { label: string, color: 'primary' | 'secondary' | 'success' | 'warning' }> = {
-          'ethernet': { label: 'Ethernet', color: 'primary' },
-          'fiber': { label: 'LWL', color: 'secondary' },
-          'coaxial': { label: 'Koaxial', color: 'warning' }
-        };
-
-        const type = types[value as string] || { label: value as string, color: 'primary' };
-
-        return (
-          <Chip
-            label={type.label}
-            color={type.color}
-            size="small"
-            variant="outlined"
-          />
-        );
-      }
-    },
-    {
-      dataKey: 'portCount',
-      label: 'Ports',
-      width: 80,
-      numeric: true
-    },
     {
       dataKey: 'isActive',
       label: 'Status',
       width: 120,
+      sortable: true,
       render: (value) => (
         <Chip
           label={value ? 'Aktiv' : 'Inaktiv'}
@@ -388,14 +398,26 @@ const NetworkSockets: React.FC = () => {
     {
       dataKey: 'actions',
       label: 'Aktionen',
-      width: 80,
+      width: 100,
+      sortable: false,
       render: (_, row) => (
-        <IconButton
-          size="small"
-          onClick={(event) => handleContextMenu(event, row.id)}
-        >
-          <MoreVertIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Anzeigen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleContextMenu(e, row.id); }}>
+              <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )
     }
   ];
@@ -404,6 +426,8 @@ const NetworkSockets: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
+
+  console.log("[NetworkSockets Rendering] Current networkSockets state:", JSON.stringify(networkSockets)); // Log vor dem Return
 
   return (
     <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh', width: '100%' }}>
@@ -450,7 +474,7 @@ const NetworkSockets: React.FC = () => {
             rows={networkSockets}
             heightPx={600}
             emptyMessage="Keine Netzwerkdosen vorhanden"
-            initialSortColumn="name"
+            initialSortColumn="outletNumber"
             initialSortDirection="asc"
           />
         )}
@@ -490,23 +514,11 @@ const NetworkSockets: React.FC = () => {
       {/* Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {readOnly ? `Netzwerkdose anzeigen: ${currentSocket?.name}` :
-            (editMode ? `Netzwerkdose bearbeiten: ${currentSocket?.name}` : 'Neue Netzwerkdose erstellen')}
+          {readOnly ? `Netzwerkdose anzeigen: ${currentSocket?.outletNumber}` :
+            (editMode ? `Netzwerkdose bearbeiten: ${currentSocket?.outletNumber}` : 'Neue Netzwerkdose erstellen')}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Name"
-              fullWidth
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              placeholder="z.B. ND-101-01"
-              InputProps={{
-                readOnly: readOnly
-              }}
-            />
-
             <TextField
               label="Dosennummer"
               fullWidth
@@ -516,12 +528,14 @@ const NetworkSockets: React.FC = () => {
               required
               value={outletNumber}
               onChange={(e) => setOutletNumber(e.target.value)}
+              error={!!formErrors.outletNumber}
+              helperText={formErrors.outletNumber}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <WallPositionIcon />
+                    <RouterIcon />
                   </InputAdornment>
-                )
+                ),
               }}
             />
 
@@ -538,13 +552,14 @@ const NetworkSockets: React.FC = () => {
               }}
             />
 
-            <FormControl fullWidth disabled={readOnly}>
+            <FormControl fullWidth disabled={readOnly} error={!!formErrors.locationId}>
               <InputLabel id="location-label">Standort</InputLabel>
               <Select
                 labelId="location-label"
                 label="Standort"
                 value={locationId}
                 onChange={handleLocationChange}
+                disabled={readOnly}
               >
                 <MenuItem value="">
                   <em>Bitte wählen</em>
@@ -555,6 +570,7 @@ const NetworkSockets: React.FC = () => {
                   </MenuItem>
                 ))}
               </Select>
+              {formErrors.locationId && <FormHelperText>{formErrors.locationId}</FormHelperText>}
             </FormControl>
 
             <FormControl fullWidth disabled={!locationId || readOnly}>
@@ -576,48 +592,6 @@ const NetworkSockets: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-
-            <TextField
-              label="Position an der Wand"
-              fullWidth
-              value={wallPosition}
-              onChange={(e) => setWallPosition(e.target.value)}
-              placeholder="z.B. Links neben Tür"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <WallPositionIcon />
-                  </InputAdornment>
-                ),
-                readOnly: readOnly
-              }}
-            />
-
-            <FormControl fullWidth disabled={readOnly}>
-              <InputLabel id="socket-type-label">Dosen-Typ</InputLabel>
-              <Select
-                labelId="socket-type-label"
-                label="Dosen-Typ"
-                value={socketType}
-                onChange={(e) => setSocketType(e.target.value)}
-              >
-                <MenuItem value="ethernet">Ethernet</MenuItem>
-                <MenuItem value="fiber">LWL (Glasfaser)</MenuItem>
-                <MenuItem value="coaxial">Koaxial</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="Anzahl Ports"
-              fullWidth
-              type="number"
-              value={portCount}
-              onChange={(e) => setPortCount(parseInt(e.target.value) || 1)}
-              InputProps={{
-                readOnly: readOnly,
-                inputProps: { min: 1, max: 48 }
-              }}
-            />
 
             <FormControlLabel
               control={
@@ -647,6 +621,16 @@ const NetworkSockets: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog für Delete */}
+      <ConfirmationDialog
+        open={confirmDeleteDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Netzwerkdose löschen?"
+        message={`Möchten Sie die Netzwerkdose "${socketToDelete?.outletNumber}" (ID: ${socketToDelete?.id}) wirklich endgültig löschen?`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar */}
       <Snackbar

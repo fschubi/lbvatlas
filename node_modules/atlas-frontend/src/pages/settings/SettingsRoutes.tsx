@@ -17,7 +17,7 @@ import Departments from './Departments';
 import DeviceModels from './DeviceModels';
 import Locations from './Locations';
 import Manufacturers from './Manufacturers';
-import NetworkOutlets from './NetworkOutlets';
+import NetworkSockets from './NetworkSockets';
 import Ports from './Ports';
 import NetworkPorts from './NetworkPorts';
 import Rooms from './Rooms';
@@ -45,7 +45,7 @@ const SettingsRoutes: React.FC = () => {
       <Route path="device-models" element={<DeviceModels />} />
       <Route path="locations" element={<Locations />} />
       <Route path="manufacturers" element={<Manufacturers />} />
-      <Route path="network-outlets" element={<NetworkOutlets />} />
+      <Route path="network-sockets" element={<NetworkSockets />} />
       <Route path="ports" element={<Ports />} />
       <Route path="network-ports" element={<NetworkPorts />} />
       <Route path="rooms" element={<Rooms />} />

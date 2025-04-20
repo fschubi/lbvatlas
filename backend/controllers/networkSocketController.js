@@ -92,20 +92,35 @@ class NetworkSocketController {
     async deleteNetworkSocket(req, res) {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
+            // Konsistenter Fehlerfall
+            return res.status(400).json({ success: false, message: 'Validierungsfehler', errors: errors.array() });
         }
         try {
             const socketId = req.params.id;
-            const result = await networkSocketModel.deleteNetworkSocket(socketId);
-            res.json(result);
+            // Rufe das Model auf. Wenn es nicht wirft, war es erfolgreich.
+            await networkSocketModel.deleteNetworkSocket(socketId);
+
+            // Erfolg! Sende 200 OK
+            res.status(200).json({ success: true, message: 'Netzwerkdose erfolgreich gelöscht.' });
+
         } catch (error) {
-            console.error('Fehler beim Löschen der Netzwerkdose:', error);
-             if (error.message === 'Netzwerkdose nicht gefunden') {
+            console.error('Fehler beim Löschen der Netzwerkdose Controller:', error);
+            // Fehler aus dem Model spezifisch behandeln
+            if (error.message === 'Diese Netzwerkdose wird von Ports verwendet und kann nicht gelöscht werden') {
+                // Specific check from model succeeded
+                return res.status(409).json({ success: false, message: error.message });
+            } else if (error.message === 'Netzwerkdose kann nicht gelöscht werden, da sie noch verwendet wird.') {
+                // Generic foreign key error from model
+                return res.status(409).json({ success: false, message: error.message });
+            } else if (error.message === 'Netzwerkdose nicht gefunden') {
+                // Not found error from model
                 return res.status(404).json({ success: false, message: error.message });
-            } else if (error.message.includes('verwendet wird')) {
-                return res.status(400).json({ success: false, message: error.message });
+            } else if (error.message === 'Netzwerkdose konnte nicht gelöscht werden (nicht gefunden nach Prüfung).') {
+                // Should not happen due to pre-check, but handle defensively
+                return res.status(404).json({ success: false, message: error.message });
             }
-            res.status(500).json({ success: false, message: 'Fehler beim Löschen der Netzwerkdose', error: error.message });
+            // Allgemeiner, unerwarteter Serverfehler
+            res.status(500).json({ success: false, message: error.message || 'Allgemeiner Fehler beim Löschen der Netzwerkdose' });
         }
     }
 }

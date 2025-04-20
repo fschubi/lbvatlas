@@ -75,7 +75,6 @@ axiosInstance.interceptors.response.use(
 const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<ApiResponse<T>> => {
   try {
     const snakeCasedData = data ? toSnakeCase(data) : undefined;
-    console.log(`[apiRequest] Sending ${method} to ${endpoint}. Body (snake_case):`, JSON.stringify(snakeCasedData));
 
     const config = {
       method,
@@ -86,18 +85,31 @@ const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 
 
     // *** KORREKTUR: CamelCase auf response.data anwenden und als ApiResponse<T> zurückgeben ***
     const responseData = response.data; // Das gesamte Response-Objekt { success, data, message }
-    const camelCasedPayload = responseData.data ? toCamelCase(responseData.data) : undefined;
+
+    // Füge Robustheitschecks hinzu
+    if (typeof responseData !== 'object' || responseData === null) {
+      console.error(`[apiRequest] Unerwartete Antwortstruktur (kein Objekt) für ${method} ${endpoint}:`, responseData);
+      throw new Error('Ungültige Server-Antwortstruktur.');
+    }
+    if (typeof responseData.success !== 'boolean') {
+       console.warn(`[apiRequest] Fehlendes oder ungültiges 'success'-Feld für ${method} ${endpoint}:`, responseData);
+       // Optional: Versuche trotzdem fortzufahren, wenn Daten vorhanden sind?
+       // Oder wirf einen Fehler für Konsistenz
+       // throw new Error("Server-Antwort fehlt 'success'-Feld.");
+    }
+
+    const camelCasedPayload = responseData.data ? toCamelCase(responseData.data) : responseData.data; // Fallback, falls Konvertierung nicht nötig/möglich
 
     return {
-      success: responseData.success,
+      success: responseData.success === true, // Stelle sicher, dass es boolean true ist
       data: camelCasedPayload as T, // Das ist jetzt der eigentliche Payload (z.B. Location[])
       message: responseData.message,
     };
 
-  } catch (error) {
+  } catch (error: any) {
     // Fehlerbehandlung muss ggf. angepasst werden, um die neue Struktur zu berücksichtigen
     const handledError = handleApiError(error as Error);
-    // Wir werfen einen Fehler, der der ApiResponse-Struktur ähnelt
+    // Wirf den standardisierten Fehler weiter
     throw { success: false, message: handledError, data: null };
   }
 };
@@ -369,14 +381,14 @@ export const switchApi = {
 };
 
 export const networkOutletsApi = {
-  getAll: (): Promise<ApiResponse<NetworkOutlet[]>> => apiRequest<NetworkOutlet[]>('/network-outlets'),
-  getById: (id: number): Promise<ApiResponse<NetworkOutlet>> => apiRequest<NetworkOutlet>(`/network-outlets/${id}`),
+  getAll: (): Promise<ApiResponse<NetworkOutlet[]>> => apiRequest<NetworkOutlet[]>('/network-sockets'),
+  getById: (id: number): Promise<ApiResponse<NetworkOutlet>> => apiRequest<NetworkOutlet>(`/network-sockets/${id}`),
   create: (data: NetworkOutletCreate): Promise<ApiResponse<NetworkOutlet>> =>
-    apiRequest<NetworkOutlet>('/network-outlets', 'POST', data),
+    apiRequest<NetworkOutlet>('/network-sockets', 'POST', data),
   update: (id: number, data: NetworkOutletUpdate): Promise<ApiResponse<NetworkOutlet>> =>
-    apiRequest<NetworkOutlet>(`/network-outlets/${id}`, 'PUT', data),
+    apiRequest<NetworkOutlet>(`/network-sockets/${id}`, 'PUT', data),
   delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
-    apiRequest<{ message?: string }>(`/network-outlets/${id}`, 'DELETE'),
+    apiRequest<{ message?: string }>(`/network-sockets/${id}`, 'DELETE'),
   checkOutletNumberExists: async (
     outletNum: string,
     currentId?: number

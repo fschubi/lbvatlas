@@ -105,7 +105,7 @@ const BasicSettings: React.FC = () => {
       title: 'Netzwerkdosen',
       description: 'Physische Netzwerkanschlüsse und deren Zuordnungen verwalten',
       icon: <NetworkOutletsIcon />,
-      path: '/settings/network-outlets',
+      path: '/settings/network-sockets',
       color: '#303f9f'
     }
   ];

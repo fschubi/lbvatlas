@@ -8,10 +8,19 @@ const NetworkPortController = {
     async getAllPorts(req, res, next) {
         try {
             const ports = await NetworkPortModel.getAll();
-            res.status(200).json(ports.map(toCamelCase));
+            // Sende die Daten in der ApiResponse-Struktur
+            res.status(200).json({
+                success: true,
+                data: ports.map(toCamelCase)
+            });
         } catch (error) {
             console.error('Fehler im NetworkPortController (getAllPorts):', error);
-            next(error);
+            // Sende standardisierte Fehlerantwort
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Ein interner Serverfehler ist aufgetreten.'
+            });
+            // next(error) wird hier nicht benötigt
         }
     },
 
@@ -35,84 +44,92 @@ const NetworkPortController = {
 
     async createPort(req, res) {
         const errors = validationResult(req);
-        // LOGGING: Was sagt der Validator?
-        console.log('[createPort] Validation Result:', JSON.stringify(errors.array()));
-
         if (!errors.isEmpty()) {
-            // Gebe die tatsächlichen Validierungsfehler zurück
-            return res.status(400).json({ message: 'Validierungsfehler', errors: errors.array() });
+            return res.status(400).json({ success: false, message: 'Validierungsfehler', errors: errors.array() });
         }
 
-        // Erwarte snake_case
         const { port_number } = req.body;
-
         if (port_number === undefined || port_number === null || isNaN(parseInt(port_number, 10)) || parseInt(port_number, 10) <= 0) {
-            return res.status(400).json({ message: 'Ungültige oder fehlende Portnummer.' });
+            return res.status(400).json({ success: false, message: 'Ungültige oder fehlende Portnummer.' });
         }
 
         try {
-            const existingPort = await NetworkPortModel.findByPortNumber(parseInt(port_number, 10));
+            const portNum = parseInt(port_number, 10);
+            const existingPort = await NetworkPortModel.findByPortNumber(portNum);
             if (existingPort) {
-                return res.status(409).json({ message: 'Diese Portnummer existiert bereits.' });
+                return res.status(409).json({ success: false, message: 'Diese Portnummer existiert bereits.' });
             }
 
-            const newPortData = { port_number: parseInt(port_number, 10) };
+            const newPortData = { port_number: portNum };
             const port = await NetworkPortModel.create(newPortData);
-            res.status(201).json(toCamelCase(port)); // Sende camelCase zurück
+            res.status(201).json({
+                success: true,
+                data: toCamelCase(port),
+                message: `Port ${port.port_number} erfolgreich erstellt.`
+            });
         } catch (error) {
             console.error('Fehler beim Erstellen des Netzwerk-Ports:', error);
-            res.status(500).json({ message: 'Serverfehler beim Erstellen des Netzwerk-Ports' });
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Serverfehler beim Erstellen des Netzwerk-Ports'
+            });
         }
     },
 
     async updatePort(req, res) {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
+            return res.status(400).json({ success: false, message: 'Validierungsfehler', errors: errors.array() });
         }
 
         const { id } = req.params;
-        // Erwarte snake_case
         const { port_number } = req.body;
         const portId = parseInt(id, 10);
-
         if (isNaN(portId) || portId <= 0) {
-            return res.status(400).json({ message: 'Ungültige Netzwerk-Port-ID.' });
+            return res.status(400).json({ success: false, message: 'Ungültige Netzwerk-Port-ID.' });
         }
 
         const updateData = {};
+        let parsedPortNumber = NaN;
         if (port_number !== undefined) {
-            const parsedPortNumber = parseInt(port_number, 10);
+            parsedPortNumber = parseInt(port_number, 10);
             if (isNaN(parsedPortNumber) || parsedPortNumber <= 0) {
-                return res.status(400).json({ message: 'Ungültige Portnummer.' });
+                return res.status(400).json({ success: false, message: 'Ungültige Portnummer.' });
             }
 
             const existingPortById = await NetworkPortModel.findById(portId);
             if (!existingPortById) {
-                 return res.status(404).json({ message: 'Netzwerk-Port nicht gefunden.'});
+                 return res.status(404).json({ success: false, message: 'Netzwerk-Port nicht gefunden.'});
             }
             if (existingPortById.port_number !== parsedPortNumber) {
                 const existingPortByNumber = await NetworkPortModel.findByPortNumber(parsedPortNumber);
                 if (existingPortByNumber && existingPortByNumber.id !== portId) {
-                    return res.status(409).json({ message: 'Diese Portnummer existiert bereits.' });
+                    return res.status(409).json({ success: false, message: 'Diese Portnummer existiert bereits.' });
                 }
             }
             updateData.port_number = parsedPortNumber;
         }
 
         if (Object.keys(updateData).length === 0) {
-            return res.status(400).json({ message: 'Keine Daten zum Aktualisieren angegeben.' });
+            return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben.' });
         }
 
         try {
             const updatedPort = await NetworkPortModel.update(portId, updateData);
             if (!updatedPort) {
-                return res.status(404).json({ message: 'Netzwerk-Port nicht gefunden.' });
+                return res.status(404).json({ success: false, message: 'Netzwerk-Port nicht gefunden.' });
             }
-            res.status(200).json(toCamelCase(updatedPort)); // Sende camelCase zurück
+            res.status(200).json({
+                success: true,
+                data: toCamelCase(updatedPort),
+                message: `Port ${updatedPort.port_number} erfolgreich aktualisiert.`
+            });
         } catch (error) {
             console.error('Fehler beim Aktualisieren des Netzwerk-Ports:', error);
-            res.status(500).json({ message: 'Serverfehler beim Aktualisieren des Netzwerk-Ports' });
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Serverfehler beim Aktualisieren des Netzwerk-Ports'
+            });
         }
     },
 
