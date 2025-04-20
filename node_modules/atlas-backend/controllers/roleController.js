@@ -166,6 +166,48 @@ const removePermissionFromRole = async (req, res, next) => {
   }
 };
 
+// PUT /api/roles/:roleId/permissions
+const updateRolePermissions = async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { roleId } = req.params;
+  const { permission_ids: permissionIds } = req.body;
+
+  if (!Array.isArray(permissionIds)) {
+    return res.status(400).json({ success: false, message: "'permissionIds' muss ein Array sein." });
+  }
+
+  if (!permissionIds.every(id => typeof id === 'number' && Number.isInteger(id) && id > 0)) {
+    return res.status(400).json({ success: false, message: "'permissionIds' darf nur positive Ganzzahlen enthalten." });
+  }
+
+  try {
+    logger.info(`Controller: updateRolePermissions aufgerufen für Rolle ${roleId}`, { permissionIds });
+
+    const role = await roleModel.getRoleById(roleId);
+    if (!role) {
+      return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+    }
+    if (role.is_system) {
+      return res.status(403).json({ success: false, message: 'Berechtigungen für Systemrollen können nicht geändert werden.' });
+    }
+
+    await roleModel.setRolePermissions(roleId, permissionIds);
+
+    res.status(200).json({ success: true, message: 'Berechtigungen erfolgreich aktualisiert.' });
+
+  } catch (error) {
+    logger.error(`Fehler in updateRolePermissions Controller für Rolle ${roleId}:`, error);
+    if (error.code === '23503') {
+      return res.status(400).json({ success: false, message: 'Eine oder mehrere der angegebenen Berechtigungs-IDs sind ungültig.' });
+    }
+    next(error);
+  }
+};
+
 // Berechtigungen nach Modul abrufen
 const getPermissionsByModule = async (req, res) => {
   try {
@@ -185,5 +227,6 @@ module.exports = {
   getRolePermissions,
   addPermissionToRole,
   removePermissionFromRole,
+  updateRolePermissions,
   getPermissionsByModule
 };

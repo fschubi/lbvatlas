@@ -14,6 +14,7 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   active?: boolean;
+  permissions?: Set<string>;
 }
 
 export type Department = {
@@ -52,4 +53,18 @@ export interface Role {
   id: number;
   name: string;
   label: string;
+  description?: string;
+  isSystem?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  permissions?: Permission[];
+  userCount?: number;
+}
+
+export interface Permission {
+  id: number;
+  name: string;
+  description?: string;
+  module?: string;
+  action?: string;
 }

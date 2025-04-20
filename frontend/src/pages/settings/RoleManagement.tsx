@@ -36,56 +36,40 @@ import {
 } from '@mui/icons-material';
 import { styled, useTheme } from '@mui/material/styles';
 import axios from 'axios';
-import { Role as RoleType } from '../../types/user'; // Assuming types exist
-import { roleApi, permissionApi } from '../../utils/api'; // Assuming API utility
+import {
+  Role as RoleType,
+  Permission as PermissionType
+} from '../../types/user'; // Importiere die zentralen Typen
+import { roleApi, permissionApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
-import ConfirmationDialog from '../../components/ConfirmationDialog'; // Import the dialog
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 
 // API-Basis-URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
-// Typen
-interface Role {
-  id: string;
-  name: string;
-  description: string;
-  is_system: boolean;
-  created_at: string;
-  updated_at: string;
-  permissions: string[];
-  userCount: number;
-}
-
-interface Permission {
-  id: string;
-  name: string;
-  description: string;
-  module: string;
-  action: string;
-  category: string;
-}
-
+// Verwende PermissionType für Module
 interface Module {
   name: string;
-  permissions: Permission[];
+  permissions: PermissionType[];
 }
 
 interface SnackbarState {
   open: boolean;
   message: string;
-  severity: 'success' | 'error' | 'info' | 'warning';
+  severity: 'success' | 'error' | 'warning' | 'info';
 }
 
+// Typ für die Berechtigungsmatrix (akzeptiert jetzt number | null)
 interface ActionPermissions {
-  create: string | null;
-  read: string | null;
-  update: string | null;
-  delete: string | null;
+  create: number | null;
+  read: number | null;
+  update: number | null;
+  delete: number | null;
 }
 
 interface PermissionMatrix {
-  [module: string]: ActionPermissions;
+  [moduleName: string]: ActionPermissions;
 }
 
 // Aktualisierte Typ-Definition für API-Antworten
@@ -98,7 +82,7 @@ interface ApiResponse<T = any> {
 // Styled-Komponenten für Matrix
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   textAlign: 'center',
-  padding: theme.spacing(1.5),
+  padding: theme.spacing(1),
   '&.MuiTableCell-head': {
     backgroundColor: theme.palette.primary.dark,
     color: theme.palette.common.white,
@@ -124,6 +108,9 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   '&:hover': {
     backgroundColor: theme.palette.action.selected,
   },
+  '&:last-child td, &:last-child th': {
+    border: 0,
+  },
 }));
 
 const PermissionYes = styled('span')(({ theme }) => ({
@@ -147,12 +134,12 @@ const getAuthConfig = () => {
 
 // Hauptkomponente
 const RoleManagement: React.FC = () => {
-  // Zustände
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
+  // Zustände (verwenden jetzt importierte Typen)
+  const [roles, setRoles] = useState<RoleType[]>([]);
+  const [permissions, setPermissions] = useState<PermissionType[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState<RoleType | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<number[]>([]);
   const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [openDialog, setOpenDialog] = useState<boolean>(false);
@@ -160,13 +147,9 @@ const RoleManagement: React.FC = () => {
   const [roleName, setRoleName] = useState<string>('');
   const [roleDescription, setRoleDescription] = useState<string>('');
   const [tabValue, setTabValue] = useState<number>(0);
-  const [snackbar, setSnackbar] = useState<SnackbarState>({
-    open: false,
-    message: '',
-    severity: 'success'
-  });
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
+  const [confirmDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<RoleType | null>(null);
 
   // TODO: Berechtigungsprüfung aktivieren
   // const { userPermissions } = usePermissions();
@@ -179,506 +162,362 @@ const RoleManagement: React.FC = () => {
   const canDelete = true; // Placeholder
   const canViewPermissions = true; // Placeholder
 
-  // Daten laden
-  useEffect(() => {
-    fetchRoles();
-    fetchPermissions();
-  }, []);
-
-  // Rollen laden
-  const fetchRoles = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get<ApiResponse<Role[]>>(`${API_BASE_URL}/roles`, getAuthConfig());
-
-      if (!response.data.success) {
-        throw new Error('Keine gültige Antwort vom Server');
-      }
-
-      setRoles(response.data.data || []);
-    } catch (error) {
-      console.error('Fehler beim Laden der Rollen:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Laden der Rollen: Verbindungsproblem',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Berechtigungen laden
-  const fetchPermissions = async () => {
+  const fetchPermissions = useCallback(async () => {
     try {
-      const response = await axios.get<ApiResponse<Permission[]>>(`${API_BASE_URL}/permissions`, getAuthConfig());
-
-      if (!response.data.success) {
-        throw new Error('Keine gültige Antwort vom Server');
+      const response = await permissionApi.getAll();
+      if (response.success && Array.isArray(response.data)) {
+         const permissionsData = response.data as PermissionType[];
+         setPermissions(permissionsData);
+         const moduleMap = new Map<string, PermissionType[]>();
+         permissionsData.forEach((permission) => {
+            const moduleName = permission.module || 'Unbekannt';
+            if (!moduleMap.has(moduleName)) {
+               moduleMap.set(moduleName, []);
+            }
+            moduleMap.get(moduleName)?.push(permission);
+         });
+         const moduleArray: Module[] = [];
+         moduleMap.forEach((perms, moduleName) => {
+           moduleArray.push({ name: moduleName, permissions: perms }); // Kein Cast mehr nötig
+         });
+         moduleArray.sort((a, b) => a.name.localeCompare(b.name));
+         setModules(moduleArray);
+      } else {
+        throw new Error(response.message || 'Fehler beim Laden der Berechtigungen');
       }
-
-      const permissionsData = response.data.data || [];
-      setPermissions(permissionsData);
-
-      // Berechtigungen nach Modulen gruppieren
-      const moduleMap = new Map<string, Permission[]>();
-      permissionsData.forEach((permission: Permission) => {
-        if (!moduleMap.has(permission.module)) {
-          moduleMap.set(permission.module, []);
-        }
-        moduleMap.get(permission.module)?.push(permission);
-      });
-
-      const moduleArray: Module[] = [];
-      moduleMap.forEach((perms, moduleName) => {
-        moduleArray.push({
-          name: moduleName,
-          permissions: perms
-        });
-      });
-
-      setModules(moduleArray);
     } catch (error) {
       console.error('Fehler beim Laden der Berechtigungen:', error);
       setSnackbar({
         open: true,
-        message: 'Fehler beim Laden der Berechtigungen: Verbindungsproblem',
+        message: `Fehler beim Laden der Berechtigungen: ${handleApiError(error)}`,
         severity: 'error'
       });
+      setPermissions([]);
+      setModules([]);
     }
-  };
+  }, []);
 
-  // Rollenberechtigungen laden
-  const fetchRolePermissions = async (roleId: string) => {
+  // Rollen laden
+  const fetchRoles = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await axios.get<ApiResponse<Permission[]>>(
-        `${API_BASE_URL}/roles/${roleId}/permissions`,
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
+      const response = await roleApi.getAll();
+      if (response.success && Array.isArray(response.data)) {
+        setRoles(response.data);
+      } else {
+        throw new Error(response.message || 'Fehler beim Laden der Rollen: Ungültige Datenstruktur.');
       }
-
-      const permissionIds = (response.data.data || []).map((perm: Permission) => perm.id);
-      setRolePermissions(permissionIds);
-
-      // Berechtigungsmatrix erstellen
-      createPermissionMatrix(response.data.data || []);
     } catch (error) {
-      console.error(`Fehler beim Laden der Berechtigungen für Rolle ${roleId}:`, error);
+      console.error('Fehler beim Laden der Rollen:', error);
       setSnackbar({
         open: true,
-        message: `Fehler beim Laden der Berechtigungen für Rolle: Verbindungsproblem`,
+        message: `Fehler beim Laden der Rollen: ${handleApiError(error)}`,
         severity: 'error'
       });
+      setRoles([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Berechtigungsmatrix erstellen
-  const createPermissionMatrix = (rolePermissions: Permission[]) => {
-    // Erstelle Matrix für jedes Modul mit Erstellen, Lesen, Bearbeiten, Löschen
+  // Rollenberechtigungen laden
+  const fetchRolePermissions = useCallback(async (roleId: number) => {
+    try {
+      const response = await roleApi.getPermissions(roleId);
+      if (response.success && Array.isArray(response.data)) {
+        const permissionIds = response.data.map((p: PermissionType) => p.id);
+        setRolePermissions(permissionIds);
+        createPermissionMatrix(response.data); // Jetzt PermissionType übergeben
+      } else {
+        throw new Error(response.message || 'Fehler beim Laden der Rollenberechtigungen.');
+      }
+    } catch (error) {
+        console.error(`Fehler beim Laden der Berechtigungen für Rolle ${roleId}:`, error);
+         setSnackbar({
+            open: true,
+            message: `Fehler beim Laden der Rollenberechtigungen: ${handleApiError(error)}`,
+            severity: 'error'
+        });
+        setRolePermissions([]);
+        setPermissionMatrix({}); // Matrix auch zurücksetzen
+    }
+  }, []); // createPermissionMatrix als Abhängigkeit?
+
+   // Berechtigungsmatrix erstellen (nimmt jetzt PermissionType[])
+   const createPermissionMatrix = useCallback((currentRolePermissions: PermissionType[]) => {
     const matrix: PermissionMatrix = {};
-
-    // Alle Module initialisieren
-    modules.forEach(module => {
-      matrix[module.name] = {
-        create: null,
-        read: null,
-        update: null,
-        delete: null
-      };
-    });
-
-    // Zugewiesene Berechtigungen setzen
-    rolePermissions.forEach(permission => {
-      const module = permission.module;
-      const action = permission.action;
-
-      if (!matrix[module]) {
-        matrix[module] = {
-          create: null,
-          read: null,
-          update: null,
-          delete: null
-        };
+    permissions.forEach(permission => {
+      const moduleName = permission.module || 'Unbekannt';
+      const actionName = permission.action || 'unbekannt';
+      if (!matrix[moduleName]) {
+        matrix[moduleName] = { create: null, read: null, update: null, delete: null };
       }
-
-      // Aktion zuordnen
-      if (action === 'create' || action === 'add') {
-        matrix[module].create = permission.id;
-      } else if (action === 'read' || action === 'view' || action === 'list') {
-        matrix[module].read = permission.id;
-      } else if (action === 'update' || action === 'edit') {
-        matrix[module].update = permission.id;
-      } else if (action === 'delete' || action === 'remove') {
-        matrix[module].delete = permission.id;
-      }
+      // Weisen Sie die ID der Berechtigung der entsprechenden Aktion im Matrixobjekt zu.
+      if (['create', 'add'].includes(actionName)) matrix[moduleName].create = permission.id;
+      else if (['read', 'view', 'list', 'get'].includes(actionName)) matrix[moduleName].read = permission.id;
+      else if (['update', 'edit', 'set'].includes(actionName)) matrix[moduleName].update = permission.id;
+      else if (['delete', 'remove'].includes(actionName)) matrix[moduleName].delete = permission.id;
     });
-
     setPermissionMatrix(matrix);
-  };
+  }, [permissions]); // Hängt von allen Berechtigungen ab
 
-  // Rolle auswählen
-  const handleSelectRole = (role: Role) => {
+  // --- UseEffects --- (ans Ende verschoben)
+  useEffect(() => {
+    fetchPermissions();
+    fetchRoles();
+  }, [fetchPermissions, fetchRoles]);
+
+  useEffect(() => {
+    if (selectedRole) {
+        fetchRolePermissions(selectedRole.id);
+    } else {
+        setRolePermissions([]);
+        setPermissionMatrix({}); // Matrix zurücksetzen
+    }
+  }, [selectedRole, fetchRolePermissions]);
+
+  useEffect(() => {
+    // Erstelle die Matrix neu, wenn sich die allgemeinen Berechtigungen ändern
+    // oder wenn sich die Berechtigungen der ausgewählten Rolle ändern
+    const currentPermissions = permissions.filter(p => rolePermissions.includes(p.id));
+    createPermissionMatrix(currentPermissions);
+  }, [permissions, rolePermissions, createPermissionMatrix]);
+
+  // --- Handler --- (verwenden jetzt RoleType)
+  const handleSelectRole = (role: RoleType) => {
     setSelectedRole(role);
-    fetchRolePermissions(role.id);
-    setTabValue(1);
+    setTabValue(0);
   };
 
-  // Tab wechseln
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  // Dialog öffnen
-  const handleOpenDialog = (type: 'create' | 'edit', role?: Role) => {
+  const handleOpenDialog = (type: 'create' | 'edit', role?: RoleType) => {
     setDialogType(type);
     if (type === 'edit' && role) {
+      setSelectedRole(role);
       setRoleName(role.name);
       setRoleDescription(role.description || '');
-      setSelectedRole(role);
     } else {
+      setSelectedRole(null);
       setRoleName('');
       setRoleDescription('');
+      setRolePermissions([]);
     }
     setOpenDialog(true);
+    setTabValue(0);
   };
 
-  // Dialog schließen
   const handleCloseDialog = () => {
     setOpenDialog(false);
   };
 
-  // Rolle erstellen
-  const handleCreateRole = async () => {
+  // Rolle erstellen/aktualisieren (zusammengefasst)
+  const handleSaveRole = async () => {
+    const roleData = { name: roleName.trim(), description: roleDescription.trim() };
+    if (!roleData.name) {
+        setSnackbar({ open: true, message: 'Rollenname darf nicht leer sein.', severity: 'warning' });
+        return;
+    }
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await axios.post<ApiResponse<Role>>(
-        `${API_BASE_URL}/roles`,
-        {
-          name: roleName,
-          description: roleDescription
-        },
-        getAuthConfig()
-      );
+        let response;
+        if (dialogType === 'edit' && selectedRole) {
+            response = await roleApi.update(selectedRole.id, roleData);
+        } else {
+            response = await roleApi.create(roleData);
+        }
 
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setRoles([...roles, response.data.data as Role]);
-      handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: 'Rolle erfolgreich erstellt',
-        severity: 'success'
-      });
+        if (response.success) {
+            setSnackbar({ open: true, message: `Rolle "${roleData.name}" ${dialogType === 'edit' ? 'aktualisiert' : 'erstellt'}.`, severity: 'success' });
+            handleCloseDialog();
+            await fetchRoles();
+            // Optional: Neue/aktualisierte Rolle auswählen?
+        } else {
+            throw new Error(response.message || 'Fehler beim Speichern der Rolle.');
+        }
     } catch (error) {
-      console.error('Fehler beim Erstellen der Rolle:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Erstellen der Rolle: Verbindungsproblem',
-        severity: 'error'
-      });
+         setSnackbar({ open: true, message: `Fehler: ${handleApiError(error)}`, severity: 'error' });
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
-  // Rolle aktualisieren
-  const handleUpdateRole = async () => {
-    if (!selectedRole) return;
-
-    try {
-      setLoading(true);
-      const response = await axios.put<ApiResponse<Role>>(
-        `${API_BASE_URL}/roles/${selectedRole.id}`,
-        {
-          name: roleName,
-          description: roleDescription
-        },
-        getAuthConfig()
-      );
-
-      if (!response.data.success) {
-        throw new Error('Ungültige Antwort vom Server');
-      }
-
-      setRoles(roles.map(role =>
-        role.id === selectedRole.id ? (response.data.data as Role) : role
-      ));
-      handleCloseDialog();
-      setSnackbar({
-        open: true,
-        message: 'Rolle erfolgreich aktualisiert',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren der Rolle:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Aktualisieren der Rolle: Verbindungsproblem',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Rolle löschen
-  const handleDeleteRequest = (role: Role) => {
-    if (role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin') {
-       setSnackbar({ open: true, message: 'Die Admin/Superadmin-Rolle kann nicht gelöscht werden.', severity: 'warning' });
-       return;
-    }
+  const handleDeleteRequest = (role: RoleType) => {
+    // if (role.isSystem) { // isSystem kommt aus der DB?
+    //     setSnackbar({ open: true, message: 'Systemrollen können nicht gelöscht werden.', severity: 'warning' });
+    //     return;
+    // }
     setRoleToDelete(role);
-    setConfirmDialogOpen(true);
+    setConfirmDeleteDialogOpen(true);
   };
 
-  // Step 2: Actual delete logic
+  const handleCloseConfirmDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setRoleToDelete(null);
+  };
+
   const executeDelete = async () => {
     if (!roleToDelete) return;
-
-    setConfirmDialogOpen(false); // Close dialog first
-    const roleIdToDelete = roleToDelete.id;
-    const roleName = roleToDelete.name; // Store name
+    const roleIdToDelete = roleToDelete.id; // ID ist number
 
     try {
-      setLoading(true);
-      // Assuming rolesApi.delete exists and takes an ID
-      await roleApi.delete(roleIdToDelete);
-
-      const updatedRoles = roles.filter(role => role.id !== roleIdToDelete);
-      setRoles(updatedRoles);
-
-      // If the deleted role was selected, select the first remaining role or null
-      if (selectedRole?.id === roleIdToDelete) {
-        setSelectedRole(updatedRoles.length > 0 ? updatedRoles[0] : null);
-        // Optionally reset tab value if applicable
-        // setTabValue(0);
+      const response = await roleApi.delete(roleIdToDelete);
+      if (response.success) {
+        setSnackbar({
+          open: true,
+          message: response.message || `Rolle "${roleToDelete.name}" erfolgreich gelöscht.`,
+          severity: 'success'
+        });
+        await fetchRoles();
+        setSelectedRole(null);
+      } else {
+        throw new Error(response.message || 'Fehler beim Löschen der Rolle.');
       }
-
-      setSnackbar({
-        open: true,
-        message: `Rolle "${roleName}" erfolgreich gelöscht.`,
-        severity: 'success'
-      });
-
     } catch (error) {
-      console.error('Fehler beim Löschen der Rolle:', error);
       setSnackbar({
         open: true,
         message: `Fehler beim Löschen der Rolle: ${handleApiError(error)}`,
         severity: 'error'
       });
     } finally {
-      setLoading(false);
-      setRoleToDelete(null); // Clear the role to delete
+      handleCloseConfirmDialog();
     }
   };
 
-  // Step 3: Close confirmation dialog without deleting
-   const handleCloseConfirmDialog = () => {
-      setConfirmDialogOpen(false);
-      setRoleToDelete(null);
-   };
-
-  // Berechtigung umschalten
-  const handleTogglePermission = async (permissionId: string | null) => {
-    if (!selectedRole || !permissionId) return;
-
-    const isPermissionAssigned = rolePermissions.includes(permissionId);
-    setLoading(true);
-
-    try {
-      if (isPermissionAssigned) {
-        // Berechtigung entfernen
-        const response = await axios.delete<ApiResponse<null>>(
-          `${API_BASE_URL}/roles/${selectedRole.id}/permissions/${permissionId}`,
-          getAuthConfig()
-        );
-
-        if (!response.data.success) {
-          throw new Error('Ungültige Antwort vom Server');
+  const handleTogglePermission = async (permissionId: number | null) => {
+        if (!selectedRole || permissionId === null) return;
+        const currentPermissionIds = new Set(rolePermissions);
+        const wasEnabled = currentPermissionIds.has(permissionId); // Status VOR dem Umschalten prüfen
+        let updatedPermissionIds: number[];
+        if (wasEnabled) {
+            currentPermissionIds.delete(permissionId);
+            updatedPermissionIds = Array.from(currentPermissionIds);
+        } else {
+            currentPermissionIds.add(permissionId);
+            updatedPermissionIds = Array.from(currentPermissionIds);
         }
-
-        setRolePermissions(rolePermissions.filter(id => id !== permissionId));
-      } else {
-        // Berechtigung hinzufügen
-        const response = await axios.post<ApiResponse<null>>(
-          `${API_BASE_URL}/roles/${selectedRole.id}/permissions`,
-          { permission_id: permissionId },
-          getAuthConfig()
-        );
-
-        if (!response.data.success) {
-          throw new Error('Ungültige Antwort vom Server');
+        try {
+            const response = await roleApi.updatePermissions(selectedRole.id, updatedPermissionIds);
+            if (response.success) {
+                setRolePermissions(updatedPermissionIds);
+                setSnackbar({
+                    open: true,
+                    message: `Berechtigung ${wasEnabled ? 'entfernt' : 'hinzugefügt'}.`,
+                    severity: 'success'
+                });
+            } else {
+                 throw new Error(response.message || 'Fehler beim Aktualisieren der Berechtigungen.');
+            }
+        } catch (error) {
+            console.error('Fehler beim Umschalten der Berechtigung:', error);
+            setSnackbar({
+                open: true,
+                message: `Fehler: ${handleApiError(error)}`,
+                severity: 'error'
+            });
         }
+    };
 
-        setRolePermissions([...rolePermissions, permissionId]);
-      }
-
-      // Berechtigungen neu laden
-      fetchRolePermissions(selectedRole.id);
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren der Berechtigung:', error);
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Aktualisieren der Berechtigung',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Snackbar schließen
   const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
+    setSnackbar((prev) => ({ ...prev, open: false }));
   };
 
-  // Dialog-Aktion
-  const handleDialogAction = () => {
-    if (dialogType === 'create') {
-      handleCreateRole();
-    } else {
-      handleUpdateRole();
+  // --- Spalten --- (verwenden RoleType)
+  const roleColumns: AtlasColumn<RoleType>[] = [
+    { label: 'Name', dataKey: 'name', width: 250, sortable: true },
+    { label: 'Beschreibung', dataKey: 'description', width: 400, sortable: true, render: (value) => value || '-' },
+    { label: 'Systemrolle?', dataKey: 'isSystem', width: 120, sortable: true, render: (value) => (value ? <Chip label="Ja" size="small" color="info" /> : <Chip label="Nein" size="small" />) },
+    { label: 'Erstellt am', dataKey: 'createdAt', width: 180, sortable: true, render: (value) => value ? new Date(value).toLocaleString('de-DE') : '-' },
+    {
+      label: 'Aktionen',
+      dataKey: 'actions',
+      width: 120,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Tooltip title="Bearbeiten">
+            <span>
+              <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenDialog('edit', row); }} disabled={!canUpdate || row.isSystem}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <span>
+              <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }} disabled={!canDelete || row.isSystem}>
+                <DeleteIcon fontSize="small" color="error" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+      )
     }
-  };
+  ];
 
-  // Finde eine Berechtigung in den verfügbaren Berechtigungen
-  const findPermission = (module: string, action: string): string | null => {
-    const moduleObj = modules.find(m => m.name === module);
-    if (!moduleObj) return null;
+   const findPermissionId = (module: string, action: string): number | null => {
+        const moduleActions = permissionMatrix[module];
+        return moduleActions ? moduleActions[action as keyof ActionPermissions] : null;
+    };
 
-    const permission = moduleObj.permissions.find(p => p.action === action);
-    return permission ? permission.id : null;
-  };
 
-  const RoleRow = ({ role }: { role: Role }) => {
-    const isSystemRole = role.is_system;
-    const theme = useTheme();
-
-    return (
-      <TableRow
-        hover
-        key={role.id}
-        selected={selectedRole?.id === role.id}
-        onClick={() => handleSelectRole(role)}
-        sx={{
-          cursor: 'pointer',
-          bgcolor: isSystemRole ? theme.palette.action.focus : 'inherit',
-          '&:hover': {
-            bgcolor: theme.palette.action.hover,
-          }
-        }}
-      >
-        <TableCell>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {role.name}
-            {isSystemRole && (
-              <Tooltip title="Systemrolle">
-                <InfoIcon fontSize="small" color="info" sx={{ ml: 1, fontSize: '0.9rem' }} />
-              </Tooltip>
-            )}
-          </Box>
-        </TableCell>
-        <TableCell>{role.description || '—'}</TableCell>
-        <TableCell align="right">
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenDialog('edit', role);
-              }}
-              disabled={isSystemRole}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteRequest(role);
-              }}
-              disabled={isSystemRole}
-            >
-              <DeleteIcon fontSize="small" color={role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin' ? 'disabled' : 'error'} />
-            </IconButton>
-          </Box>
-        </TableCell>
-      </TableRow>
-    );
-  };
-
-  if (loading && roles.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
+  // --- JSX --- //
   return (
-    <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4">Benutzerrollen</Typography>
+    <Box sx={{ p: 3 }}>
+      <Paper elevation={3} sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center' }}>
+        <InfoIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
+        <Typography variant="h4" component="h1">Benutzerrollen verwalten</Typography>
+      </Paper>
+
+       <Box sx={{ mb: 3 }}>
         <Button
           variant="contained"
-          color="primary"
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog('create')}
+          disabled={!canCreate}
         >
           Neue Rolle erstellen
         </Button>
       </Box>
 
-      {/* Rollen-Tabelle */}
-      <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
-        <Table sx={{ minWidth: 650 }} aria-label="Benutzerrollen">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Beschreibung</TableCell>
-              <TableCell align="right">Aktionen</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {roles.map((role) => (
-              <RoleRow key={role.id} role={role} />
-            ))}
-            {roles.length === 0 && !loading && (
-              <TableRow>
-                <TableCell colSpan={3} align="center">
-                  Keine Rollen verfügbar
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Berechtigungsmatrix */}
-      {selectedRole && (
-        <Box sx={{ mt: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              Berechtigungsmatrix für {selectedRole.name}
-            </Typography>
-            {loading && <CircularProgress size={24} />}
+       <Paper elevation={3} sx={{ mb: 3, overflow: 'hidden' }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress />
           </Box>
+        ) : (
+          <AtlasTable
+            columns={roleColumns}
+            rows={roles}
+            loading={loading}
+            onRowClick={handleSelectRole}
+            heightPx={400} // Beispielhöhe
+            stickyHeader
+            initialSortColumn="name"
+            initialSortDirection="asc"
+            emptyMessage="Keine Rollen verfügbar."
+          />
+        )}
+      </Paper>
 
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Klicken Sie auf eine Berechtigung, um sie zu aktivieren oder zu deaktivieren.
-          </Alert>
+      {selectedRole && (
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Details für Rolle: {selectedRole.name}
+          </Typography>
+           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+             {selectedRole.description || 'Keine Beschreibung vorhanden.'}
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
 
-          <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: 'background.paper', mb: 1 }}>
-            <Table sx={{ minWidth: 650 }} aria-label="Berechtigungsmatrix">
+          <Typography variant="h6" gutterBottom>
+            Berechtigungen für Rolle: {selectedRole.name}
+          </Typography>
+
+          <TableContainer component={Paper} variant="outlined">
+            <Table stickyHeader size="small">
               <TableHead>
                 <StyledTableRowHeader>
                   <StyledTableCell>Modul</StyledTableCell>
@@ -689,162 +528,135 @@ const RoleManagement: React.FC = () => {
                 </StyledTableRowHeader>
               </TableHead>
               <TableBody>
-                {Object.entries(permissionMatrix).map(([moduleName, actions]) => (
-                  <StyledTableRow key={moduleName} hover>
-                    <TableCell>
-                      {moduleName.charAt(0).toUpperCase() + moduleName.slice(1)}
-                    </TableCell>
-                    <StyledTableCell
-                      onClick={() => handleTogglePermission(actions.create)}
-                      sx={{ cursor: actions.create ? 'pointer' : 'default' }}
-                    >
-                      {actions.create !== null ? (
-                        rolePermissions.includes(actions.create) ? (
-                          <PermissionYes>Ja</PermissionYes>
+                {modules.map((module) => {
+                  const modPerms = permissionMatrix[module.name] || { create: null, read: null, update: null, delete: null };
+                  return (
+                    <StyledTableRow key={module.name}>
+                      <TableCell component="th" scope="row">{module.name}</TableCell>
+                      <StyledTableCell>
+                        {modPerms.create !== null ? (
+                          <Checkbox
+                            checked={rolePermissions.includes(modPerms.create)}
+                            onChange={() => handleTogglePermission(modPerms.create)}
+                            disabled={!canUpdate || selectedRole.isSystem}
+                            size="small"
+                            color="success"
+                          />
                         ) : (
-                          "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </StyledTableCell>
-                    <StyledTableCell
-                      onClick={() => handleTogglePermission(actions.read)}
-                      sx={{ cursor: actions.read ? 'pointer' : 'default' }}
-                    >
-                      {actions.read !== null ? (
-                        rolePermissions.includes(actions.read) ? (
-                          <PermissionYes>Ja</PermissionYes>
+                          <Typography variant="caption" color="text.disabled">-</Typography>
+                        )}
+                      </StyledTableCell>
+                       <StyledTableCell>
+                        {modPerms.read !== null ? (
+                          <Checkbox
+                            checked={rolePermissions.includes(modPerms.read)}
+                            onChange={() => handleTogglePermission(modPerms.read)}
+                            disabled={!canUpdate || selectedRole.isSystem}
+                             size="small"
+                             color="primary"
+                          />
                         ) : (
-                          "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </StyledTableCell>
-                    <StyledTableCell
-                      onClick={() => handleTogglePermission(actions.update)}
-                      sx={{ cursor: actions.update ? 'pointer' : 'default' }}
-                    >
-                      {actions.update !== null ? (
-                        rolePermissions.includes(actions.update) ? (
-                          <PermissionYes>Ja</PermissionYes>
+                          <Typography variant="caption" color="text.disabled">-</Typography>
+                        )}
+                      </StyledTableCell>
+                       <StyledTableCell>
+                        {modPerms.update !== null ? (
+                          <Checkbox
+                            checked={rolePermissions.includes(modPerms.update)}
+                            onChange={() => handleTogglePermission(modPerms.update)}
+                            disabled={!canUpdate || selectedRole.isSystem}
+                             size="small"
+                             color="warning"
+                          />
                         ) : (
-                          "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </StyledTableCell>
-                    <StyledTableCell
-                      onClick={() => handleTogglePermission(actions.delete)}
-                      sx={{ cursor: actions.delete ? 'pointer' : 'default' }}
-                    >
-                      {actions.delete !== null ? (
-                        rolePermissions.includes(actions.delete) ? (
-                          <PermissionYes>Ja</PermissionYes>
+                          <Typography variant="caption" color="text.disabled">-</Typography>
+                        )}
+                      </StyledTableCell>
+                       <StyledTableCell>
+                        {modPerms.delete !== null ? (
+                          <Checkbox
+                            checked={rolePermissions.includes(modPerms.delete)}
+                            onChange={() => handleTogglePermission(modPerms.delete)}
+                            disabled={!canUpdate || selectedRole.isSystem}
+                             size="small"
+                             color="error"
+                          />
                         ) : (
-                          "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </StyledTableCell>
-                  </StyledTableRow>
-                ))}
+                          <Typography variant="caption" color="text.disabled">-</Typography>
+                        )}
+                      </StyledTableCell>
+                    </StyledTableRow>
+                  );
+                })}
+                 {modules.length === 0 && !loading && (
+                    <TableRow>
+                        <TableCell colSpan={5} align="center">Keine Berechtigungen definiert.</TableCell>
+                    </TableRow>
+                 )}
               </TableBody>
             </Table>
           </TableContainer>
-
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2, mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-            <InfoIcon fontSize="small" color="info" sx={{ mr: 1, mt: 0.5 }} />
-            <Box>
-              <Typography variant="subtitle2" color="text.primary" gutterBottom>
-                Hinweise zur Berechtigungsmatrix:
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                • <strong>Ja</strong> - Die Berechtigung ist aktiviert<br />
-                • <strong>—</strong> - Die Berechtigung ist deaktiviert oder nicht verfügbar<br />
-                • Klicken Sie auf eine Zelle, um den Status der Berechtigung zu ändern<br />
-                • Berechtigungen werden sofort gespeichert und wirken sich auf alle Benutzer mit dieser Rolle aus
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
+        </Paper>
       )}
 
-      {/* Dialog für Rolle erstellen/bearbeiten */}
+      {/* Dialog zum Erstellen/Bearbeiten */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {dialogType === 'create' ? 'Neue Rolle erstellen' : 'Rolle bearbeiten'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              autoFocus
-              margin="dense"
-              id="name"
-              label="Rollenname"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={roleName}
-              onChange={(e) => setRoleName(e.target.value)}
-              required
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              margin="dense"
-              id="description"
-              label="Beschreibung"
-              type="text"
-              fullWidth
-              variant="outlined"
-              value={roleDescription}
-              onChange={(e) => setRoleDescription(e.target.value)}
-              multiline
-              rows={3}
-            />
-          </Box>
+         <DialogTitle>{dialogType === 'create' ? 'Neue Rolle erstellen' : `Rolle bearbeiten: ${roleName}`}</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Rollenname"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={roleName}
+            onChange={(e) => setRoleName(e.target.value)}
+            required
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense"
+            label="Beschreibung (optional)"
+            type="text"
+            fullWidth
+            variant="outlined"
+            multiline
+            rows={3}
+            value={roleDescription}
+            onChange={(e) => setRoleDescription(e.target.value)}
+          />
         </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1 }}>
-          <Button onClick={handleCloseDialog}>Abbrechen</Button>
-          <Button
-            onClick={handleDialogAction}
-            variant="contained"
-            color="primary"
-            disabled={!roleName.trim() || loading}
-          >
-            {loading ? <CircularProgress size={24} /> : (dialogType === 'create' ? 'Erstellen' : 'Speichern')}
+        <DialogActions>
+          <Button onClick={handleCloseDialog} disabled={loading}>Abbrechen</Button>
+          <Button onClick={handleSaveRole} variant="contained" color="primary" disabled={loading || !roleName.trim()}>
+             {loading ? <CircularProgress size={24} /> : 'Speichern'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Confirmation Dialog for Delete */}
+      {/* Bestätigungsdialog Löschen */}
       <ConfirmationDialog
         open={confirmDialogOpen}
         onClose={handleCloseConfirmDialog}
         onConfirm={executeDelete}
         title="Rolle löschen?"
-        message={`Möchten Sie die Rolle "${roleToDelete?.name}" wirklich endgültig löschen? Zugeordnete Benutzer verlieren die Berechtigungen dieser Rolle.`}
+        message={`Möchten Sie die Rolle "${roleToDelete?.name}" wirklich löschen? Zugehörige Benutzerberechtigungen gehen verloren.`}
         confirmText="Löschen"
       />
 
-      {/* Benachrichtigungen */}
-      <Snackbar
+      {/* Snackbar */}
+       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }} variant="filled">
           {snackbar.message}
         </Alert>
       </Snackbar>
+
     </Box>
   );
 };

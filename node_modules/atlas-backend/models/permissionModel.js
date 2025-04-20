@@ -5,7 +5,7 @@ const logger = require('../utils/logger');
 const findAll = async () => {
   logger.debug('permissionModel: findAll aufgerufen');
   try {
-    const queryText = 'SELECT id, name, description, module, action, category FROM permissions ORDER BY module, name';
+    const queryText = 'SELECT id, name, description, module, action FROM permissions ORDER BY module, name';
     const { rows } = await db.query(queryText);
     return rows;
   } catch (error) {
@@ -20,7 +20,7 @@ const findRolePermissions = async (roleId) => {
   try {
     // Gibt die vollständigen Berechtigungsobjekte zurück, die der Rolle zugewiesen sind
     const queryText = `
-      SELECT p.id, p.name, p.description, p.module, p.action, p.category
+      SELECT p.id, p.name, p.description, p.module, p.action
       FROM permissions p
       JOIN role_permissions rp ON p.id = rp.permission_id
       WHERE rp.role_id = $1

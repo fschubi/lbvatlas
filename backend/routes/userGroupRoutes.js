@@ -4,19 +4,15 @@ const userGroupController = require('../controllers/userGroupController');
 const { authMiddleware } = require('../middleware/auth');
 const { checkPermission } = require('../middleware/permissionMiddleware');
 
-// Temporärer Platzhalter für checkPermission, bis Berechtigungen konfiguriert sind
-const tempNoPermissionCheck = (req, res, next) => next();
-
 /**
  * @route   GET /api/usergroups
  * @desc    Alle Benutzergruppen abrufen
- * @access  Private (nur mit Authentifizierung)
+ * @access  Private
  */
 router.get(
   '/',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.read'),
   userGroupController.getAllGroups
 );
 
@@ -28,8 +24,7 @@ router.get(
 router.get(
   '/search',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.read'),
   userGroupController.searchGroups
 );
 
@@ -41,22 +36,20 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.read'),
   userGroupController.getGroupById
 );
 
 /**
  * @route   GET /api/usergroups/name/:name
- * @desc    Benutzergruppe nach Namen abrufen
+ * @desc    Prüft, ob ein Gruppenname existiert (wird in UserGroupManagement.tsx verwendet)
  * @access  Private
  */
 router.get(
-  '/name/:name',
+  '/check-name/:name',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
-  userGroupController.getGroupByName
+  checkPermission('usergroups.read'),
+  userGroupController.checkGroupNameExists
 );
 
 /**
@@ -67,8 +60,7 @@ router.get(
 router.get(
   '/:id/members',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.read'),
   userGroupController.getGroupMembers
 );
 
@@ -80,8 +72,7 @@ router.get(
 router.get(
   '/:id/members/search',
   authMiddleware,
-  // checkPermission('user_groups.read'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.read'),
   userGroupController.searchGroupMembers
 );
 
@@ -93,8 +84,7 @@ router.get(
 router.post(
   '/',
   authMiddleware,
-  // checkPermission('user_groups.create'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.create'),
   userGroupController.createGroup
 );
 
@@ -106,8 +96,7 @@ router.post(
 router.put(
   '/:id',
   authMiddleware,
-  // checkPermission('user_groups.update'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.update'),
   userGroupController.updateGroup
 );
 
@@ -119,8 +108,7 @@ router.put(
 router.delete(
   '/:id',
   authMiddleware,
-  // checkPermission('user_groups.delete'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.delete'),
   userGroupController.deleteGroup
 );
 
@@ -132,8 +120,7 @@ router.delete(
 router.post(
   '/:id/members',
   authMiddleware,
-  // checkPermission('user_groups.update'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.manage_members'),
   userGroupController.addUsersToGroup
 );
 
@@ -145,8 +132,7 @@ router.post(
 router.post(
   '/:id/members/:userId',
   authMiddleware,
-  // checkPermission('user_groups.update'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.manage_members'),
   userGroupController.addUserToGroup
 );
 
@@ -158,8 +144,7 @@ router.post(
 router.delete(
   '/:id/members/:userId',
   authMiddleware,
-  // checkPermission('user_groups.update'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.manage_members'),
   userGroupController.removeUserFromGroup
 );
 
@@ -171,8 +156,7 @@ router.delete(
 router.delete(
   '/:id/members',
   authMiddleware,
-  // checkPermission('user_groups.update'), // Temporär deaktiviert
-  tempNoPermissionCheck,
+  checkPermission('usergroups.manage_members'),
   userGroupController.removeUsersFromGroup
 );
 

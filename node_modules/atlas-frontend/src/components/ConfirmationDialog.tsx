@@ -6,6 +6,7 @@ import {
   DialogContentText,
   DialogTitle,
   Button,
+  ButtonProps
 } from '@mui/material';
 
 interface ConfirmationDialogProps {
@@ -14,8 +15,10 @@ interface ConfirmationDialogProps {
   onConfirm: () => void;
   title: string;
   message: string;
-  confirmText?: string; // Optional custom text for confirm button
-  cancelText?: string;  // Optional custom text for cancel button
+  confirmText?: string;
+  cancelText?: string;
+  confirmButtonColor?: ButtonProps['color'];
+  confirmButtonVariant?: ButtonProps['variant'];
 }
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -24,8 +27,10 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onConfirm,
   title,
   message,
-  confirmText = 'Bestätigen', // Default confirm text
-  cancelText = 'Abbrechen',   // Default cancel text
+  confirmText = 'Bestätigen',
+  cancelText = 'Abbrechen',
+  confirmButtonColor = 'primary',
+  confirmButtonVariant = 'contained',
 }) => {
   return (
     <Dialog
@@ -44,7 +49,12 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         <Button onClick={onClose} color="inherit">
           {cancelText}
         </Button>
-        <Button onClick={onConfirm} color="error" variant="contained" autoFocus>
+        <Button
+           onClick={onConfirm}
+           color={confirmButtonColor}
+           variant={confirmButtonVariant}
+           autoFocus
+        >
           {confirmText}
         </Button>
       </DialogActions>

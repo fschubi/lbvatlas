@@ -73,13 +73,27 @@ axiosInstance.interceptors.response.use(
 
 // Generische API-Request-Funktion
 const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<ApiResponse<T>> => {
+  const url = `${BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('token');
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  // DEBUG: Logge den gesendeten Header - wird jetzt entfernt
+  // console.log(`[apiRequest ${method} ${endpoint}] Sending headers:`, JSON.stringify(headers));
+
   try {
     const snakeCasedData = data ? toSnakeCase(data) : undefined;
 
     const config = {
       method,
-      url: endpoint,
+      url,
       data: snakeCasedData,
+      headers,
     };
     const response = await axiosInstance(config);
 
