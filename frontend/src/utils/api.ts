@@ -112,77 +112,84 @@ export const authApi = {
 };
 
 export const usersApi = {
-  getAll: (): Promise<User[]> => apiRequest<User[]>('/users'),
-  getById: (id: number): Promise<User> => apiRequest<User>(`/users/${id}`),
-  create: (data: any): Promise<User> => apiRequest<User>('/users', 'POST', data),
-  update: (id: number, data: any): Promise<User> => apiRequest<User>(`/users/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> => apiRequest<{ message?: string }>(`/users/${id}`, 'DELETE'),
+  getAll: (): Promise<ApiResponse<User[]>> => apiRequest<User[]>('/users'),
+  getById: (id: number): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`),
+  create: (data: any): Promise<ApiResponse<User>> => apiRequest<User>('/users', 'POST', data),
+  update: (id: number, data: any): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`, 'PUT', data),
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> => apiRequest<{ message?: string }>(`/users/${id}`, 'DELETE'),
 };
 
 export const roleApi = {
-  getAll: (): Promise<Role[]> => apiRequest<Role[]>('/roles'),
-  getById: (id: number): Promise<Role> => apiRequest<Role>(`/roles/${id}`),
-  create: (data: any): Promise<Role> => apiRequest<Role>('/roles', 'POST', data),
-  update: (id: number, data: any): Promise<Role> => apiRequest<Role>(`/roles/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> => apiRequest<{ message?: string }>(`/roles/${id}`, 'DELETE'),
-  getPermissions: (id: number): Promise<any[]> => apiRequest<any[]>(`/roles/${id}/permissions`),
-  updatePermissions: (id: number, permissionIds: number[]): Promise<void> => apiRequest<void>(`/roles/${id}/permissions`, 'PUT', { permissionIds }),
+  getAll: (): Promise<ApiResponse<Role[]>> => apiRequest<Role[]>('/roles'),
+  getById: (id: number): Promise<ApiResponse<Role>> => apiRequest<Role>(`/roles/${id}`),
+  create: (data: any): Promise<ApiResponse<Role>> => apiRequest<Role>('/roles', 'POST', data),
+  update: (id: number, data: any): Promise<ApiResponse<Role>> => apiRequest<Role>(`/roles/${id}`, 'PUT', data),
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> => apiRequest<{ message?: string }>(`/roles/${id}`, 'DELETE'),
+  getPermissions: (id: number): Promise<ApiResponse<any[]>> => apiRequest<any[]>(`/roles/${id}/permissions`),
+  updatePermissions: (id: number, permissionIds: number[]): Promise<ApiResponse<void>> => apiRequest<void>(`/roles/${id}/permissions`, 'PUT', { permissionIds }),
 };
 
 export const permissionApi = {
-  getAll: (): Promise<any[]> => apiRequest<any[]>('/permissions'),
+  getAll: (): Promise<ApiResponse<any[]>> => apiRequest<any[]>('/permissions'),
 };
 
 export const categoryApi = {
-  getAll: (): Promise<Category[]> => apiRequest<Category[]>('/categories'),
-  getById: (id: number): Promise<Category> => apiRequest<Category>(`/categories/${id}`),
-  create: (data: CategoryCreate): Promise<Category> =>
+  getAll: (): Promise<ApiResponse<Category[]>> => apiRequest<Category[]>('/categories'),
+  getById: (id: number): Promise<ApiResponse<Category>> => apiRequest<Category>(`/categories/${id}`),
+  create: (data: CategoryCreate): Promise<ApiResponse<Category>> =>
     apiRequest<Category>('/categories', 'POST', data),
-  update: (id: number, data: CategoryUpdate): Promise<Category> =>
+  update: (id: number, data: CategoryUpdate): Promise<ApiResponse<Category>> =>
     apiRequest<Category>(`/categories/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/categories/${id}`, 'DELETE'),
   checkCategoryNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const categories = await categoryApi.getAll();
-      if (Array.isArray(categories)) {
-        return categories.some(
+      const categoriesResponse = await categoryApi.getAll();
+      const categoriesArray = categoriesResponse.data;
+      if (categoriesResponse.success && Array.isArray(categoriesArray)) {
+        return categoriesArray.some(
           (cat) =>
             cat.name.toLowerCase() === name.toLowerCase() && cat.id !== currentId
         );
       } else {
-        console.error('checkCategoryNameExists: categoriesApi.getAll hat kein Array zurückgegeben:', categories);
+        console.error(`[checkCategoryNameExists] Prüfung fehlgeschlagen. Success: ${categoriesResponse.success}, IsArray: ${Array.isArray(categoriesArray)}.`);
         return true;
       }
     } catch (error) {
-      console.error('Fehler bei der Überprüfung des Kategorienamens:', error);
+      console.error('[checkCategoryNameExists] Fehler im try-Block:', error);
       return true;
     }
   },
 };
 
 export const supplierApi = {
-  getAll: (): Promise<Supplier[]> => apiRequest<Supplier[]>('/suppliers'),
-  getById: (id: number): Promise<Supplier> => apiRequest<Supplier>(`/suppliers/${id}`),
-  create: (data: SupplierCreate): Promise<Supplier> =>
+  getAll: (): Promise<ApiResponse<Supplier[]>> => apiRequest<Supplier[]>('/suppliers'),
+  getById: (id: number): Promise<ApiResponse<Supplier>> => apiRequest<Supplier>(`/suppliers/${id}`),
+  create: (data: SupplierCreate): Promise<ApiResponse<Supplier>> =>
     apiRequest<Supplier>('/suppliers', 'POST', data),
-  update: (id: number, data: SupplierUpdate): Promise<Supplier> =>
+  update: (id: number, data: SupplierUpdate): Promise<ApiResponse<Supplier>> =>
     apiRequest<Supplier>(`/suppliers/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/suppliers/${id}`, 'DELETE'),
   checkSupplierNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const suppliers = await supplierApi.getAll();
-      return suppliers.some(
-        (sup) =>
-          sup.name.toLowerCase() === name.toLowerCase() && sup.id !== currentId
-      );
+      const suppliersResponse = await supplierApi.getAll();
+      const suppliersArray = suppliersResponse.data;
+      if (suppliersResponse.success && Array.isArray(suppliersArray)) {
+        return suppliersArray.some(
+          (sup) =>
+            sup.name.toLowerCase() === name.toLowerCase() && sup.id !== currentId
+        );
+      } else {
+         console.error(`[checkSupplierNameExists] Prüfung fehlgeschlagen. Success: ${suppliersResponse.success}, IsArray: ${Array.isArray(suppliersArray)}.`);
+         return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Lieferantennamens:', error);
       return true;
@@ -203,61 +210,53 @@ export const locationApi = {
     name: string,
     currentId?: number
   ): Promise<boolean> => {
-    console.log(`[checkLocationNameExists] Starte Prüfung für Name: "${name}", currentId: ${currentId}`);
     try {
-      // API Aufruf - Gibt ApiResponse<Location[]> zurück
       const locationsResponse = await locationApi.getAll();
 
-      console.log('[checkLocationNameExists] Rohantwort von locationApi.getAll():', JSON.stringify(locationsResponse, null, 2));
-      console.log('[checkLocationNameExists] Typ der Rohantwort:', typeof locationsResponse);
-
-      // Auf das 'data'-Feld der ApiResponse zugreifen
       const locationsArray = locationsResponse.data;
 
-      console.log('[checkLocationNameExists] locationsArray Variable (aus response.data):', JSON.stringify(locationsArray, null, 2));
-      console.log('[checkLocationNameExists] Ist locationsArray (aus response.data) ein Array?', Array.isArray(locationsArray));
-
-      // Prüfen, ob das 'data'-Feld ein Array ist
       if (locationsResponse.success && Array.isArray(locationsArray)) {
-        console.debug('[checkLocationNameExists] Array-Prüfung erfolgreich. Suche nach Namen:', name);
         const found = locationsArray.some(
           (loc) =>
             loc && loc.name && loc.name.toLowerCase() === name.toLowerCase() && loc.id !== currentId
         );
-        console.log(`[checkLocationNameExists] Name "${name}" ${found ? 'gefunden' : 'nicht gefunden'}. Ergebnis: ${found}`);
         return found;
       } else {
-        // Loggen, wenn success false war oder data kein Array ist
-        console.error(`[checkLocationNameExists] Prüfung fehlgeschlagen. Success: ${locationsResponse.success}, IsArray: ${Array.isArray(locationsArray)}. Antwort:`, locationsResponse, '. Blockiere Erstellung.');
-        return true; // Blockieren, wenn Abruf nicht erfolgreich oder Datenstruktur falsch
+        console.error(`[checkLocationNameExists] Prüfung fehlgeschlagen oder Datenstruktur ungültig. Success: ${locationsResponse.success}, IsArray: ${Array.isArray(locationsArray)}.`);
+        return true;
       }
     } catch (error) {
-      // Fehler hier sollte nur auftreten, wenn apiRequest selbst einen Fehler wirft
-      console.error('[checkLocationNameExists] Fehler im try-Block (von apiRequest geworfen?):', error);
-      return true; // Blockieren bei Fehler
+      console.error('[checkLocationNameExists] Fehler im try-Block:', error);
+      return true;
     }
   },
 };
 
 export const departmentApi = {
-  getAll: (): Promise<Department[]> => apiRequest<Department[]>('/departments'),
-  getById: (id: number): Promise<Department> => apiRequest<Department>(`/departments/${id}`),
-  create: (data: DepartmentCreate): Promise<Department> =>
+  getAll: (): Promise<ApiResponse<Department[]>> => apiRequest<Department[]>('/departments'),
+  getById: (id: number): Promise<ApiResponse<Department>> => apiRequest<Department>(`/departments/${id}`),
+  create: (data: DepartmentCreate): Promise<ApiResponse<Department>> =>
     apiRequest<Department>('/departments', 'POST', data),
-  update: (id: number, data: DepartmentUpdate): Promise<Department> =>
+  update: (id: number, data: DepartmentUpdate): Promise<ApiResponse<Department>> =>
     apiRequest<Department>(`/departments/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/departments/${id}`, 'DELETE'),
   checkDepartmentNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const departments = await departmentApi.getAll();
-      return departments.some(
-        (dep) =>
-          dep.name.toLowerCase() === name.toLowerCase() && dep.id !== currentId
-      );
+      const departmentsResponse = await departmentApi.getAll();
+      const departmentsArray = departmentsResponse.data;
+      if (departmentsResponse.success && Array.isArray(departmentsArray)) {
+        return departmentsArray.some(
+         (dep) =>
+            dep.name.toLowerCase() === name.toLowerCase() && dep.id !== currentId
+        );
+       } else {
+         console.error(`[checkDepartmentNameExists] Prüfung fehlgeschlagen. Success: ${departmentsResponse.success}, IsArray: ${Array.isArray(departmentsArray)}.`);
+         return true;
+       }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Abteilungsnamens:', error);
       return true;
@@ -266,24 +265,30 @@ export const departmentApi = {
 };
 
 export const manufacturerApi = {
-  getAll: (): Promise<Manufacturer[]> => apiRequest<Manufacturer[]>('/manufacturers'),
-  getById: (id: number): Promise<Manufacturer> => apiRequest<Manufacturer>(`/manufacturers/${id}`),
-  create: (data: ManufacturerCreate): Promise<Manufacturer> =>
+  getAll: (): Promise<ApiResponse<Manufacturer[]>> => apiRequest<Manufacturer[]>('/manufacturers'),
+  getById: (id: number): Promise<ApiResponse<Manufacturer>> => apiRequest<Manufacturer>(`/manufacturers/${id}`),
+  create: (data: ManufacturerCreate): Promise<ApiResponse<Manufacturer>> =>
     apiRequest<Manufacturer>('/manufacturers', 'POST', data),
-  update: (id: number, data: ManufacturerUpdate): Promise<Manufacturer> =>
+  update: (id: number, data: ManufacturerUpdate): Promise<ApiResponse<Manufacturer>> =>
     apiRequest<Manufacturer>(`/manufacturers/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/manufacturers/${id}`, 'DELETE'),
   checkManufacturerNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const manufacturers = await manufacturerApi.getAll();
-      return manufacturers.some(
-        (man) =>
-          man.name.toLowerCase() === name.toLowerCase() && man.id !== currentId
-      );
+      const manufacturersResponse = await manufacturerApi.getAll();
+      const manufacturersArray = manufacturersResponse.data;
+       if (manufacturersResponse.success && Array.isArray(manufacturersArray)) {
+        return manufacturersArray.some(
+          (man) =>
+            man.name.toLowerCase() === name.toLowerCase() && man.id !== currentId
+        );
+      } else {
+        console.error(`[checkManufacturerNameExists] Prüfung fehlgeschlagen. Success: ${manufacturersResponse.success}, IsArray: ${Array.isArray(manufacturersArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Herstellernamens:', error);
       return true;
@@ -292,27 +297,38 @@ export const manufacturerApi = {
 };
 
 export const roomApi = {
-  getAll: (): Promise<Room[]> => apiRequest<Room[]>('/rooms'),
-  getById: (id: number): Promise<Room> => apiRequest<Room>(`/rooms/${id}`),
-  create: (data: RoomCreate): Promise<Room> =>
+  getAll: (): Promise<ApiResponse<Room[]>> => apiRequest<Room[]>('/rooms'),
+  getById: (id: number): Promise<ApiResponse<Room>> => apiRequest<Room>(`/rooms/${id}`),
+  create: (data: RoomCreate): Promise<ApiResponse<Room>> =>
     apiRequest<Room>('/rooms', 'POST', data),
-  update: (id: number, data: RoomUpdate): Promise<Room> =>
+  update: (id: number, data: RoomUpdate): Promise<ApiResponse<Room>> =>
     apiRequest<Room>(`/rooms/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/rooms/${id}`, 'DELETE'),
   checkRoomNameExists: async (
     name: string,
-    locationId: number,
+    locationId?: number,
     currentId?: number
   ): Promise<boolean> => {
+    if (locationId === undefined || locationId === null) {
+        console.warn('[checkRoomNameExists] Keine locationId für die Prüfung angegeben.');
+        return true;
+    }
+
     try {
-      const rooms = await roomApi.getAll();
-      return rooms.some(
-        (room) =>
-          room.locationId === locationId &&
-          room.name.toLowerCase() === name.toLowerCase() &&
-          room.id !== currentId
-      );
+      const roomsResponse = await roomApi.getAll();
+      const roomsArray = roomsResponse.data;
+       if (roomsResponse.success && Array.isArray(roomsArray)) {
+        return roomsArray.some(
+          (room) =>
+            room.locationId === locationId &&
+            room.name.toLowerCase() === name.toLowerCase() &&
+            room.id !== currentId
+        );
+      } else {
+        console.error(`[checkRoomNameExists] Prüfung fehlgeschlagen. Success: ${roomsResponse.success}, IsArray: ${Array.isArray(roomsArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Raumnamens:', error);
       return true;
@@ -321,24 +337,30 @@ export const roomApi = {
 };
 
 export const switchApi = {
-  getAll: (): Promise<Switch[]> => apiRequest<Switch[]>('/switches'),
-  getById: (id: number): Promise<Switch> => apiRequest<Switch>(`/switches/${id}`),
-  create: (data: SwitchCreate): Promise<Switch> =>
+  getAll: (): Promise<ApiResponse<Switch[]>> => apiRequest<Switch[]>('/switches'),
+  getById: (id: number): Promise<ApiResponse<Switch>> => apiRequest<Switch>(`/switches/${id}`),
+  create: (data: SwitchCreate): Promise<ApiResponse<Switch>> =>
     apiRequest<Switch>('/switches', 'POST', data),
-  update: (id: number, data: SwitchUpdate): Promise<Switch> =>
+  update: (id: number, data: SwitchUpdate): Promise<ApiResponse<Switch>> =>
     apiRequest<Switch>(`/switches/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/switches/${id}`, 'DELETE'),
   checkSwitchNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const switches = await switchApi.getAll();
-      return switches.some(
-        (s) =>
-          s.name.toLowerCase() === name.toLowerCase() && s.id !== currentId
-      );
+      const switchesResponse = await switchApi.getAll();
+      const switchesArray = switchesResponse.data;
+       if (switchesResponse.success && Array.isArray(switchesArray)) {
+        return switchesArray.some(
+          (s) =>
+            s.name.toLowerCase() === name.toLowerCase() && s.id !== currentId
+        );
+      } else {
+        console.error(`[checkSwitchNameExists] Prüfung fehlgeschlagen. Success: ${switchesResponse.success}, IsArray: ${Array.isArray(switchesArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Switch-Namens:', error);
       return true;
@@ -347,24 +369,30 @@ export const switchApi = {
 };
 
 export const networkOutletsApi = {
-  getAll: (): Promise<NetworkOutlet[]> => apiRequest<NetworkOutlet[]>('/network-outlets'),
-  getById: (id: number): Promise<NetworkOutlet> => apiRequest<NetworkOutlet>(`/network-outlets/${id}`),
-  create: (data: NetworkOutletCreate): Promise<NetworkOutlet> =>
+  getAll: (): Promise<ApiResponse<NetworkOutlet[]>> => apiRequest<NetworkOutlet[]>('/network-outlets'),
+  getById: (id: number): Promise<ApiResponse<NetworkOutlet>> => apiRequest<NetworkOutlet>(`/network-outlets/${id}`),
+  create: (data: NetworkOutletCreate): Promise<ApiResponse<NetworkOutlet>> =>
     apiRequest<NetworkOutlet>('/network-outlets', 'POST', data),
-  update: (id: number, data: NetworkOutletUpdate): Promise<NetworkOutlet> =>
+  update: (id: number, data: NetworkOutletUpdate): Promise<ApiResponse<NetworkOutlet>> =>
     apiRequest<NetworkOutlet>(`/network-outlets/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/network-outlets/${id}`, 'DELETE'),
   checkOutletNumberExists: async (
     outletNum: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const outlets = await networkOutletsApi.getAll();
-      return outlets.some(
-        (outlet) =>
-          outlet.outletNumber.toLowerCase() === outletNum.toLowerCase() && outlet.id !== currentId
-      );
+      const outletsResponse = await networkOutletsApi.getAll();
+      const outletsArray = outletsResponse.data;
+      if (outletsResponse.success && Array.isArray(outletsArray)) {
+        return outletsArray.some(
+          (outlet) =>
+            outlet.outletNumber.toLowerCase() === outletNum.toLowerCase() && outlet.id !== currentId
+        );
+      } else {
+        console.error(`[checkOutletNumberExists] Prüfung fehlgeschlagen. Success: ${outletsResponse.success}, IsArray: ${Array.isArray(outletsArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung der Dosennummer:', error);
       return true;
@@ -461,23 +489,29 @@ export const licensesApi = {
 };
 
 export const networkPortsApi = {
-  getAll: (): Promise<NetworkPort[]> => apiRequest<NetworkPort[]>('/network-ports'),
-  getById: (id: number): Promise<NetworkPort> => apiRequest<NetworkPort>(`/network-ports/${id}`),
-  create: (data: NetworkPortCreate): Promise<NetworkPort> =>
+  getAll: (): Promise<ApiResponse<NetworkPort[]>> => apiRequest<NetworkPort[]>('/network-ports'),
+  getById: (id: number): Promise<ApiResponse<NetworkPort>> => apiRequest<NetworkPort>(`/network-ports/${id}`),
+  create: (data: NetworkPortCreate): Promise<ApiResponse<NetworkPort>> =>
     apiRequest<NetworkPort>('/network-ports', 'POST', data),
-  update: (id: number, data: NetworkPortUpdate): Promise<NetworkPort> =>
+  update: (id: number, data: NetworkPortUpdate): Promise<ApiResponse<NetworkPort>> =>
     apiRequest<NetworkPort>(`/network-ports/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/network-ports/${id}`, 'DELETE'),
   checkPortNumberExists: async (
     portNum: number,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const ports = await networkPortsApi.getAll();
-      return ports.some(
-        (port) => port.portNumber === portNum && port.id !== currentId
-      );
+      const portsResponse = await networkPortsApi.getAll();
+      const portsArray = portsResponse.data;
+      if (portsResponse.success && Array.isArray(portsArray)) {
+        return portsArray.some(
+          (port) => port.portNumber === portNum && port.id !== currentId
+        );
+      } else {
+        console.error(`[checkPortNumberExists] Prüfung fehlgeschlagen. Success: ${portsResponse.success}, IsArray: ${Array.isArray(portsArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung der Portnummer:', error);
       return true;
@@ -498,30 +532,36 @@ export const todosApi = {
 };
 
 export const userGroupApi = {
-  getAll: (): Promise<UserGroup[]> => apiRequest<UserGroup[]>('/user-groups'),
-  getById: (id: number): Promise<UserGroup> => apiRequest<UserGroup>(`/user-groups/${id}`),
-  create: (data: { name: string; description?: string }): Promise<UserGroup> =>
+  getAll: (): Promise<ApiResponse<UserGroup[]>> => apiRequest<UserGroup[]>('/user-groups'),
+  getById: (id: number): Promise<ApiResponse<UserGroup>> => apiRequest<UserGroup>(`/user-groups/${id}`),
+  create: (data: { name: string; description?: string }): Promise<ApiResponse<UserGroup>> =>
     apiRequest<UserGroup>('/user-groups', 'POST', data),
-  update: (id: number, data: { name?: string; description?: string }): Promise<UserGroup> =>
+  update: (id: number, data: { name?: string; description?: string }): Promise<ApiResponse<UserGroup>> =>
     apiRequest<UserGroup>(`/user-groups/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/user-groups/${id}`, 'DELETE'),
-  getUsersInGroup: (groupId: number): Promise<User[]> =>
+  getUsersInGroup: (groupId: number): Promise<ApiResponse<User[]>> =>
     apiRequest<User[]>(`/user-groups/${groupId}/members`),
-  addUserToGroup: (groupId: number, userId: string): Promise<void> =>
+  addUserToGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
     apiRequest<void>(`/user-groups/${groupId}/members`, 'POST', { userId }),
-  removeUserFromGroup: (groupId: number, userId: string): Promise<void> =>
+  removeUserFromGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
     apiRequest<void>(`/user-groups/${groupId}/members/${userId}`, 'DELETE'),
   checkGroupNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
     try {
-      const groups = await userGroupApi.getAll();
-      return groups.some(
-        (group) =>
-          group.name.toLowerCase() === name.toLowerCase() && group.id !== currentId
-      );
+      const groupsResponse = await userGroupApi.getAll();
+      const groupsArray = groupsResponse.data;
+      if (groupsResponse.success && Array.isArray(groupsArray)) {
+        return groupsArray.some(
+          (group) =>
+            group.name.toLowerCase() === name.toLowerCase() && group.id !== currentId
+        );
+      } else {
+        console.error(`[checkGroupNameExists] Prüfung fehlgeschlagen. Success: ${groupsResponse.success}, IsArray: ${Array.isArray(groupsArray)}.`);
+        return true;
+      }
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Gruppennamens:', error);
       return true;

@@ -48,6 +48,8 @@ import { supplierApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import { Supplier, SupplierCreate, SupplierUpdate } from '../../types/settings';
+import { ApiResponse } from '../../utils/api';
+import ConfirmationDialog from '../../components/ConfirmationDialog';
 
 interface FormField<T> {
   value: T;
@@ -64,6 +66,9 @@ const Suppliers: React.FC = () => {
   const [viewMode, setViewMode] = useState<boolean>(false);
   const [currentSupplier, setCurrentSupplier] = useState<Supplier | null>(null);
   const [readOnly, setReadOnly] = useState<boolean>(false);
+  // *** NEU: State für Bestätigungsdialog ***
+  const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
   // Form State
   const [name, setName] = useState<FormField<string>>({ value: '', error: false, helperText: '' });
@@ -222,32 +227,41 @@ const Suppliers: React.FC = () => {
   };
 
   // Löschen eines Lieferanten
-  const handleDelete = async (supplier: Supplier) => {
-    if (!window.confirm(`Möchten Sie den Lieferanten "${supplier.name}" wirklich löschen?`)) {
-      return;
-    }
+  const handleDeleteRequest = (supplier: Supplier) => {
+    setSupplierToDelete(supplier);
+    setConfirmDeleteDialogOpen(true);
+  };
+
+  // Eigentliche Löschlogik
+  const executeDelete = async () => {
+    if (!supplierToDelete) return;
+
+    setConfirmDeleteDialogOpen(false); // Dialog zuerst schließen
+    const supplierName = supplierToDelete.name; // Namen speichern
 
     try {
       setLoading(true);
-      await supplierApi.delete(supplier.id);
-
-      // Nach erfolgreichem Löschen die Liste aktualisieren
-      loadSuppliers();
-
+      await supplierApi.delete(supplierToDelete.id);
+      loadSuppliers(); // Liste neu laden
       setSnackbar({
         open: true,
-        message: `Lieferant "${supplier.name}" wurde gelöscht.`,
+        message: `Lieferant "${supplierName}" wurde gelöscht.`,
         severity: 'success'
       });
-    } catch (error) {
+    } catch (error: any) {
+      const specificMessage = error?.data?.message || error?.message;
+      const errorMessage = specificMessage || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
       setLoading(false);
-      const errorMessage = handleApiError(error);
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Löschen des Lieferanten: ${errorMessage}`,
-        severity: 'error'
-      });
+      setSupplierToDelete(null); // Zu löschenden Lieferanten zurücksetzen
     }
+  };
+
+  // Bestätigungsdialog schließen
+  const handleCloseConfirmDialog = () => {
+    setConfirmDeleteDialogOpen(false);
+    setSupplierToDelete(null);
   };
 
   // Dialog schließen
@@ -275,35 +289,37 @@ const Suppliers: React.FC = () => {
       isActive: isActive
     };
 
-    // Konvertiere das Objekt in snake_case für das Backend
     const backendData = toSnakeCase(supplierData);
-    console.log('DEBUG: Sende Daten an Backend (supplier, snake_case):', backendData);
+    // console.log('DEBUG: Sende Daten an Backend (supplier, snake_case):', backendData); // Debug entfernt
 
     try {
       setLoading(true);
-
+      let response: ApiResponse<Supplier>; // Typ für die Antwort definieren
       if (editMode && currentSupplier) {
-        await supplierApi.update(currentSupplier.id, backendData as SupplierUpdate);
-        setSnackbar({ open: true, message: `Lieferant "${name.value}" wurde aktualisiert.`, severity: 'success' });
+        response = await supplierApi.update(currentSupplier.id, backendData as SupplierUpdate);
+        setSnackbar({ open: true, message: response.message || `Lieferant "${name.value}" wurde aktualisiert.`, severity: 'success' });
       } else {
-        await supplierApi.create(backendData as SupplierCreate);
-        setSnackbar({ open: true, message: `Lieferant "${name.value}" wurde erstellt.`, severity: 'success' });
+        response = await supplierApi.create(backendData as SupplierCreate);
+        setSnackbar({ open: true, message: response.message || `Lieferant "${name.value}" wurde erstellt.`, severity: 'success' });
       }
-      loadSuppliers();
-      setDialogOpen(false);
+
+      if (response.success) {
+        loadSuppliers();
+        setDialogOpen(false);
+      } else {
+         setSnackbar({ open: true, message: response.message || 'Ein unerwarteter Fehler ist aufgetreten.', severity: 'error' });
+         if (response.message?.toLowerCase().includes('name') && response.message?.toLowerCase().includes('existiert bereits')) {
+             setName(prev => ({ ...prev, error: true, helperText: response.message || 'Fehler' }));
+         }
+      }
     } catch (error: any) {
-      setLoading(false);
-      const errorMessage = handleApiError(error);
+      const errorMessage = error.message || handleApiError(error);
+      setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
       if (errorMessage.toLowerCase().includes('name') && errorMessage.toLowerCase().includes('existiert bereits')) {
-        setName({ ...name, error: true, helperText: errorMessage });
-      } else {
-        setName({ ...name, error: true, helperText: 'Fehler beim Speichern. Prüfen Sie die Eingaben.' });
+          setName(prev => ({ ...prev, error: true, helperText: errorMessage }));
       }
-      setSnackbar({
-        open: true,
-        message: `Fehler beim Speichern: ${errorMessage}`,
-        severity: 'error'
-      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -362,7 +378,7 @@ const Suppliers: React.FC = () => {
     if (contextMenu) {
       const supplier = suppliers.find(s => s.id === contextMenu.supplierId);
       if (supplier) {
-        handleDelete(supplier);
+        handleDeleteRequest(supplier);
       }
       handleContextMenuClose();
     }
@@ -411,29 +427,47 @@ const Suppliers: React.FC = () => {
     return emailRegex.test(email);
   };
 
-  // Validierung
+  // Validierung des Formulars
   const validateForm = async (): Promise<boolean> => {
     let isValid = true;
+    // Reset errors
     setName(prev => ({ ...prev, error: false, helperText: '' }));
     setWebsite(prev => ({ ...prev, error: false, helperText: '' }));
     setContactEmail(prev => ({ ...prev, error: false, helperText: '' }));
 
+    // Validate Name (Required)
     if (!name.value.trim()) {
       setName({ value: name.value, error: true, helperText: 'Name ist erforderlich' });
       isValid = false;
     }
 
+    // Validate Website (Optional, but must be valid if present)
     if (website.value.trim() && !isValidUrl(website.value.trim())) {
       setWebsite({ value: website.value, error: true, helperText: 'Ungültige URL (z.B. https://beispiel.com)' });
       isValid = false;
     }
 
+    // Validate Contact Email (Optional, but must be valid if present)
     if (contactEmail.value.trim() && !isValidEmail(contactEmail.value.trim())) {
       setContactEmail({ value: contactEmail.value, error: true, helperText: 'Ungültige E-Mail-Adresse' });
       isValid = false;
     }
 
-    // Weitere Validierungen (PLZ, Telefon) könnten hier hinzugefügt werden
+    // *** NEU: Prüfen, ob der Name bereits existiert (nur wenn Name gültig ist) ***
+    if (isValid && name.value.trim()) {
+      const currentId = editMode ? currentSupplier?.id : undefined;
+      try {
+        const nameExists = await supplierApi.checkSupplierNameExists(name.value.trim(), currentId);
+        if (nameExists) {
+          setName({ value: name.value, error: true, helperText: 'Ein Lieferant mit diesem Namen existiert bereits.' });
+          isValid = false;
+        }
+      } catch (error) {
+        console.error("Fehler bei der Prüfung des Lieferantennamens:", error);
+        setSnackbar({ open: true, message: 'Fehler bei der Namensprüfung.', severity: 'error' });
+        isValid = false; // Im Zweifel blockieren
+      }
+    }
 
     return isValid;
   };
@@ -720,6 +754,16 @@ const Suppliers: React.FC = () => {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* *** NEU: Confirmation Dialog for Delete *** */}
+      <ConfirmationDialog
+        open={confirmDeleteDialogOpen}
+        onClose={handleCloseConfirmDialog}
+        onConfirm={executeDelete}
+        title="Lieferant löschen?"
+        message={`Möchten Sie den Lieferant "${supplierToDelete?.name}" wirklich endgültig löschen?`}
+        confirmText="Löschen"
+      />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar

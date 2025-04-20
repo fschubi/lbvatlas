@@ -101,15 +101,21 @@ const Rooms: React.FC = () => {
   const loadRooms = async () => {
     setLoading(true);
     try {
-      const response = await roomApi.getAll();
-      if (response && response.data) {
+      const response = await roomApi.getAll(); // Gibt ApiResponse<Room[]> zurück
+      if (response.success && Array.isArray(response.data)) {
         const formattedRooms = response.data.map((room: any) => toCamelCase(room) as Room);
         setRooms(formattedRooms);
       } else {
+        console.warn('Laden der Räume nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        setSnackbar({
+          open: true,
+          message: response.message || 'Fehler beim Laden der Räume.',
+          severity: 'error'
+        });
         setRooms([]);
       }
-    } catch (error) {
-      const errorMessage = handleApiError(error); // Nur Fehler übergeben
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Laden der Räume: ${errorMessage}`, severity: 'error' });
       setRooms([]);
     } finally {
@@ -120,15 +126,22 @@ const Rooms: React.FC = () => {
   // Standorte laden
   const loadLocationsForSelect = async () => {
     try {
-      const response = await locationApi.getAll();
-      if (response && response.data) {
+      const response = await locationApi.getAll(); // Gibt ApiResponse<Location[]> zurück
+      if (response.success && Array.isArray(response.data)) {
         const formattedLocations = response.data.map((loc: any) => toCamelCase(loc) as Location);
         setLocations(formattedLocations);
       } else {
+        console.warn('Laden der Standorte für Auswahl nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        // Optional: Keine Snackbar hier, da es nur für die Auswahl ist?
+        setSnackbar({
+          open: true,
+          message: response.message || 'Fehler beim Laden der Standorte für Auswahl.',
+          severity: 'error' // oder 'warning'
+        });
         setLocations([]);
       }
-    } catch (error) {
-      const errorMessage = handleApiError(error); // Nur Fehler übergeben
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Laden der Standorte: ${errorMessage}`, severity: 'error' });
       setLocations([]);
     }
@@ -362,16 +375,25 @@ const Rooms: React.FC = () => {
     }
 
     if (name.value.trim() && selectedLocation) {
-        if (!editMode || (currentRoom && (name.value !== currentRoom.name || selectedLocation.id !== currentRoom.locationId))) {
+        // ID des aktuellen Raums (nur im Edit-Modus relevant)
+        const currentRoomId = editMode ? currentRoom?.id : undefined;
+        // ID des ausgewählten Standorts
+        const currentLocationId = selectedLocation.id; // selectedLocation ist hier sicher nicht null
+
+        // Prüfen, ob sich Name ODER Standort geändert haben (oder Neuanlage)
+        if (!editMode || (currentRoom && (name.value !== currentRoom.name || currentLocationId !== currentRoom.locationId))) {
             try {
-                const nameExists = await roomApi.checkRoomNameExists(name.value, editMode ? currentRoom?.id : undefined);
+                // Rufe checkRoomNameExists mit Namen, Standort-ID und optional aktueller Raum-ID auf
+                const nameExists = await roomApi.checkRoomNameExists(name.value, currentLocationId, currentRoomId);
                  if (nameExists) {
                     // TODO: Backend-Prüfung verfeinern (Name + Standort)
-                    setName({ ...name, error: true, helperText: 'Ein Raum mit diesem Namen existiert bereits (global). Standortspezifische Prüfung TODO.' });
-                    // isValid = false;
+                    setName({ ...name, error: true, helperText: `Ein Raum mit diesem Namen existiert bereits am Standort "${selectedLocation.name}".` });
+                    isValid = false;
                 }
             } catch (error) {
-                console.error("Validierungsfehler Name:", error);
+                console.error("Fehler bei der Prüfung des Raumnamens:", error);
+                // Optional: Fehler anzeigen?
+                // isValid = false; // Im Zweifel blockieren?
             }
         }
     }

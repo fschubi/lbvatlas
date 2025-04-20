@@ -81,7 +81,7 @@ class ManufacturerModel {
       const existingManufacturer = existingManufacturers[0];
 
       // Überprüfen, ob der neue Name bereits von einem anderen Hersteller verwendet wird
-      if (manufacturerData.name && manufacturerData.name !== existingManufacturer.name) {
+      if (manufacturerData.name && manufacturerData.name.toLowerCase() !== existingManufacturer.name.toLowerCase()) {
         const checkQuery = 'SELECT id FROM manufacturers WHERE LOWER(name) = LOWER($1) AND id != $2';
         const { rows: duplicateNames } = await db.query(checkQuery, [manufacturerData.name, manufacturerId]);
 
@@ -90,21 +90,57 @@ class ManufacturerModel {
         }
       }
 
-      // Hersteller aktualisieren
+      // *** KORREKTUR: Query und Values erweitern ***
+      const updateFields = [];
+      const values = [];
+      let valueIndex = 1;
+
+      // Dynamisch Felder hinzufügen, die im manufacturerData Objekt vorhanden sind
+      if (manufacturerData.name !== undefined) {
+        updateFields.push(`name = $${valueIndex++}`);
+        values.push(manufacturerData.name);
+      }
+      if (manufacturerData.description !== undefined) {
+        updateFields.push(`description = $${valueIndex++}`);
+        values.push(manufacturerData.description);
+      }
+       if (manufacturerData.website !== undefined) {
+        updateFields.push(`website = $${valueIndex++}`);
+        values.push(manufacturerData.website || null); // Leeren String als NULL speichern
+      }
+       if (manufacturerData.contact_email !== undefined) { // snake_case verwenden, wie es vom Frontend kommt
+        updateFields.push(`contact_email = $${valueIndex++}`);
+        values.push(manufacturerData.contact_email || null);
+      }
+       if (manufacturerData.contact_phone !== undefined) { // snake_case verwenden
+        updateFields.push(`contact_phone = $${valueIndex++}`);
+        values.push(manufacturerData.contact_phone || null);
+      }
+       if (manufacturerData.is_active !== undefined) { // snake_case verwenden
+        updateFields.push(`is_active = $${valueIndex++}`);
+        values.push(manufacturerData.is_active);
+      }
+
+      // Wenn keine Felder zum Aktualisieren vorhanden sind (sollte durch Controller abgefangen werden, aber sicherheitshalber)
+      if (updateFields.length === 0) {
+         console.warn('[updateManufacturer] Keine Felder zum Aktualisieren für ID:', manufacturerId);
+         // Gebe den existierenden Hersteller zurück, da nichts geändert wurde
+         return { ...existingManufacturer, isActive: existingManufacturer.is_active };
+      }
+
+      // Update-Query zusammensetzen
+      updateFields.push(`updated_at = CURRENT_TIMESTAMP`); // Immer aktualisieren
       const updateQuery = `
         UPDATE manufacturers SET
-          name = COALESCE($1, name),
-          description = COALESCE($2, description),
-          is_active = COALESCE($3, is_active),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4 RETURNING *
+          ${updateFields.join(',\n          ')}
+        WHERE id = $${valueIndex++} RETURNING *
       `;
-      const values = [
-        manufacturerData.name || null,
-        manufacturerData.description,
-        manufacturerData.isActive !== undefined ? manufacturerData.isActive : null, // Verwende isActive
-        manufacturerId
-      ];
+      values.push(manufacturerId); // ID als letzten Wert hinzufügen
+
+      // Debugging-Ausgabe für Query und Values
+      console.log('[updateManufacturer] Executing Query:', updateQuery);
+      console.log('[updateManufacturer] With Values:', values);
+
       const { rows } = await db.query(updateQuery, values);
       const updatedManufacturer = rows[0];
 

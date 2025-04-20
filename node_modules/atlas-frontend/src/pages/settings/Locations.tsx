@@ -406,12 +406,8 @@ const Locations: React.FC = () => {
   const validateForm = async (): Promise<boolean> => {
     let isValid = true;
 
-    // *** NEUE DEBUG-AUSGABE: Wert vor der Prüfung loggen ***
-    console.log(`[validateForm] Prüfe Feld "Name": Wert="${name.value}", Getrimmter Wert="${name.value.trim()}"`);
-
     // Name validieren
     if (!name.value.trim()) {
-      console.log('[validateForm] Name ist leer oder nur Leerzeichen.');
       setName({
         ...name,
         error: true,
@@ -474,9 +470,6 @@ const Locations: React.FC = () => {
 
     // Konvertiere zu snake_case für das Backend
     const backendData = toSnakeCase(locationData);
-
-    // *** NEUE DEBUG-AUSGABE ***
-    console.log('DEBUG: Sende Daten an Backend (snake_case):', backendData);
 
     try {
       setLoading(true);

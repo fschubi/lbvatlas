@@ -66,17 +66,15 @@ export interface Supplier {
   website?: string;
   address?: string;
   city?: string;
-  postal_code?: string;
-  contact_person?: string;
-  contact_email?: string;
-  contact_phone?: string;
-  contract_number?: string;
+  postalCode?: string;
+  contactPerson?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contractNumber?: string;
   notes?: string;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 export interface SupplierCreate {

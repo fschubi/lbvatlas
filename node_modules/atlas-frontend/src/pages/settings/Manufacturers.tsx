@@ -43,6 +43,7 @@ import handleApiError from '../../utils/errorHandler';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import { Manufacturer, ManufacturerCreate, ManufacturerUpdate } from '../../types/settings';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
+import { ApiResponse } from '../../utils/api';
 
 // Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
 interface FormField<T> {
@@ -92,12 +93,22 @@ const Manufacturers: React.FC = () => {
   const loadManufacturers = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await manufacturerApi.getAll();
-      // Assume getAll() directly returns Manufacturer[] now
-      const fetchedManufacturers: Manufacturer[] = Array.isArray(response) ? response : [];
-      setManufacturers(fetchedManufacturers);
-    } catch (error) {
-      const errorMessage = handleApiError(error);
+      const response = await manufacturerApi.getAll(); // Gibt ApiResponse<Manufacturer[]> zurück
+      if (response.success && Array.isArray(response.data)) {
+        // Konvertiere die Daten nach dem Abrufen
+        const formattedManufacturers = response.data.map(m => toCamelCase(m) as Manufacturer);
+        setManufacturers(formattedManufacturers);
+      } else {
+        console.warn('Laden der Hersteller nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        setSnackbar({
+          open: true,
+          message: response.message || 'Fehler beim Laden der Hersteller.',
+          severity: 'error'
+        });
+        setManufacturers([]); // Clear on error
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || handleApiError(error);
       setSnackbar({
         open: true,
         message: `Fehler beim Laden der Hersteller: ${errorMessage}`,
@@ -283,27 +294,42 @@ const Manufacturers: React.FC = () => {
     };
 
     const backendData = toSnakeCase(manufacturerData);
-    console.log('DEBUG: Sende Daten an Backend (manufacturer, snake_case):', backendData);
+    console.log('[handleSave] Daten für API (Update - snake_case):', backendData); // Log für gesendete Daten
 
     try {
       setLoading(true);
+      let response: ApiResponse<Manufacturer>;
       if (editMode && currentManufacturer) {
-        await manufacturerApi.update(currentManufacturer.id, backendData as ManufacturerUpdate);
-        setSnackbar({ open: true, message: `Hersteller "${name.value}" wurde aktualisiert.`, severity: 'success' });
+        console.log(`[handleSave] Rufe Update für ID ${currentManufacturer.id} auf.`); // Log vor API-Call
+        response = await manufacturerApi.update(currentManufacturer.id, backendData as ManufacturerUpdate);
+        console.log('[handleSave] Antwort von API (Update):', response); // Log der API-Antwort
+        setSnackbar({ open: true, message: response.message || `Hersteller "${name.value}" wurde aktualisiert.`, severity: 'success' });
       } else {
-        await manufacturerApi.create(backendData as ManufacturerCreate);
-        setSnackbar({ open: true, message: `Hersteller "${name.value}" wurde erstellt.`, severity: 'success' });
+        console.log('[handleSave] Rufe Create auf.'); // Log vor API-Call
+        response = await manufacturerApi.create(backendData as ManufacturerCreate);
+        console.log('[handleSave] Antwort von API (Create):', response); // Log der API-Antwort
+        setSnackbar({ open: true, message: response.message || `Hersteller "${name.value}" wurde erstellt.`, severity: 'success' });
       }
-      loadManufacturers();
-      setDialogOpen(false);
+
+      if (response.success) {
+        loadManufacturers();
+        setDialogOpen(false);
+      } else {
+         // Wenn Backend { success: false, message: ... } sendet
+         setSnackbar({ open: true, message: response.message || 'Ein unerwarteter Fehler ist aufgetreten.', severity: 'error' });
+         // Optional: Fehler im Formular anzeigen, falls spezifisch (z.B. Name doppelt)
+         if (response.message?.toLowerCase().includes('name') && response.message?.toLowerCase().includes('existiert bereits')) {
+             setName(prev => ({ ...prev, error: true, helperText: response.message || 'Fehler' }));
+         }
+      }
     } catch (error: any) {
-      const errorMessage = handleApiError(error);
-      if (errorMessage.toLowerCase().includes('name') && errorMessage.toLowerCase().includes('existiert bereits')) {
-          setName({ ...name, error: true, helperText: errorMessage });
-      } else {
-          setName({ ...name, error: true, helperText: 'Fehler beim Speichern. Prüfen Sie die Eingaben.' });
-      }
+      // Fehler vom apiRequest (z.B. Netzwerkfehler, 401, 500 ohne success-Feld)
+      const errorMessage = error.message || handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Speichern: ${errorMessage}`, severity: 'error' });
+      // Optional: Hier auch versuchen, den Namensfehler zu behandeln?
+      if (errorMessage.toLowerCase().includes('name') && errorMessage.toLowerCase().includes('existiert bereits')) {
+          setName(prev => ({ ...prev, error: true, helperText: errorMessage }));
+      }
     } finally {
       setLoading(false);
     }
@@ -336,23 +362,44 @@ const Manufacturers: React.FC = () => {
   // Validierung
   const validateForm = async (): Promise<boolean> => {
     let isValid = true;
+    // Reset errors
     setName(prev => ({ ...prev, error: false, helperText: '' }));
     setWebsite(prev => ({ ...prev, error: false, helperText: '' }));
     setContactEmail(prev => ({ ...prev, error: false, helperText: '' }));
 
+    // Validate Name (Required)
     if (!name.value.trim()) {
       setName({ value: name.value, error: true, helperText: 'Name ist erforderlich' });
       isValid = false;
     }
 
+    // Validate Website (Optional, but must be valid if present)
     if (website.value.trim() && !isValidUrl(website.value.trim())) {
       setWebsite({ value: website.value, error: true, helperText: 'Ungültige URL (z.B. https://beispiel.com)' });
       isValid = false;
     }
 
+    // Validate Contact Email (Optional, but must be valid if present)
     if (contactEmail.value.trim() && !isValidEmail(contactEmail.value.trim())) {
       setContactEmail({ value: contactEmail.value, error: true, helperText: 'Ungültige E-Mail-Adresse' });
       isValid = false;
+    }
+
+    // *** NEU: Prüfen, ob der Name bereits existiert (nur wenn Name gültig ist) ***
+    if (isValid && name.value.trim()) {
+      const currentId = editMode ? currentManufacturer?.id : undefined;
+      try {
+        const nameExists = await manufacturerApi.checkManufacturerNameExists(name.value.trim(), currentId);
+        if (nameExists) {
+          setName({ value: name.value, error: true, helperText: 'Ein Hersteller mit diesem Namen existiert bereits.' });
+          isValid = false;
+        }
+      } catch (error) {
+        console.error("Fehler bei der Prüfung des Herstellernamens:", error);
+        // Optional: Fehler im UI anzeigen und blockieren?
+        setSnackbar({ open: true, message: 'Fehler bei der Namensprüfung.', severity: 'error' });
+        isValid = false; // Im Zweifel blockieren
+      }
     }
 
     return isValid;
