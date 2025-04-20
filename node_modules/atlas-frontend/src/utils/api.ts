@@ -19,6 +19,13 @@ import { Room, RoomCreate, RoomUpdate } from '../types/settings';
 import { NetworkPort, NetworkPortCreate, NetworkPortUpdate } from '../types/network';
 import { NetworkOutlet, NetworkOutletCreate, NetworkOutletUpdate } from '../types/settings';
 
+// *** NEU: Generischer Typ für API-Antworten ***
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string; // Optional für Fehlermeldungen oder Bestätigungen
+}
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 const axiosInstance = axios.create({
@@ -65,24 +72,33 @@ axiosInstance.interceptors.response.use(
 );
 
 // Generische API-Request-Funktion
-const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<T> => {
+const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<ApiResponse<T>> => {
   try {
     const snakeCasedData = data ? toSnakeCase(data) : undefined;
-    // LOGGING: Was wird tatsächlich gesendet?
     console.log(`[apiRequest] Sending ${method} to ${endpoint}. Body (snake_case):`, JSON.stringify(snakeCasedData));
 
     const config = {
       method,
       url: endpoint,
-      data: snakeCasedData, // Verwende die konvertierten Daten
+      data: snakeCasedData,
     };
     const response = await axiosInstance(config);
-    const camelCasedData = toCamelCase(response.data);
-    return camelCasedData as T;
+
+    // *** KORREKTUR: CamelCase auf response.data anwenden und als ApiResponse<T> zurückgeben ***
+    const responseData = response.data; // Das gesamte Response-Objekt { success, data, message }
+    const camelCasedPayload = responseData.data ? toCamelCase(responseData.data) : undefined;
+
+    return {
+      success: responseData.success,
+      data: camelCasedPayload as T, // Das ist jetzt der eigentliche Payload (z.B. Location[])
+      message: responseData.message,
+    };
 
   } catch (error) {
-    handleApiError(error as Error);
-    throw error;
+    // Fehlerbehandlung muss ggf. angepasst werden, um die neue Struktur zu berücksichtigen
+    const handledError = handleApiError(error as Error);
+    // Wir werfen einen Fehler, der der ApiResponse-Struktur ähnelt
+    throw { success: false, message: handledError, data: null };
   }
 };
 
@@ -175,27 +191,50 @@ export const supplierApi = {
 };
 
 export const locationApi = {
-  getAll: (): Promise<Location[]> => apiRequest<Location[]>('/locations'),
-  getById: (id: number): Promise<Location> => apiRequest<Location>(`/locations/${id}`),
-  create: (data: LocationCreate): Promise<Location> =>
+  getAll: (): Promise<ApiResponse<Location[]>> => apiRequest<Location[]>('/locations'),
+  getById: (id: number): Promise<ApiResponse<Location>> => apiRequest<Location>(`/locations/${id}`),
+  create: (data: LocationCreate): Promise<ApiResponse<Location>> =>
     apiRequest<Location>('/locations', 'POST', data),
-  update: (id: number, data: LocationUpdate): Promise<Location> =>
+  update: (id: number, data: LocationUpdate): Promise<ApiResponse<Location>> =>
     apiRequest<Location>(`/locations/${id}`, 'PUT', data),
-  delete: (id: number): Promise<{ message?: string }> =>
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/locations/${id}`, 'DELETE'),
   checkLocationNameExists: async (
     name: string,
     currentId?: number
   ): Promise<boolean> => {
+    console.log(`[checkLocationNameExists] Starte Prüfung für Name: "${name}", currentId: ${currentId}`);
     try {
-      const locations = await locationApi.getAll();
-      return locations.some(
-        (loc) =>
-          loc.name.toLowerCase() === name.toLowerCase() && loc.id !== currentId
-      );
+      // API Aufruf - Gibt ApiResponse<Location[]> zurück
+      const locationsResponse = await locationApi.getAll();
+
+      console.log('[checkLocationNameExists] Rohantwort von locationApi.getAll():', JSON.stringify(locationsResponse, null, 2));
+      console.log('[checkLocationNameExists] Typ der Rohantwort:', typeof locationsResponse);
+
+      // Auf das 'data'-Feld der ApiResponse zugreifen
+      const locationsArray = locationsResponse.data;
+
+      console.log('[checkLocationNameExists] locationsArray Variable (aus response.data):', JSON.stringify(locationsArray, null, 2));
+      console.log('[checkLocationNameExists] Ist locationsArray (aus response.data) ein Array?', Array.isArray(locationsArray));
+
+      // Prüfen, ob das 'data'-Feld ein Array ist
+      if (locationsResponse.success && Array.isArray(locationsArray)) {
+        console.debug('[checkLocationNameExists] Array-Prüfung erfolgreich. Suche nach Namen:', name);
+        const found = locationsArray.some(
+          (loc) =>
+            loc && loc.name && loc.name.toLowerCase() === name.toLowerCase() && loc.id !== currentId
+        );
+        console.log(`[checkLocationNameExists] Name "${name}" ${found ? 'gefunden' : 'nicht gefunden'}. Ergebnis: ${found}`);
+        return found;
+      } else {
+        // Loggen, wenn success false war oder data kein Array ist
+        console.error(`[checkLocationNameExists] Prüfung fehlgeschlagen. Success: ${locationsResponse.success}, IsArray: ${Array.isArray(locationsArray)}. Antwort:`, locationsResponse, '. Blockiere Erstellung.');
+        return true; // Blockieren, wenn Abruf nicht erfolgreich oder Datenstruktur falsch
+      }
     } catch (error) {
-      console.error('Fehler bei der Überprüfung des Standortnamens:', error);
-      return true;
+      // Fehler hier sollte nur auftreten, wenn apiRequest selbst einen Fehler wirft
+      console.error('[checkLocationNameExists] Fehler im try-Block (von apiRequest geworfen?):', error);
+      return true; // Blockieren bei Fehler
     }
   },
 };

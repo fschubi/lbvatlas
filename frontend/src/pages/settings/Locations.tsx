@@ -108,18 +108,29 @@ const Locations: React.FC = () => {
   const loadLocations = async () => {
     setLoading(true);
     try {
+      // API Aufruf - Gibt ApiResponse<Location[]> zurück
       const response = await locationApi.getAll();
       console.log('DEBUG: Rohdaten von API (Locations Response Objekt):', response);
-      if (response && response.data) {
+
+      // Auf response.success und response.data zugreifen
+      if (response.success && Array.isArray(response.data)) {
+        // Typisierung für map ist jetzt nicht mehr nötig, da response.data korrekt typisiert ist
         const formattedLocations = response.data.map(loc => toCamelCase(loc) as Location);
         console.log('DEBUG: Konvertierte Standorte (camelCase):', formattedLocations);
         setLocations(formattedLocations);
       } else {
-        console.warn('Unerwartete Datenstruktur von locationApi.getAll:', response);
-        setLocations([]);
+        // Fallback, wenn success false oder data kein Array
+        console.warn('Laden der Standorte nicht erfolgreich oder Datenstruktur unerwartet:', response);
+        setSnackbar({
+          open: true,
+          message: response.message || 'Fehler beim Laden der Standorte: Unerwartete Antwortstruktur.',
+          severity: 'error'
+        });
+        setLocations([]); // Leeres Array setzen
       }
-    } catch (error) {
-      const errorMessage = handleApiError(error);
+    } catch (error: any) {
+      // Fehler wird von apiRequest als { success: false, message: string, data: null } geworfen
+      const errorMessage = error.message || handleApiError(error);
       setSnackbar({
         open: true,
         message: `Fehler beim Laden der Standorte: ${errorMessage}`,
@@ -395,8 +406,12 @@ const Locations: React.FC = () => {
   const validateForm = async (): Promise<boolean> => {
     let isValid = true;
 
+    // *** NEUE DEBUG-AUSGABE: Wert vor der Prüfung loggen ***
+    console.log(`[validateForm] Prüfe Feld "Name": Wert="${name.value}", Getrimmter Wert="${name.value.trim()}"`);
+
     // Name validieren
     if (!name.value.trim()) {
+      console.log('[validateForm] Name ist leer oder nur Leerzeichen.');
       setName({
         ...name,
         error: true,
