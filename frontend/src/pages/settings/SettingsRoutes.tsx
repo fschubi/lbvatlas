@@ -1,7 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 
-// Import der Settings-Hauptseite
+// Import der Settings-Hauptseite (aus dem übergeordneten Ordner!)
 import Settings from '../Settings';
 
 // Importieren der Settings-Komponenten
@@ -27,7 +27,7 @@ import Switches from './Switches';
 const SettingsRoutes: React.FC = () => {
   return (
     <Routes>
-      {/* Haupteinstellungsseite als Index-Route */}
+      {/* Haupteinstellungsseite (Kacheln) als Index-Route */}
       <Route index element={<Settings />} />
 
       {/* Settings-Unterseiten */}
@@ -39,18 +39,22 @@ const SettingsRoutes: React.FC = () => {
       <Route path="asset-tags" element={<AssetTags />} />
       <Route path="labels" element={<LabelPrinting />} />
 
-      {/* Weitere Settings-Unterseiten */}
+      {/* Grunddaten-Unterseiten (erreichbar über /settings/basic Kachel) */}
       <Route path="categories" element={<Categories />} />
       <Route path="departments" element={<Departments />} />
       <Route path="device-models" element={<DeviceModels />} />
       <Route path="locations" element={<Locations />} />
       <Route path="manufacturers" element={<Manufacturers />} />
+      <Route path="rooms" element={<Rooms />} />
+      <Route path="suppliers" element={<Suppliers />} />
+
+      {/* Netzwerk-Unterseiten (erreichbar über /settings/basic Kachel) */}
       <Route path="network-sockets" element={<NetworkSockets />} />
       <Route path="ports" element={<Ports />} />
       <Route path="network-ports" element={<NetworkPorts />} />
-      <Route path="rooms" element={<Rooms />} />
-      <Route path="suppliers" element={<Suppliers />} />
       <Route path="switches" element={<Switches />} />
+
+      {/* Standard-Fallback oder weitere Routen hier */}
     </Routes>
   );
 };

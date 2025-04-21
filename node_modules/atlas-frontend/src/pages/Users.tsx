@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -30,10 +30,10 @@ import {
   ListItemText,
   CircularProgress,
   Menu,
-  ListItemButton,
-  ListItemIcon,
-  Autocomplete
+  Autocomplete,
+  ChipProps
 } from '@mui/material';
+import { TabContext, TabList, TabPanel } from '@mui/lab';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -51,16 +51,23 @@ import {
   PersonRemove as PersonRemoveIcon,
   Phone as PhoneIcon,
   MoreVert as MoreVertIcon,
+  Settings as SettingsIcon,
+  Devices as DevicesIcon,
+  VpnKey as VpnKeyIcon,
+  Extension as ExtensionIcon
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import handleApiError from '../utils/errorHandler';
-import { usersApi, userGroupApi, roleApi, locationApi, roomApi, departmentApi, ApiResponse } from '../utils/api';
-import { User, UserGroup, Role } from '../types/user';
+import { usersApi, userGroupApi, roleApi, locationApi, roomApi, departmentApi, ApiResponse, Device } from '../utils/api';
+import { User, UserGroup, Role, UserUpdateData } from '../types/user';
 import { Location, Room } from '../types/settings';
+import { License } from '../types/license';
+import { Accessory } from '../types/accessory';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import { toCamelCase } from '../utils/caseConverter';
 
 // Berechtigungskonstanten definieren
 const USERS_READ = 'users.read';
@@ -99,6 +106,8 @@ const Users: React.FC = () => {
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [dialogLoginAllowed, setDialogLoginAllowed] = useState<boolean>(true);
+  const [dialogEmailNotificationsEnabled, setDialogEmailNotificationsEnabled] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [tabValue, setTabValue] = useState<number>(0);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -124,6 +133,18 @@ const Users: React.FC = () => {
   const [userToRemoveFromGroup, setUserToRemoveFromGroup] = useState<User | null>(null);
   const [groupToRemoveFrom, setGroupToRemoveFrom] = useState<UserGroup | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // === State für Detail-Dialog (NEU) ===
+  const [userDetailDialogOpen, setUserDetailDialogOpen] = useState<boolean>(false);
+  const [selectedUserForDetail, setSelectedUserForDetail] = useState<User | null>(null);
+  const [currentDetailTab, setCurrentDetailTab] = useState<string>('overview'); // Default-Tab
+  const [assignedDevices, setAssignedDevices] = useState<Device[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState<boolean>(false);
+  const [assignedLicenses, setAssignedLicenses] = useState<License[]>([]);
+  const [loadingLicenses, setLoadingLicenses] = useState<boolean>(false);
+  const [assignedAccessories, setAssignedAccessories] = useState<Accessory[]>([]);
+  const [loadingAccessories, setLoadingAccessories] = useState<boolean>(false);
+  // =====================================
 
   const { user, isLoading: isAuthLoading } = useAuth();
 
@@ -158,6 +179,16 @@ const Users: React.FC = () => {
       )
     },
     {
+      label: 'Login?',
+      dataKey: 'login_allowed',
+      width: 80,
+      render: (value: boolean | undefined) => (
+        <Tooltip title={value ? "Login erlaubt" : "Login gesperrt"}>
+           {value ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
+        </Tooltip>
+      )
+    },
+    {
       label: 'Aktionen',
       dataKey: 'actions',
       width: 80,
@@ -177,27 +208,50 @@ const Users: React.FC = () => {
   ];
 
   const groupColumns: AtlasColumn<UserGroup>[] = [
-    { label: 'Name', dataKey: 'name', width: 200 },
-    { label: 'Beschreibung', dataKey: 'description', width: 300 },
-    { label: 'Hinzugefügt am', dataKey: 'addedAt', width: 180, render: (value) => value ? new Date(value).toLocaleString('de-DE') : '-' },
+    { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
+    { label: 'Gruppenname', dataKey: 'name', width: 200 },
+    { label: 'Beschreibung', dataKey: 'description', width: 300, render: (value) => value || '-' },
     {
-      label: 'Aktion',
-      dataKey: 'action',
+      label: 'Aktionen',
+      dataKey: 'actions',
       width: 100,
-      render: (_, group) => (
+      render: (_value: any, row: UserGroup) => (
         <Tooltip title="Aus Gruppe entfernen">
-          <span>
-            <IconButton
-              size="small"
-              onClick={(e) => {e.stopPropagation(); handleRemoveUserFromGroupRequest(group);}}
-              disabled={!canManageMembers || loading}
-            >
-              <PersonRemoveIcon fontSize="small" color="warning" />
-            </IconButton>
-          </span>
+          <IconButton
+            size="small"
+            color="warning"
+            onClick={() => handleRemoveUserFromGroupRequest(row)}
+            disabled={!canManageMembers || loading}
+          >
+            <PersonRemoveIcon fontSize="small" />
+          </IconButton>
         </Tooltip>
       ),
-    }
+    },
+  ];
+
+  const deviceColumns: AtlasColumn<Device>[] = [
+    { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
+    { label: 'Inventarnr.', dataKey: 'inventoryNumber', width: 150 },
+    { label: 'Modell', dataKey: 'modelName', width: 200, render: (value) => value || '-' },
+    { label: 'Hersteller', dataKey: 'manufacturerName', width: 150, render: (value) => value || '-' },
+    { label: 'Standort', dataKey: 'locationName', width: 150, render: (value) => value || '-' },
+    { label: 'Raum', dataKey: 'roomName', width: 150, render: (value) => value || '-' },
+    { label: 'Status', dataKey: 'status', width: 100, render: (value) => value || '-' },
+  ];
+
+  const licenseColumns: AtlasColumn<License>[] = [
+    { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
+    { label: 'Name', dataKey: 'name', width: 200 },
+    { label: 'Produktschlüssel', dataKey: 'productKey', width: 250, render: (value) => value ? '****-****-****-****' : '-' },
+    { label: 'Ablaufdatum', dataKey: 'expirationDate', width: 150, render: (value) => value ? new Date(value).toLocaleDateString() : 'Unbegrenzt' },
+    { label: 'Hersteller', dataKey: 'manufacturerName', width: 150, render: (value) => value || '-' },
+  ];
+
+  const accessoryColumns: AtlasColumn<Accessory>[] = [
+    { label: 'ID', dataKey: 'id', numeric: true, width: 80 },
+    { label: 'Name', dataKey: 'name', width: 200 },
+    { label: 'Beschreibung', dataKey: 'description', width: 300, render: (value) => value || '-' },
   ];
 
   const fetchUsers = useCallback(async () => {
@@ -207,8 +261,8 @@ const Users: React.FC = () => {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
     try {
       console.log('[Users] Lade Benutzer von API...');
       const response = await usersApi.getAll();
@@ -236,13 +290,13 @@ const Users: React.FC = () => {
       setUserGroups([]);
       return;
     }
-    setLoading(true);
+      setLoading(true);
     try {
       console.log(`[Users] Lade Gruppen für Benutzer ${userId}...`);
-      const response = await userGroupApi.getGroupsForUser(userId);
+      const response = await usersApi.getAssignedGroups(userId);
 
       if (response.success && Array.isArray(response.data)) {
-        setUserGroups(response.data);
+        setUserGroups(response.data.map(group => toCamelCase(group)) as UserGroup[]);
         console.log(`[Users] Gruppen für Benutzer ${userId} geladen:`, response.data);
       } else {
         console.error(`[Users] Fehler beim Laden der Gruppen für Benutzer ${userId}:`, response.message);
@@ -284,8 +338,8 @@ const Users: React.FC = () => {
       fetchUsers();
       return;
     }
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
     try {
       console.log(`[Users] Suche Benutzer mit Begriff: "${searchTerm}"...`);
       const response = await usersApi.search(searchTerm);
@@ -373,10 +427,10 @@ const Users: React.FC = () => {
   }, []);
 
   const fetchRoomsForLocation = useCallback(async (locationId: number | null) => {
-    if (!locationId) {
-      setRooms([]);
-      return;
-    }
+      if (!locationId) {
+        setRooms([]);
+        return;
+      }
     try {
       console.log(`[Users] Lade Räume für Standort ${locationId}...`);
       const response = await locationApi.getRoomsForLocation(locationId);
@@ -396,6 +450,63 @@ const Users: React.FC = () => {
     }
   }, []);
 
+  const fetchAssignedDevices = useCallback(async (userId: number) => {
+    if (!canRead) return;
+    setLoadingDevices(true);
+    console.log(`[Users] Lade Geräte für Benutzer ${userId}`);
+    try {
+      const response = await usersApi.getAssignedDevices(userId);
+      if (response.success && Array.isArray(response.data)) {
+        const camelCasedDevices = response.data.map(device => toCamelCase(device) as Device);
+        setAssignedDevices(camelCasedDevices);
+      } else {
+        setSnackbar({ open: true, message: response.message || 'Fehler beim Laden der Geräte.', severity: 'error' });
+        setAssignedDevices([]);
+      }
+    } catch (err) {
+      console.error(`[Users] Fehler beim Laden der Geräte für Benutzer ${userId}:`, err);
+      const errorMessage = (err as any)?.message || 'Unbekannter Fehler beim Laden der Geräte.';
+      setSnackbar({ open: true, message: handleApiError(errorMessage), severity: 'error' });
+      setAssignedDevices([]);
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, [canRead, setSnackbar]);
+
+  const fetchAssignedLicenses = useCallback(async (userId: number) => {
+    if (!canRead) return;
+    setLoadingLicenses(true);
+    console.log(`[Users] Lade Lizenzen für Benutzer ${userId}`);
+    try {
+      const licensesData = await usersApi.getAssignedLicenses(userId);
+      const camelCasedLicenses = licensesData.map(lic => toCamelCase(lic) as License);
+      setAssignedLicenses(camelCasedLicenses);
+    } catch (err) {
+      console.error(`[Users] Fehler beim Laden der Lizenzen für Benutzer ${userId}:`, err);
+      setSnackbar({ open: true, message: handleApiError(err), severity: 'error' });
+      setAssignedLicenses([]);
+    } finally {
+      setLoadingLicenses(false);
+    }
+  }, [canRead, setSnackbar]);
+
+  const fetchAssignedAccessories = useCallback(async (userId: number) => {
+    if (!canRead) return;
+    setLoadingAccessories(true);
+    console.log(`[Users] Lade Zubehör für Benutzer ${userId}`);
+    try {
+        const accessoriesData = await usersApi.getAssignedAccessories(userId);
+        const camelCasedAccessories = accessoriesData.map(acc => toCamelCase(acc) as Accessory);
+        setAssignedAccessories(camelCasedAccessories);
+    } catch (err) {
+        console.error(`[Users] Fehler beim Laden des Zubehörs für Benutzer ${userId}:`, err);
+        setSnackbar({ open: true, message: handleApiError(err), severity: 'error' });
+        setAssignedAccessories([]);
+    } finally {
+        setLoadingAccessories(false);
+    }
+  }, [canRead, setSnackbar]);
+
   useEffect(() => {
     if (selectedLocationId) {
       fetchRoomsForLocation(Number(selectedLocationId));
@@ -407,9 +518,9 @@ const Users: React.FC = () => {
 
   useEffect(() => {
     if (!isAuthLoading) {
-      fetchUsers();
-      fetchAvailableGroups();
-      fetchLocations();
+    fetchUsers();
+    fetchAvailableGroups();
+    fetchLocations();
       fetchRoles();
       fetchDepartments();
     }
@@ -424,21 +535,23 @@ const Users: React.FC = () => {
     try {
       setLoading(true);
       const userData = {
-        username,
-        first_name: firstName,
-        last_name: lastName,
-        email,
+          username,
+          first_name: firstName,
+          last_name: lastName,
+          email,
         role,
         department_id: departmentId === '' ? null : departmentId,
-        location_id: selectedLocationId === '' ? null : selectedLocationId,
-        room_id: selectedRoomId === '' ? null : selectedRoomId,
-        phone: phone === '' ? null : phone,
+          location_id: selectedLocationId === '' ? null : selectedLocationId,
+          room_id: selectedRoomId === '' ? null : selectedRoomId,
+        phone: phone === '' ? undefined : phone,
         active: isActive,
-        password
+        login_allowed: dialogLoginAllowed,
+        email_notifications_enabled: dialogEmailNotificationsEnabled,
+          password
       };
 
       console.log("[Users] Erstelle Benutzer mit Daten (vor SnakeCase):", userData);
-      const response = await usersApi.create(userData);
+      const response = await usersApi.create(userData as Omit<User, 'id' | 'created_at' | 'updated_at' | 'permissions'>);
 
       if (response.success) {
         await fetchUsers();
@@ -466,21 +579,22 @@ const Users: React.FC = () => {
 
     try {
       setLoading(true);
-      const userData: any = {};
+      const userData: Partial<UserUpdateData> = {};
       if (username !== currentUser.username) userData.username = username;
-      if (firstName !== currentUser.first_name) userData.firstName = firstName;
-      if (lastName !== currentUser.last_name) userData.lastName = lastName;
+      if (firstName !== currentUser.first_name) userData.first_name = firstName;
+      if (lastName !== currentUser.last_name) userData.last_name = lastName;
       if (email !== currentUser.email) userData.email = email;
       if (role !== currentUser.role) userData.role = role;
-      if (departmentId !== (currentUser.department_id ?? '')) userData.departmentId = departmentId === '' ? null : departmentId;
-      if (selectedLocationId !== (currentUser.location_id ?? '')) userData.locationId = selectedLocationId === '' ? null : selectedLocationId;
-      if (selectedRoomId !== (currentUser.room_id ?? '')) userData.roomId = selectedRoomId === '' ? null : selectedRoomId;
+      if (departmentId !== (currentUser.department_id ?? '')) userData.department_id = departmentId === '' ? undefined : departmentId;
+      if (selectedLocationId !== (currentUser.location_id ?? '')) userData.location_id = selectedLocationId === '' ? undefined : selectedLocationId;
+      if (selectedRoomId !== (currentUser.room_id ?? '')) userData.room_id = selectedRoomId === '' ? undefined : selectedRoomId;
+      if (phone !== (currentUser.phone ?? '')) userData.phone = phone === '' ? undefined : phone;
       if (isActive !== currentUser.active) userData.active = isActive;
+      if (dialogLoginAllowed !== (currentUser.login_allowed ?? true)) userData.login_allowed = dialogLoginAllowed;
+      if (dialogEmailNotificationsEnabled !== (currentUser.email_notifications_enabled ?? true)) userData.email_notifications_enabled = dialogEmailNotificationsEnabled;
       if (password) userData.password = password;
 
-      console.log('[Users - updateUser] Zu sendende Daten (vor SnakeCase):', JSON.stringify(userData));
-
-      if (Object.keys(userData).length === 0 && !password) {
+      if (Object.keys(userData).length === 0) {
          setSnackbar({ open: true, message: 'Keine Änderungen vorgenommen.', severity: 'info' });
          handleCloseDialog();
          setLoading(false);
@@ -493,7 +607,7 @@ const Users: React.FC = () => {
       if (response.success) {
         await fetchUsers();
         setSnackbar({ open: true, message: response.message || 'Benutzer erfolgreich aktualisiert', severity: 'success' });
-        handleCloseDialog();
+      handleCloseDialog();
       } else {
         console.error('Fehler beim Aktualisieren des Benutzers:', response.message);
         setSnackbar({ open: true, message: response.message || 'Fehler beim Aktualisieren des Benutzers', severity: 'error' });
@@ -523,7 +637,7 @@ const Users: React.FC = () => {
     const userName = userToDelete.username;
 
     handleCloseConfirmDeleteDialog();
-    setLoading(true);
+      setLoading(true);
 
     try {
       console.log(`[Users] Lösche Benutzer ${userIdToDelete}...`);
@@ -550,7 +664,7 @@ const Users: React.FC = () => {
   const addUserToGroups = async () => {
     if (!selectedUser || selectedGroups.length === 0 || !canManageMembers) return;
 
-    setLoading(true);
+      setLoading(true);
     try {
       console.log(`[Users] Füge Benutzer ${selectedUser.id} zu Gruppen hinzu:`, selectedGroups);
 
@@ -608,7 +722,7 @@ const Users: React.FC = () => {
     const groupId = groupToRemoveFrom.id;
 
     handleCloseConfirmRemoveUserDialog();
-    setLoading(true);
+      setLoading(true);
     try {
       console.log(`[Users] Entferne Benutzer ${userId} aus Gruppe ${groupId}...`);
       const response = await userGroupApi.removeUserFromGroup(groupId, String(userId));
@@ -640,14 +754,20 @@ const Users: React.FC = () => {
       setEmail(user.email);
       setRole(user.role);
       setIsActive(user.active ?? true);
+      setDialogLoginAllowed(user.login_allowed ?? true);
+      setDialogEmailNotificationsEnabled(user.email_notifications_enabled ?? true);
+      setPhone(user.phone || '');
       setDepartmentId(user.department_id ?? '');
       setSelectedLocationId(user.location_id ?? '');
       setSelectedRoomId(user.room_id ?? '');
 
       if (user.location_id) {
-          fetchRoomsForLocation(user.location_id);
+          fetchRoomsForLocation(user.location_id).then(() => {
+             setSelectedRoomId(user.room_id ?? '');
+          });
       } else {
           setRooms([]);
+          setSelectedRoomId('');
       }
 
     } else {
@@ -658,6 +778,9 @@ const Users: React.FC = () => {
       setEmail('');
       setRole('');
       setIsActive(true);
+      setDialogLoginAllowed(true);
+      setDialogEmailNotificationsEnabled(true);
+      setPhone('');
       setDepartmentId('');
       setSelectedLocationId('');
       setSelectedRoomId('');
@@ -737,152 +860,152 @@ const Users: React.FC = () => {
     setContextMenu(null);
   };
 
-  const renderUserDetailView = () => {
-    if (!selectedUser) return null;
+  // === NEUE Handler für Detail-Dialog ===
+  const handleOpenDetailDialog = (user: User) => {
+    console.log("[Users] Öffne Detail-Dialog für:", user);
+    setSelectedUserForDetail(user);
+    setUserGroups([]);
+    setAssignedDevices([]);
+    setAssignedLicenses([]);
+    setAssignedAccessories([]);
+    setSelectedGroups([]);
+    setCurrentDetailTab('overview');
+    setLoadingDevices(false);
+    setLoadingLicenses(false);
+    setLoadingAccessories(false);
+    setUserDetailDialogOpen(true);
+    fetchUserGroups(user.id);
+    fetchAssignedDevices(user.id);
+    fetchAssignedLicenses(user.id);
+    fetchAssignedAccessories(user.id);
+  };
 
-    const userGroupIds = userGroups.map(group => group.id);
-    const availableGroupsToAdd = availableGroups.filter(group => !userGroupIds.includes(group.id));
+  const handleCloseDetailDialog = () => {
+    setUserDetailDialogOpen(false);
+    setSelectedUserForDetail(null);
+    setUserGroups([]);
+    setAssignedDevices([]);
+    setAssignedLicenses([]);
+    setAssignedAccessories([]);
+    setLoadingDevices(false);
+    setLoadingLicenses(false);
+    setLoadingAccessories(false);
+  };
 
-    const locationName = selectedUser.locationName || (locations.find(loc => loc.id === selectedUser.location_id)?.name) || 'Kein Standort';
-    const roomName = selectedUser.roomName || (rooms.find(r => r.id === selectedUser.room_id)?.name) || 'Kein Raum';
-    const departmentName = selectedUser.departmentName || (departments.find(dep => dep.id === selectedUser.department_id)?.name) || 'Keine Abteilung';
+  const handleDetailTabChange = (event: React.SyntheticEvent, newValue: string) => {
+    setCurrentDetailTab(newValue);
 
-    return (
-      <Paper elevation={0} sx={{ p: 2, height: 'calc(100vh - 160px)', overflowY: 'auto' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Avatar sx={{ width: 60, height: 60, mr: 2, bgcolor: theme.palette.primary.main }}>
-            <PersonIcon sx={{ fontSize: 30 }} />
-          </Avatar>
-          <Box>
-            <Typography variant="h6">
-              {selectedUser.first_name} {selectedUser.last_name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              @{selectedUser.username}
-            </Typography>
-            <Chip
-              label={selectedUser.active ? 'Aktiv' : 'Inaktiv'}
-              color={selectedUser.active ? 'success' : 'error'}
-              size="small"
-            />
-          </Box>
-          <Box sx={{ ml: 'auto' }}>
-              <Tooltip title="Bearbeiten">
-                 <span>
-                    <IconButton onClick={() => handleOpenDialog('edit', selectedUser)} disabled={!canUpdate}>
-                        <EditIcon />
-                    </IconButton>
-                 </span>
-              </Tooltip>
-              <Tooltip title="Löschen">
-                 <span>
-                    <IconButton onClick={() => handleDeleteRequest(selectedUser)} disabled={!canDelete}>
-                        <DeleteIcon color="error" />
-                    </IconButton>
-                 </span>
-              </Tooltip>
-          </Box>
-        </Box>
+    const userId = selectedUserForDetail?.id;
+    if (!userId) {
+      console.warn('[Users - handleDetailTabChange] Keine ausgewählte Benutzer-ID vorhanden.');
+      return;
+    }
 
-        <Divider sx={{ my: 2 }} />
+    if (newValue === 'groups' && userGroups.length === 0 && !loading) {
+        fetchUserGroups(userId);
+    }
+    if (newValue === 'devices' && assignedDevices.length === 0 && !loadingDevices) {
+        fetchAssignedDevices(userId);
+    }
+    if (newValue === 'licenses' && assignedLicenses.length === 0 && !loadingLicenses) {
+        fetchAssignedLicenses(userId);
+    }
+    if (newValue === 'accessories' && assignedAccessories.length === 0 && !loadingAccessories) {
+        fetchAssignedAccessories(userId);
+    }
+  };
 
-        <Grid container spacing={1} sx={{ mb: 2 }}>
-             <Grid item xs={12} sm={6}>
-                 <Typography variant="body2" color="text.secondary">
-                     <EmailIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'bottom' }} />
-                     {selectedUser.email || '-'}
-                 </Typography>
-             </Grid>
-             <Grid item xs={12} sm={6}>
-                 <Typography variant="body2" color="text.secondary">
-                     <SecurityIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'bottom' }} />
-                     {roles.find(r => r.name === selectedUser.role)?.label || selectedUser.role || '-'}
-                 </Typography>
-             </Grid>
-             <Grid item xs={12} sm={6}>
-                 <Typography variant="body2" color="text.secondary">
-                     <GroupIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'bottom' }} />
-                     {departmentName}
-                 </Typography>
-             </Grid>
-             <Grid item xs={12} sm={6}>
-                 <Typography variant="body2" color="text.secondary">
-                     <LocationCityIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'bottom' }} />
-                     {locationName}
-                 </Typography>
-             </Grid>
-              <Grid item xs={12} sm={6}>
-                 <Typography variant="body2" color="text.secondary">
-                     <MeetingRoomIcon fontSize="small" sx={{ mr: 1, verticalAlign: 'bottom' }} />
-                     {roomName}
-                 </Typography>
-             </Grid>
-        </Grid>
+  const handleSaveDetails = async () => {
+     if (!selectedUserForDetail || !canUpdate) {
+         setSnackbar({ open: true, message: 'Speichern nicht möglich.', severity: 'warning' });
+         return;
+     }
 
-        <Divider sx={{ my: 2 }} />
+     const changedData: Partial<UserUpdateData> = {};
+     if (dialogLoginAllowed !== (selectedUserForDetail.login_allowed ?? true)) {
+         changedData.login_allowed = dialogLoginAllowed;
+     }
+     if (dialogEmailNotificationsEnabled !== (selectedUserForDetail.email_notifications_enabled ?? true)) {
+         changedData.email_notifications_enabled = dialogEmailNotificationsEnabled;
+     }
 
-        <Typography variant="h6" gutterBottom>Gruppenmitgliedschaften</Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="select-groups-label">Gruppen hinzufügen</InputLabel>
-            <Select
-              labelId="select-groups-label"
-              multiple
-              value={selectedGroups}
-              onChange={handleGroupSelect}
-              disabled={!canManageMembers || availableGroupsToAdd.length === 0}
-              renderValue={(selected) => (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {(selected as number[]).map((groupId) => {
-                    const group = availableGroups.find(g => g.id === groupId);
-                    return <Chip key={groupId} label={group?.name || groupId} size="small" />;
-                  })}
-                </Box>
-              )}
-            >
-              {availableGroupsToAdd.length === 0 && <MenuItem disabled>Keine weiteren Gruppen verfügbar</MenuItem>}
-              {availableGroupsToAdd.map((group) => (
-                <MenuItem key={group.id} value={group.id}>
-                  <Checkbox checked={selectedGroups.includes(group.id)} />
-                  <ListItemText primary={group.name} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={addUserToGroups}
-            disabled={selectedGroups.length === 0 || !canManageMembers || loading}
-            size="small"
-          >
-            Hinzufügen
-          </Button>
-        </Box>
+     if (Object.keys(changedData).length === 0) {
+         setSnackbar({ open: true, message: 'Keine Einstellungen geändert.', severity: 'info' });
+         return;
+     }
 
-        <AtlasTable
-          columns={groupColumns}
-          rows={userGroups}
-          loading={loading}
-          emptyMessage="Benutzer ist in keinen Gruppen Mitglied."
-          heightPx={300}
-          stickyHeader
-        />
+     setLoading(true);
+     try {
+         console.log(`[Users] Speichere Einstellungen für User ${selectedUserForDetail.id}:`, changedData);
+         const response = await usersApi.update(selectedUserForDetail.id, changedData);
 
-      </Paper>
-    );
+         if (response.success) {
+             setSnackbar({ open: true, message: 'Einstellungen erfolgreich gespeichert.', severity: 'success' });
+             await fetchUsers();
+             handleCloseDetailDialog();
+         } else {
+             setSnackbar({ open: true, message: response.message || 'Fehler beim Speichern der Einstellungen.', severity: 'error' });
+         }
+     } catch (err) {
+         console.error('[Users] CATCH Fehler beim Speichern der Einstellungen:', err);
+         setSnackbar({ open: true, message: handleApiError(err), severity: 'error' });
+     } finally {
+         setLoading(false);
+     }
+  };
+
+  // Funktion zum Hinzufügen eines Benutzers zu einer Gruppe (im Detail-Dialog)
+  const handleAddUserToSelectedGroup = async (groupId: number) => {
+    if (!selectedUser || !canManageMembers) return;
+    setLoadingDetails(true);
+    try {
+      // Annahme: Immer nur ein Benutzer wird hinzugefügt
+      const response = await userGroupApi.addUsersToGroup(groupId, [selectedUser.id]);
+      if (response.success) {
+        setSnackbar({ open: true, message: 'Benutzer zur Gruppe hinzugefügt.', severity: 'success' });
+        // Gruppen für den Benutzer neu laden
+        await fetchUserGroups(selectedUser.id);
+      } else {
+        throw new Error(response.message || 'Fehler beim Hinzufügen zur Gruppe.');
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: `Fehler: ${handleApiError(error)}`, severity: 'error' });
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  // Funktion zum Entfernen eines Benutzers aus einer Gruppe (im Detail-Dialog)
+  const handleRemoveUserFromSelectedGroup = async (groupId: number) => {
+    if (!selectedUser || !canManageMembers) return;
+    setLoadingDetails(true);
+    try {
+      // Stelle sicher, dass die ID als number übergeben wird
+      const response = await userGroupApi.removeUserFromGroup(groupId, Number(selectedUser.id));
+      if (response.success) {
+        setSnackbar({ open: true, message: 'Benutzer aus Gruppe entfernt.', severity: 'success' });
+        // Gruppen für den Benutzer neu laden
+        await fetchUserGroups(selectedUser.id);
+      } else {
+        throw new Error(response.message || 'Fehler beim Entfernen aus Gruppe.');
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: `Fehler: ${handleApiError(error)}`, severity: 'error' });
+    } finally {
+      setLoadingDetails(false);
+    }
   };
 
   if (isAuthLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
         <CircularProgress />
-      </Box>
+        </Box>
     );
   }
 
   if (!canRead) {
-    return (
+  return (
       <Box sx={{ p: 3 }}>
         <Alert severity="error">Keine Berechtigung zum Anzeigen der Benutzerverwaltung.</Alert>
       </Box>
@@ -928,31 +1051,145 @@ const Users: React.FC = () => {
           </Grid>
         </Paper>
 
-         <Paper>
+        <Paper>
             <AtlasTable
               columns={columns}
               rows={users}
               loading={loading}
               onRowClick={handleSelectUser}
-              heightPx={450}
+              heightPx={700}
               emptyMessage="Keine Benutzer gefunden."
               stickyHeader
             />
-         </Paper>
+        </Paper>
 
       </Box>
 
-       {selectedUser && (
-             <Box sx={{
-                 width: '450px',
-                 borderLeft: `1px solid ${theme.palette.divider}`,
-                 height: '100%',
-                 overflowY: 'auto',
-                 p: 0
-             }}>
-                 {renderUserDetailView()}
-             </Box>
-         )}
+      <Dialog
+          open={userDetailDialogOpen}
+          onClose={handleCloseDetailDialog}
+          fullWidth
+          maxWidth="md"
+      >
+        <DialogTitle>
+              Benutzerdetails: {selectedUserForDetail?.display_name || `${selectedUserForDetail?.first_name || ''} ${selectedUserForDetail?.last_name || ''}` || 'Wird geladen...'}
+        </DialogTitle>
+          <DialogContent dividers sx={{ p: 0, height: '60vh' }}>
+             {selectedUserForDetail ? (
+               <TabContext value={currentDetailTab}>
+                  <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                    <TabList onChange={handleDetailTabChange} aria-label="Benutzerdetails Tabs" variant="scrollable" scrollButtons="auto">
+                      <Tab label="Übersicht" value="overview" icon={<PersonIcon />} iconPosition="start" />
+                      <Tab label="Gruppen" value="groups" icon={<GroupIcon />} iconPosition="start" />
+                      <Tab label="Geräte" value="devices" icon={<DevicesIcon />} iconPosition="start" />
+                      <Tab label="Lizenzen" value="licenses" icon={<VpnKeyIcon />} iconPosition="start" />
+                      <Tab label="Zubehör" value="accessories" icon={<ExtensionIcon />} iconPosition="start" />
+                    </TabList>
+                  </Box>
+                  <TabPanel value="overview" sx={{ p: 2 }}>
+          <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                          <Typography variant="subtitle1">Benutzername:</Typography>
+                          <Typography>{selectedUserForDetail.username}</Typography>
+                          <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">Name:</Typography>
+                          <Typography>{selectedUserForDetail.display_name || `${selectedUserForDetail.first_name} ${selectedUserForDetail.last_name}`}</Typography>
+                          <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">E-Mail:</Typography>
+                          <Typography>{selectedUserForDetail.email}</Typography>
+                          <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">Telefon:</Typography>
+                          <Typography>{selectedUserForDetail.phone || '-'}</Typography>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                          <Typography variant="subtitle1">Rolle:</Typography>
+                          <Typography>{selectedUserForDetail.role}</Typography>
+                           <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">Abteilung:</Typography>
+                          <Typography>{selectedUserForDetail.department_name || '-'}</Typography>
+                           <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">Standort:</Typography>
+                          <Typography>{selectedUserForDetail.location_name || '-'}</Typography>
+                          <Divider sx={{ my: 1 }} />
+                          <Typography variant="subtitle1">Raum:</Typography>
+                          <Typography>{selectedUserForDetail.room_name || '-'}</Typography>
+                      </Grid>
+            <Grid item xs={12}>
+                          <Divider sx={{ my: 2 }} />
+                          <Typography variant="subtitle1">Status:</Typography>
+                          <Chip
+                            label={selectedUserForDetail.active ? 'Aktiv' : 'Inaktiv'}
+                            color={selectedUserForDetail.active ? 'success' : 'error'}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          />
+                          <Chip
+                              label={selectedUserForDetail.login_allowed ? 'Login erlaubt' : 'Login gesperrt'}
+                              color={selectedUserForDetail.login_allowed ? 'success' : 'warning'}
+                              size="small"
+                              icon={selectedUserForDetail.login_allowed ? <CheckCircleIcon fontSize="small" /> : <CancelIcon fontSize="small" />}
+                              sx={{ mr: 1 }}
+                           />
+                           <Chip
+                               label={selectedUserForDetail.email_notifications_enabled ? 'E-Mail Benachrichtigungen aktiv' : 'E-Mail Benachr. inaktiv'}
+                               color={selectedUserForDetail.email_notifications_enabled ? 'success' : 'default'}
+                               size="small"
+                               icon={selectedUserForDetail.email_notifications_enabled ? <EmailIcon fontSize="small" /> : <EmailIcon fontSize="small" sx={{ color: 'text.disabled' }}/>}
+              />
+            </Grid>
+                    </Grid>
+                  </TabPanel>
+                  <TabPanel value="groups" sx={{ p: 0 }}>
+                     <AtlasTable
+                       columns={groupColumns}
+                       rows={userGroups}
+                       loading={loading}
+                       heightPx={500}
+                       emptyMessage="Benutzer ist in keinen Gruppen."
+                       stickyHeader
+                     />
+                  </TabPanel>
+                   <TabPanel value="devices" sx={{ p: 0 }}>
+                      <AtlasTable
+                        columns={deviceColumns}
+                        rows={assignedDevices}
+                        loading={loadingDevices}
+                        heightPx={500}
+                        emptyMessage="Diesem Benutzer sind keine Geräte zugewiesen."
+                        stickyHeader
+                      />
+                  </TabPanel>
+                  <TabPanel value="licenses" sx={{ p: 0 }}>
+                      <AtlasTable
+                        columns={licenseColumns}
+                        rows={assignedLicenses}
+                        loading={loadingLicenses}
+                        heightPx={500}
+                        emptyMessage="Diesem Benutzer sind keine Lizenzen zugewiesen."
+                        stickyHeader
+                       />
+                  </TabPanel>
+                  <TabPanel value="accessories" sx={{ p: 0 }}>
+                      <AtlasTable
+                        columns={accessoryColumns}
+                        rows={assignedAccessories}
+                        loading={loadingAccessories}
+                        heightPx={500}
+                        emptyMessage="Diesem Benutzer ist kein Zubehör zugewiesen."
+                        stickyHeader
+                      />
+                  </TabPanel>
+               </TabContext>
+             ) : (
+               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                 <CircularProgress />
+               </Box>
+             )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDetailDialog}>Abbrechen</Button>
+          </DialogActions>
+      </Dialog>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
@@ -982,7 +1219,7 @@ const Users: React.FC = () => {
                 }}
                 isOptionEqualToValue={(option, value) => option.name === value?.name}
                 renderInput={(params) => (
-                  <TextField
+              <TextField
                     {...params}
                     label="Rolle"
                     required
@@ -1047,6 +1284,12 @@ const Users: React.FC = () => {
             </Grid>
              <Grid item xs={12} sm={6}>
               <FormControlLabel control={ <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> } label="Benutzer aktiv" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <FormControlLabel control={ <Switch checked={dialogLoginAllowed} onChange={(e) => setDialogLoginAllowed(e.target.checked)} /> } label="Login erlaubt" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <FormControlLabel control={ <Switch checked={dialogEmailNotificationsEnabled} onChange={(e) => setDialogEmailNotificationsEnabled(e.target.checked)} /> } label="E-Mail Benachr." />
             </Grid>
             <Grid item xs={12}><Divider sx={{ my: 1 }}>Passwort ändern (optional)</Divider></Grid>
             <Grid item xs={12} sm={6}>
@@ -1126,17 +1369,17 @@ const Users: React.FC = () => {
       >
         <MenuItem onClick={() => {
           const userToView = users.find(u => u.id === contextMenu?.userId);
-          if(userToView) handleSelectUser(userToView);
+          if(userToView) handleOpenDetailDialog(userToView);
           handleContextMenuClose();
         }}>
-          Ansehen
+          Ansehen/Verwalten
         </MenuItem>
         <MenuItem onClick={() => {
           const userToEdit = users.find(u => u.id === contextMenu?.userId);
           if(userToEdit) handleOpenDialog('edit', userToEdit);
           handleContextMenuClose();
         }} disabled={!canUpdate}>
-          Bearbeiten
+          Stammdaten bearbeiten
         </MenuItem>
         <MenuItem onClick={() => {
            const userToDelete = users.find(u => u.id === contextMenu?.userId);

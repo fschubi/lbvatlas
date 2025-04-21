@@ -22,7 +22,8 @@ import {
   LocalShipping as SuppliersIcon,
   Router as SwitchesIcon,
   NetworkWifi as PortsIcon,
-  Cable as NetworkOutletsIcon
+  Cable as NetworkOutletsIcon,
+  Key as KeyIcon
 } from '@mui/icons-material';
 
 interface BasicSettingCard {
@@ -51,6 +52,13 @@ const BasicSettings: React.FC = () => {
       icon: <CategoriesIcon />,
       path: '/settings/categories',
       color: '#7b1fa2'
+    },
+    {
+      title: 'Lizenztypen',
+      description: 'Verschiedene Arten von Softwarelizenzen definieren',
+      icon: <KeyIcon />,
+      path: '/settings/license-types',
+      color: '#ffa000'
     },
     {
       title: 'Standorte',

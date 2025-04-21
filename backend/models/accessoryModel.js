@@ -237,7 +237,7 @@ const AccessoryModel = {
    * @param {number} userId - Benutzer-ID
    * @returns {Promise<Array>} - Array von Zubehörteilen für den Benutzer
    */
-  getAccessoriesByUser: async (userId) => {
+  getAccessoriesByUserId: async (userId) => {
     try {
       const query = `
         SELECT a.*

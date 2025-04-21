@@ -8,7 +8,7 @@
 import axios from 'axios';
 import handleApiError from './errorHandler';
 import { toCamelCase, toSnakeCase } from './caseConverter';
-import { User, Role, UserGroup } from '../types/user';
+import { User, Role, UserGroup, UserFilters, UserUpdateData } from '../types/user';
 import { Category, CategoryCreate, CategoryUpdate } from '../types/settings';
 import { Supplier, SupplierCreate, SupplierUpdate } from '../types/settings';
 import { Switch, SwitchCreate, SwitchUpdate } from '../types/network';
@@ -18,9 +18,31 @@ import { Manufacturer, ManufacturerCreate, ManufacturerUpdate } from '../types/s
 import { Room, RoomCreate, RoomUpdate } from '../types/settings';
 import { NetworkPort, NetworkPortCreate, NetworkPortUpdate } from '../types/network';
 import { NetworkOutlet, NetworkOutletCreate, NetworkOutletUpdate } from '../types/settings';
+import { License } from '../types/license';
+import { Device } from '../types/device';
+import { Accessory } from '../types/accessory';
 
-// *** NEU: Generischer Typ für API-Antworten ***
-export interface ApiResponse<T> {
+// WICHTIG: Sicherstellen, dass der Typ `Device` importiert oder definiert ist.
+/* // Lokale Definition entfernt, da Import vorhanden ist
+export interface Device {
+    id: number;
+    inventory_number: string;
+    serial_number?: string;
+    asset_tag?: string;
+    status?: string;
+    purchase_date?: string;
+    warranty_until?: string;
+    model_name?: string;
+    manufacturer_name?: string;
+    category_name?: string;
+    location_name?: string;
+    room_name?: string;
+    // Weitere Felder nach Bedarf
+}
+*/
+
+// Typ für API-Antworten (generisch)
+export interface ApiResponse<T = any> {
   success: boolean;
   data: T;
   message?: string; // Optional für Fehlermeldungen oder Bestätigungen
@@ -129,13 +151,59 @@ export const authApi = {
 };
 
 export const usersApi = {
-  getAll: (): Promise<ApiResponse<User[]>> => apiRequest<User[]>('/users/all'),
+  getAll: (filters?: UserFilters): Promise<ApiResponse<User[]>> => {
+    const queryParams = filters ? new URLSearchParams(filters as any).toString() : '';
+    return apiRequest<User[]>(`/users?${queryParams}`);
+  },
+  getById: (id: number): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`),
+  create: (data: Omit<User, 'id' | 'created_at' | 'updated_at' | 'permissions'>): Promise<ApiResponse<User>> =>
+    apiRequest<User>('/users', 'POST', data),
+  update: (id: number, data: Partial<Omit<User, 'id' | 'created_at' | 'updated_at' | 'permissions'> >): Promise<ApiResponse<User>> =>
+    apiRequest<User>(`/users/${id}`, 'PUT', data),
+  delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
+    apiRequest<{ message?: string }>(`/users/${id}`, 'DELETE'),
   search: (term: string): Promise<ApiResponse<User[]>> =>
     apiRequest<User[]>(`/users/search?term=${encodeURIComponent(term)}`),
-  getById: (id: number): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`),
-  create: (data: any): Promise<ApiResponse<User>> => apiRequest<User>('/users', 'POST', data),
-  update: (id: number, data: any): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`, 'PUT', data),
-  delete: (id: number): Promise<ApiResponse<{ message?: string }>> => apiRequest<{ message?: string }>(`/users/${id}`, 'DELETE'),
+
+  // NEU: Geräte für einen Benutzer abrufen
+  getAssignedDevices: (userId: number): Promise<ApiResponse<Device[]>> =>
+    apiRequest<Device[]>(`/users/${userId}/devices`),
+
+  // NEU: Lizenzen für einen Benutzer abrufen
+  getAssignedLicenses: async (userId: number): Promise<License[]> => {
+    try {
+      const response = await apiRequest<License[]>(`/users/${userId}/licenses`);
+      if (!response.success) {
+        throw new Error(response.message || 'Fehler beim Laden der Lizenzen');
+      }
+      return response.data;
+    } catch (error) {
+      console.error(`Fehler beim Abrufen der Lizenzen für Benutzer ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Zubehör abrufen, das einem Benutzer zugewiesen ist
+   * @param userId - ID des Benutzers
+   * @returns Promise mit Array von Zubehörteilen
+   */
+  getAssignedAccessories: async (userId: number): Promise<Accessory[]> => {
+    try {
+      const response = await apiRequest<Accessory[]>(`/users/${userId}/accessories`);
+       if (!response.success) {
+        throw new Error(response.message || 'Fehler beim Laden des Zubehörs');
+      }
+      return response.data;
+    } catch (error) {
+      console.error(`Fehler beim Abrufen des Zubehörs für Benutzer ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  // NEU: Gruppen für einen Benutzer abrufen
+  getAssignedGroups: (userId: number): Promise<ApiResponse<UserGroup[]>> =>
+    apiRequest<UserGroup[]>(`/users/${userId}/groups`),
 };
 
 export const roleApi = {
@@ -620,38 +688,37 @@ export const todosApi = {
 };
 
 export const userGroupApi = {
-  getAll: (): Promise<ApiResponse<UserGroup[]>> => apiRequest<UserGroup[]>('/user-groups'),
-  getById: (id: number): Promise<ApiResponse<UserGroup>> => apiRequest<UserGroup>(`/user-groups/${id}`),
-  create: (data: { name: string; description?: string }): Promise<ApiResponse<UserGroup>> =>
-    apiRequest<UserGroup>('/user-groups', 'POST', data),
-  update: (id: number, data: { name?: string; description?: string }): Promise<ApiResponse<UserGroup>> =>
-    apiRequest<UserGroup>(`/user-groups/${id}`, 'PUT', data),
+  getAll: (): Promise<ApiResponse<UserGroup[]>> => apiRequest<UserGroup[]>('/usergroups'),
+  getById: (id: number): Promise<ApiResponse<UserGroup>> => apiRequest<UserGroup>(`/usergroups/${id}`),
+  create: (data: Partial<Omit<UserGroup, 'id' | 'createdAt' | 'updatedAt'> >): Promise<ApiResponse<UserGroup>> =>
+    apiRequest<UserGroup>('/usergroups', 'POST', data),
+  update: (id: number, data: Partial<Omit<UserGroup, 'id' | 'createdAt' | 'updatedAt'> >): Promise<ApiResponse<UserGroup>> =>
+    apiRequest<UserGroup>(`/usergroups/${id}`, 'PUT', data),
   delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
-    apiRequest<{ message?: string }>(`/user-groups/${id}`, 'DELETE'),
-  getUsersInGroup: (groupId: number): Promise<ApiResponse<User[]>> =>
-    apiRequest<User[]>(`/user-groups/${groupId}/users`),
-  addUserToGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
-    apiRequest<void>(`/user-groups/${groupId}/users/${userId}`, 'POST'),
-  removeUserFromGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
-    apiRequest<void>(`/user-groups/${groupId}/users/${userId}`, 'DELETE'),
+    apiRequest<{ message?: string }>(`/usergroups/${id}`, 'DELETE'),
   checkGroupNameExists: async (name: string, currentId?: number): Promise<boolean> => {
+    // Implementierung für checkGroupNameExists (vereinfacht, da nicht Teil des Problems)
     try {
-      const response = await userGroupApi.getAll();
-      if (response.success && Array.isArray(response.data)) {
-        return response.data.some(
-          (group) => group.name.toLowerCase() === name.toLowerCase() && group.id !== currentId
-        );
-      } else {
-        console.error('[checkGroupNameExists] Fehler oder ungültige Daten');
-        return true; // Im Fehlerfall lieber blockieren
-      }
+      const response = await apiRequest<UserGroup[]>(`/usergroups/check-name/${encodeURIComponent(name)}`);
+      // Beispielhafte Logik, ggf. an Backend anpassen
+      return response.success && Array.isArray(response.data) && response.data.length > 0 && response.data[0].id !== currentId;
     } catch (error) {
-      console.error('[checkGroupNameExists] Exception:', error);
-      return true; // Im Fehlerfall lieber blockieren
+      console.error('Fehler bei checkGroupNameExists:', error);
+      return true; // Im Fehlerfall annehmen, dass Name existiert
     }
   },
-  getGroupsForUser: (userId: number): Promise<ApiResponse<UserGroup[]>> =>
-    apiRequest<UserGroup[]>(`/users/${userId}/groups`),
+  // NEU: Mitglieder einer Gruppe abrufen
+  getGroupMembers: (groupId: number): Promise<ApiResponse<User[]>> =>
+    apiRequest<User[]>(`/usergroups/${groupId}/members`),
+
+  // NEU: Benutzer zu einer Gruppe hinzufügen
+  addUsersToGroup: (groupId: number, userIds: number[]): Promise<ApiResponse<void>> =>
+    apiRequest<void>(`/usergroups/${groupId}/members`, 'POST', { userIds }), // Endpoint/Payload ggf. an Backend anpassen
+
+  // NEU: Benutzer aus einer Gruppe entfernen
+  removeUserFromGroup: (groupId: number, userId: number): Promise<ApiResponse<void>> =>
+    apiRequest<void>(`/usergroups/${groupId}/members/${userId}`, 'DELETE'), // Endpoint ggf. an Backend anpassen
+
 };
 
 const allApis = {

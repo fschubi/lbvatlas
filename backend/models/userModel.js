@@ -25,6 +25,8 @@ const getAllUsers = async (
         u.display_name,
         u.role,
         u.active,
+        u.login_allowed,
+        u.email_notifications_enabled,
         u.created_at,
         u.updated_at,
         u.last_login,
@@ -131,7 +133,7 @@ const getAllUsers = async (
     }
 
     // Sortieren
-    const validSortColumns = ['username', 'email', 'first_name', 'last_name', 'display_name', 'role', 'created_at', 'last_login', 'assigned_devices_count', 'department_name', 'location_name', 'room_name'];
+    const validSortColumns = ['username', 'email', 'first_name', 'last_name', 'display_name', 'role', 'created_at', 'last_login', 'assigned_devices_count', 'department_name', 'location_name', 'room_name', 'active', 'login_allowed', 'email_notifications_enabled'];
     const actualSortBy = validSortColumns.includes(sortBy) ? sortBy : 'username';
 
     // Sicherstellen, dass sortOrder ein String ist, bevor toUpperCase aufgerufen wird
@@ -177,6 +179,8 @@ const getUserById = async (id) => {
         u.display_name,
         u.role,
         u.active,
+        u.login_allowed,
+        u.email_notifications_enabled,
         u.created_at,
         u.updated_at,
         u.last_login,
@@ -224,6 +228,8 @@ const getUserByUsername = async (username) => {
         u.role, -- Rolle des Benutzers
         r.id AS role_id, -- ID der Rolle des Benutzers
         u.active,
+        u.login_allowed,
+        u.email_notifications_enabled,
         u.created_at,
         u.updated_at,
         u.last_login,
@@ -283,7 +289,9 @@ const createAdminUserIfNotExists = async () => {
           room_id,
           phone,
           role,
-          active
+          active,
+          login_allowed,
+          email_notifications_enabled
         ) VALUES (
           'admin',
           '$2a$10$6P.RdAHALbUALnQzz4bgbO5rSPOgbRTKfHJBLQ45Ymwa.rSxk5uXe',
@@ -295,6 +303,8 @@ const createAdminUserIfNotExists = async () => {
           NULL,
           NULL,
           'admin',
+          true,
+          true,
           true
         ) RETURNING id`;
 
@@ -325,9 +335,11 @@ const getUserByEmail = async (email) => {
         u.first_name,
         u.last_name,
         u.display_name,
-        u.role, -- Rolle des Benutzers
-        r.id AS role_id, -- ID der Rolle des Benutzers
+        u.role,
+        r.id AS role_id,
         u.active,
+        u.login_allowed,
+        u.email_notifications_enabled,
         u.created_at,
         u.updated_at,
         u.last_login,
@@ -337,7 +349,6 @@ const getUserByEmail = async (email) => {
         l.name AS location_name,
         u.room_id,
         ro.name AS room_name,
-        -- Berechtigungen des Benutzers sammeln (über die Rolle)
         COALESCE(
             (
               SELECT array_agg(p.name)
@@ -348,7 +359,7 @@ const getUserByEmail = async (email) => {
             '{}'
         ) AS permissions
       FROM users u
-      LEFT JOIN roles r ON r.name = u.role -- Join mit roles über den Namen (oder ID, falls u.role die ID ist)
+      LEFT JOIN roles r ON r.name = u.role
       LEFT JOIN departments d ON d.id = u.department_id
       LEFT JOIN locations l ON l.id = u.location_id
       LEFT JOIN rooms ro ON ro.id = u.room_id
@@ -368,46 +379,68 @@ const getUserByEmail = async (email) => {
  * @returns {Promise<Object>} - Erstellter Benutzer
  */
 const createUser = async (userData) => {
+  const {
+    username,
+    email,
+    password,
+    first_name,
+    last_name,
+    display_name,
+    role,
+    active = true,
+    login_allowed = true,
+    email_notifications_enabled = true,
+    department_id,
+    location_id,
+    room_id
+  } = userData;
+
   try {
     // Passwort hashen
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(userData.password, salt);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
     const query = `
       INSERT INTO users (
         username,
-        password_hash,
         email,
+        password_hash,
         first_name,
         last_name,
         display_name,
+        role,
+        active,
+        login_allowed,
+        email_notifications_enabled,
         department_id,
         location_id,
-        room_id,
-        role,
-        active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        room_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id, username, email, first_name, last_name, display_name,
-        department_id, location_id, room_id, role, active, created_at
-    `;
+        role, active, login_allowed, email_notifications_enabled, created_at, updated_at, last_login,
+        department_id, location_id, room_id`;
 
-    const { rows } = await pool.query(query, [
-      userData.username,
+    const values = [
+      username,
+      email,
       hashedPassword,
-      userData.email,
-      userData.first_name,
-      userData.last_name,
-      userData.display_name || `${userData.first_name} ${userData.last_name}`,
-      userData.department_id || null,
-      userData.location_id || null,
-      userData.room_id || null,
-      userData.role || 'user', // Standardrolle, falls keine angegeben
-      userData.active !== undefined ? userData.active : true // Standardwert für aktiv
-    ]);
+      first_name,
+      last_name,
+      display_name || `${first_name} ${last_name}`,
+      role || 'user',
+      active,
+      login_allowed,
+      email_notifications_enabled,
+      department_id || null,
+      location_id || null,
+      room_id || null
+    ];
 
+    const { rows } = await pool.query(query, values);
+    logger.info(`Benutzer ${username} erfolgreich erstellt mit ID ${rows[0].id}.`);
     return rows[0];
   } catch (error) {
-    logger.error('Fehler beim Erstellen des Benutzers:', error);
+    logger.error(`Fehler beim Erstellen des Benutzers ${username}:`, error);
     throw error;
   }
 };
@@ -419,63 +452,114 @@ const createUser = async (userData) => {
  * @returns {Promise<Object>} - Aktualisierter Benutzer
  */
 const updateUser = async (id, userData) => {
+  const {
+    username,
+    email,
+    password,
+    first_name,
+    last_name,
+    display_name,
+    role,
+    active,
+    login_allowed,
+    email_notifications_enabled,
+    department_id,
+    location_id,
+    room_id
+  } = userData;
+
   logger.debug(`[userModel] updateUser aufgerufen für ID: ${id} mit Daten:`, userData);
   try {
     const setClauses = [];
     const values = [];
     let valueIndex = 1;
 
-    // Passwort separat behandeln
-    if (userData.password) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(userData.password, salt);
-      setClauses.push(`password_hash = $${valueIndex}`);
-      values.push(hashedPassword);
-      valueIndex++;
-      delete userData.password;
+    if (username !== undefined) {
+      setClauses.push(`username = $${valueIndex++}`);
+      values.push(username);
+    }
+    if (email !== undefined) {
+      setClauses.push(`email = $${valueIndex++}`);
+      values.push(email);
+    }
+    if (first_name !== undefined) {
+      setClauses.push(`first_name = $${valueIndex++}`);
+      values.push(first_name);
+    }
+    if (last_name !== undefined) {
+      setClauses.push(`last_name = $${valueIndex++}`);
+      values.push(last_name);
+    }
+    if (display_name !== undefined) {
+      setClauses.push(`display_name = $${valueIndex++}`);
+      values.push(display_name);
+    } else if (first_name !== undefined || last_name !== undefined) {
+      const currentUserData = await getUserById(id);
+      const newFirstName = first_name !== undefined ? first_name : currentUserData.first_name;
+      const newLastName = last_name !== undefined ? last_name : currentUserData.last_name;
+      setClauses.push(`display_name = $${valueIndex++}`);
+      values.push(`${newFirstName || ''} ${newLastName || ''}`.trim());
+    }
+    if (role !== undefined) {
+      setClauses.push(`role = $${valueIndex++}`);
+      values.push(role);
+    }
+    if (active !== undefined) {
+      setClauses.push(`active = $${valueIndex++}`);
+      values.push(active);
+    }
+    if (login_allowed !== undefined) {
+      setClauses.push(`login_allowed = $${valueIndex++}`);
+      values.push(login_allowed);
+    }
+    if (email_notifications_enabled !== undefined) {
+      setClauses.push(`email_notifications_enabled = $${valueIndex++}`);
+      values.push(email_notifications_enabled);
+    }
+    if (department_id !== undefined) {
+      setClauses.push(`department_id = $${valueIndex++}`);
+      values.push(department_id === '' ? null : department_id);
+    }
+    if (location_id !== undefined) {
+      setClauses.push(`location_id = $${valueIndex++}`);
+      values.push(location_id === '' ? null : location_id);
+    }
+    if (room_id !== undefined) {
+      setClauses.push(`room_id = $${valueIndex++}`);
+      values.push(room_id === '' ? null : room_id);
     }
 
-    // Dynamisch SET-Klauseln für andere Felder erstellen
-    for (const key in userData) {
-      if (userData[key] === undefined) continue;
-
-      // Annahme: Controller liefert bereits korrekte snake_case Schlüssel
-      const dbKey = key;
-
-      if (dbKey === 'active') {
-          const boolValue = typeof userData[key] === 'boolean' ? userData[key] : (String(userData[key]).toLowerCase() === 'true' || userData[key] === 1);
-          setClauses.push(`${dbKey} = $${valueIndex}`);
-          values.push(boolValue);
-          valueIndex++;
-      } else {
-          const value = userData[key] === '' && (dbKey === 'department_id' || dbKey === 'location_id' || dbKey === 'room_id') ? null : userData[key];
-          setClauses.push(`${dbKey} = $${valueIndex}`);
-          values.push(value);
-          valueIndex++;
+    if (password) {
+      try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        setClauses.push(`password_hash = $${valueIndex++}`);
+        values.push(hashedPassword);
+        logger.info(`Passwort für Benutzer ID ${id} wird aktualisiert.`);
+      } catch (hashError) {
+        logger.error(`Fehler beim Hashen des neuen Passworts für Benutzer ID ${id}:`, hashError);
+        throw new Error('Fehler beim Passwort-Hashing.');
       }
-    }
-
-    if (setClauses.length === 0) {
-      logger.warn(`[userModel] updateUser für ID ${id} aufgerufen, aber keine Felder zum Aktualisieren gefunden (nach Passwortbehandlung).`);
-      const currentUser = await getUserById(id); // Hole aktuellen User für Rückgabe
-      return currentUser;
     }
 
     setClauses.push(`updated_at = NOW()`);
 
-    // Korrigierter Query-String Aufbau
+    if (setClauses.length === 1) {
+      logger.warn(`Keine aktualisierbaren Felder für Benutzer ID ${id} angegeben (außer updated_at).`);
+    }
+
     const query = `
       UPDATE users SET
         ${setClauses.join(', ')}
       WHERE id = $${valueIndex}
       RETURNING id, username, email, first_name, last_name, display_name,
-        department_id, location_id, room_id, role, active, created_at, updated_at
-    `; // Korrektes Komma nach join()
+        role, active, login_allowed, email_notifications_enabled, created_at, updated_at, last_login,
+        department_id, location_id, room_id`;
 
     values.push(id);
 
     logger.debug(`[userModel] updateUser Query: ${query}`);
-    logger.debug(`[userModel] updateUser Values: ${JSON.stringify(values)}`); // JSON.stringify für bessere Lesbarkeit
+    logger.debug(`[userModel] updateUser Values: ${JSON.stringify(values)}`);
 
     const { rows } = await pool.query(query, values);
 

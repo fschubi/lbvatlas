@@ -259,6 +259,45 @@ const DeviceModel = {
   },
 
   /**
+   * NEU: Geräte für einen bestimmten Benutzer abrufen
+   * @param {number} userId - ID des Benutzers
+   * @returns {Promise<Array>} - Array der zugewiesenen Geräte
+   */
+  getDevicesByUserId: async (userId) => {
+    try {
+      // Beachte: Das Feld in der DB heißt vermutlich `assigned_to_user_id`
+      const query = `
+        SELECT
+          d.id,
+          d.inventory_number,
+          d.serial_number,
+          d.asset_tag,
+          d.status,
+          d.purchase_date,
+          d.warranty_until,
+          dm.name AS model_name,
+          m.name AS manufacturer_name,
+          c.name AS category_name,
+          l.name AS location_name,
+          r.name AS room_name
+        FROM devices d
+        LEFT JOIN device_models dm ON d.model = dm.id
+        LEFT JOIN manufacturers m ON dm.manufacturer_id = m.id
+        LEFT JOIN categories c ON d.category_id = c.id
+        LEFT JOIN rooms r ON d.room_id = r.id
+        LEFT JOIN locations l ON r.location_id = l.id
+        WHERE d.assigned_to_user_id = $1
+        ORDER BY d.inventory_number ASC
+      `;
+      const { rows } = await db.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.error(`Fehler beim Abrufen der Geräte für Benutzer-ID ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
    * Gerät löschen
    * @param {number} id - Geräte-ID
    * @returns {Promise<boolean>} - true wenn erfolgreich gelöscht

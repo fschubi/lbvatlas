@@ -14,7 +14,7 @@ const path = require('path');
 dotenv.config();
 
 // Importiere Routen
-const userRoutes = require('./routes/users');
+const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/auth');
 const deviceRoutes = require('./routes/devices');
 const locationRoutes = require('./routes/locationRoutes');
@@ -47,6 +47,7 @@ const manufacturerRoutes = require('./routes/manufacturerRoutes');
 const departmentRoutes = require('./routes/departmentRoutes');
 const labelTemplateRoutes = require('./routes/labelTemplateRoutes');
 const networkOutletRoutes = require('./routes/networkOutletRoutes');
+const apiRoutes = require('./routes/index'); // Haupt-Router für API-Endpunkte
 
 // Erstelle Express-App
 const app = express();
@@ -97,7 +98,7 @@ app.use('/api/todos', todoRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/documents', documentRoutes);
-app.use('/api/user-groups', userGroupRoutes);
+app.use('/api/usergroups', userGroupRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/userProfiles', userProfileRoutes);
 app.use('/api/suppliers', supplierRoutes);
@@ -114,6 +115,9 @@ app.use('/api/manufacturers', manufacturerRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/label-templates', labelTemplateRoutes);
 app.use('/api/network-outlets', networkOutletRoutes);
+
+// Haupt-API-Router verwenden
+app.use('/api', apiRoutes);
 
 // Statische Dateien (für Produktion)
 if (process.env.NODE_ENV === 'production') {

@@ -351,7 +351,7 @@ exports.getGroupMembers = async (req, res) => {
  */
 exports.addUsersToGroup = async (req, res) => {
   const { id } = req.params;
-  const { userIds } = req.body;
+  const { user_ids: userIds } = req.body;
   const added_by = req.user.id;
 
   // Validierung

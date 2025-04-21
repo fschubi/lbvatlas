@@ -233,6 +233,40 @@ const LicenseModel = {
   },
 
   /**
+   * NEU: Lizenzen für einen bestimmten Benutzer abrufen
+   * @param {number} userId - ID des Benutzers
+   * @returns {Promise<Array>} - Array der zugewiesenen Lizenzen
+   */
+  getLicensesByUserId: async (userId) => {
+    try {
+      const query = `
+        SELECT
+          sl.id,
+          sl.software_name,
+          sl.license_key,
+          sl.purchase_date,
+          sl.expiration_date,
+          sl.note,
+          CASE
+            WHEN sl.expiration_date IS NULL THEN 'Unbegrenzt'
+            WHEN sl.expiration_date < CURRENT_DATE THEN 'Abgelaufen'
+            ELSE 'Aktiv'
+          END AS license_status,
+          d.inventory_number AS assigned_device_inventory_number -- Falls Lizenz auch Gerät zugewiesen ist
+        FROM software_licenses sl
+        LEFT JOIN devices d ON sl.assigned_to_device_id = d.id -- Optionaler Join zu Geräten
+        WHERE sl.assigned_to_user_id = $1
+        ORDER BY sl.software_name ASC
+      `;
+      const { rows } = await db.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.error(`Fehler beim Abrufen der Lizenzen für Benutzer-ID ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
    * Ablaufende Lizenzen abrufen
    * @param {number} daysUntilExpiration - Anzahl der Tage bis zum Ablauf
    * @returns {Promise<Array>} - Array der ablaufenden Lizenzen

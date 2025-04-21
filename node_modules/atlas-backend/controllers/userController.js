@@ -18,6 +18,9 @@ const {
   searchUsers: searchUsersModel
 } = require('../models/userModel');
 const userGroupModel = require('../models/userGroupModel');
+const deviceModel = require('../models/deviceModel');
+const licenseModel = require('../models/licenseModel');
+const accessoryModel = require('../models/accessoryModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
@@ -204,19 +207,21 @@ const createUser = async (req, res) => {
       department_id,
       location_id,
       room_id,
-      active
+      active,
+      login_allowed,
+      email_notifications_enabled
     } = req.body;
 
     // Prüfen, ob Benutzername bereits existiert
     const existingUser = await getUserByUsernameModel(username);
     if (existingUser) {
-      return res.status(400).json({ message: 'Benutzername existiert bereits' });
+      return res.status(400).json({ success: false, message: 'Benutzername existiert bereits' });
     }
 
     // Prüfen, ob E-Mail bereits existiert
     const existingEmail = await getUserByEmailModel(email);
     if (existingEmail) {
-      return res.status(400).json({ message: 'E-Mail existiert bereits' });
+      return res.status(400).json({ success: false, message: 'E-Mail existiert bereits' });
     }
 
     // Benutzer erstellen
@@ -230,21 +235,27 @@ const createUser = async (req, res) => {
       department_id: department_id || null,
       location_id: location_id || null,
       room_id: room_id || null,
-      active: active !== undefined ? active : true
+      active: active !== undefined ? active : true,
+      login_allowed: login_allowed !== undefined ? login_allowed : true,
+      email_notifications_enabled: email_notifications_enabled !== undefined ? email_notifications_enabled : true
     };
 
+    logger.info('[createUser] Erstelle Benutzer mit Daten:', { ...userData, password: '[REDACTED]' });
     const newUser = await createUserModel(userData);
+
+    // Entferne sensible Daten vor der Rückgabe
+    const { password_hash, ...userToReturn } = newUser;
 
     res.status(201).json({
       success: true,
       message: 'Benutzer erfolgreich erstellt',
-      data: newUser
+      data: userToReturn
     });
   } catch (error) {
     logger.error('Fehler beim Erstellen des Benutzers:', error);
     res.status(500).json({
       success: false,
-      message: 'Serverfehler beim Erstellen des Benutzers'
+      message: error.message || 'Serverfehler beim Erstellen des Benutzers'
     });
   }
 };
@@ -253,8 +264,13 @@ const createUser = async (req, res) => {
  * Benutzer aktualisieren
  */
 const updateUser = async (req, res) => {
+  const { id } = req.params;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
   try {
-    const { id } = req.params;
     const {
       username,
       email,
@@ -265,70 +281,51 @@ const updateUser = async (req, res) => {
       department_id,
       location_id,
       room_id,
-      active
+      active,
+      login_allowed,
+      email_notifications_enabled
     } = req.body;
 
-    // Prüfen, ob Benutzer existiert
-    const existingUser = await getUserByIdModel(id);
-    if (!existingUser) {
-      return res.status(404).json({ message: 'Benutzer nicht gefunden' });
-    }
+    // Build userData object only with provided fields
+    const userData = {};
+    if (username !== undefined) userData.username = username;
+    if (email !== undefined) userData.email = email;
+    if (password) userData.password = password; // Passwort nur übergeben, wenn es geändert werden soll
+    if (first_name !== undefined) userData.first_name = first_name;
+    if (last_name !== undefined) userData.last_name = last_name;
+    if (role !== undefined) userData.role = role;
+    if (department_id !== undefined) userData.department_id = department_id;
+    if (location_id !== undefined) userData.location_id = location_id;
+    if (room_id !== undefined) userData.room_id = room_id;
+    if (active !== undefined) userData.active = active;
+    if (login_allowed !== undefined) userData.login_allowed = login_allowed;
+    if (email_notifications_enabled !== undefined) userData.email_notifications_enabled = email_notifications_enabled;
 
-    // Prüfen, ob der neue Benutzername bereits existiert (außer für denselben Benutzer)
-    if (username !== existingUser.username) {
-      const userWithUsername = await getUserByUsernameModel(username);
-      if (userWithUsername) {
-        return res.status(400).json({ message: 'Benutzername existiert bereits' });
-      }
-    }
+    logger.info(`[updateUser] Aktualisiere Benutzer ID ${id} mit Daten:`, { ...userData, password: userData.password ? '[REDACTED]' : undefined });
 
-    // Prüfen, ob die neue E-Mail bereits existiert (außer für denselben Benutzer)
-    if (email !== existingUser.email) {
-      const userWithEmail = await getUserByEmailModel(email);
-      if (userWithEmail) {
-        return res.status(400).json({ message: 'E-Mail existiert bereits' });
-      }
-    }
-
-    // Benutzerdaten vorbereiten
-    const userData = {
-      username,
-      email,
-      first_name,
-      last_name,
-      role,
-      department_id: department_id,
-      location_id: location_id,
-      room_id: room_id,
-      active: active
-    };
-
-    // Optional Passwort hinzufügen, wenn angegeben
-    if (password) {
-      userData.password = password;
-    }
-
-    // Entferne undefined Properties, damit nur vorhandene Felder upgedated werden
-    Object.keys(userData).forEach(key => userData[key] === undefined && delete userData[key]);
-
-    // Prüfen ob überhaupt Daten zum Updaten da sind (nach Entfernung von undefined)
     if (Object.keys(userData).length === 0) {
-        return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben.' });
+      return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben.' });
     }
 
-    // Benutzer aktualisieren
     const updatedUser = await updateUserModel(id, userData);
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'Benutzer nicht gefunden' });
+    }
+
+    // Entferne sensible Daten vor der Rückgabe
+    const { password_hash, ...userToReturn } = updatedUser;
 
     res.json({
       success: true,
       message: 'Benutzer erfolgreich aktualisiert',
-      data: updatedUser
+      data: userToReturn
     });
   } catch (error) {
-    logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${req.params.id}:`, error);
+    logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${id}:`, error);
     res.status(500).json({
       success: false,
-      message: 'Serverfehler beim Aktualisieren des Benutzers'
+      message: error.message || 'Serverfehler beim Aktualisieren des Benutzers'
     });
   }
 };
@@ -475,6 +472,90 @@ const getUserGroups = async (req, res) => {
   }
 };
 
+/**
+ * NEU: Zugewiesene Geräte für einen Benutzer abrufen
+ */
+const getUserDevices = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { userId } = req.params;
+  logger.info(`[UserController] Anfrage: getUserDevices für userId: ${userId}`);
+
+  try {
+    const devices = await deviceModel.getAllDevices({ user_id: userId });
+    logger.info(`[UserController] Geräte für userId ${userId} gefunden: ${devices.length}`);
+    return res.json({
+      success: true,
+      data: devices
+    });
+  } catch (error) {
+    logger.error(`Fehler beim Abrufen der Geräte für Benutzer ${userId}:`, error);
+    return res.status(500).json({
+      success: false,
+      message: `Serverfehler beim Abrufen der Geräte für Benutzer ${userId}: ${error.message}`
+    });
+  }
+};
+
+/**
+ * NEU: Zugewiesene Lizenzen für einen Benutzer abrufen
+ */
+const getUserLicenses = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { userId } = req.params;
+  logger.info(`[UserController] Anfrage: getUserLicenses für userId: ${userId}`);
+
+  try {
+    const licenses = await licenseModel.getAllLicenses({ user_id: userId });
+    logger.info(`[UserController] Lizenzen für userId ${userId} gefunden: ${licenses.length}`);
+    return res.json({
+      success: true,
+      data: licenses
+    });
+  } catch (error) {
+    logger.error(`Fehler beim Abrufen der Lizenzen für Benutzer ${userId}:`, error);
+    return res.status(500).json({
+      success: false,
+      message: `Serverfehler beim Abrufen der Lizenzen für Benutzer ${userId}: ${error.message}`
+    });
+  }
+};
+
+/**
+ * NEU: Zugewiesenes Zubehör für einen Benutzer abrufen
+ */
+const getUserAccessories = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { userId } = req.params;
+  logger.info(`[UserController] Anfrage: getUserAccessories für userId: ${userId}`);
+
+  try {
+    const accessories = await accessoryModel.getAllAccessories({ user_id: userId });
+    logger.info(`[UserController] Zubehör für userId ${userId} gefunden: ${accessories.length}`);
+    return res.json({
+      success: true,
+      data: accessories
+    });
+  } catch (error) {
+    logger.error(`Fehler beim Abrufen des Zubehörs für Benutzer ${userId}:`, error);
+    return res.status(500).json({
+      success: false,
+      message: `Serverfehler beim Abrufen des Zubehörs für Benutzer ${userId}: ${error.message}`
+    });
+  }
+};
+
 module.exports = {
   login,
   getProfile,
@@ -489,5 +570,8 @@ module.exports = {
   getLocations,
   getRoomsForLocation,
   searchUsers,
-  getUserGroups
+  getUserGroups,
+  getUserDevices,
+  getUserLicenses,
+  getUserAccessories
 };

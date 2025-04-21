@@ -160,7 +160,7 @@ const UserGroupManagement: React.FC = () => {
     setLoadingUsers(true);
     try {
       console.log(`[UserGroupManagement] Lade Benutzer für Gruppe ${groupId}...`);
-      const response: ApiResponse<User[]> = await userGroupApi.getUsersInGroup(groupId);
+      const response: ApiResponse<User[]> = await userGroupApi.getGroupMembers(groupId);
 
       if (response.success && Array.isArray(response.data)) {
         const camelCasedUsers = response.data.map(user => toCamelCase(user) as User);
@@ -371,38 +371,26 @@ const UserGroupManagement: React.FC = () => {
   };
 
   const handleAddUserToGroup = async () => {
-    if (!selectedGroup || !selectedUserIdToAdd) {
-      console.warn('[UserGroupManagement - handleAddUserToGroup] Abbruch: Keine Gruppe oder kein Benutzer ausgewählt.', { selectedGroupId: selectedGroup?.id, selectedUserIdToAdd });
-      return;
-    }
-
-    console.log(`[UserGroupManagement - handleAddUserToGroup] API Call vorbereitet: Gruppe ID=${selectedGroup.id}, Benutzer ID=${selectedUserIdToAdd}`);
+    if (!selectedGroup || !selectedUserIdToAdd) return;
 
     setDialogLoading(true);
     try {
-      console.log(`[UserGroupManagement] Füge Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id} hinzu...`);
-      const response: ApiResponse<void> = await userGroupApi.addUserToGroup(Number(selectedGroup.id), selectedUserIdToAdd);
+      const userIdToAdd = Number(selectedUserIdToAdd);
+      if (isNaN(userIdToAdd)) {
+        throw new Error('Ungültige Benutzer-ID ausgewählt.');
+      }
+      const response = await userGroupApi.addUsersToGroup(selectedGroup.id, [userIdToAdd]);
 
       if (response.success) {
-        setSnackbar({
-          open: true,
-          message: response.message || 'Benutzer erfolgreich zur Gruppe hinzugefügt',
-          severity: 'success'
-        });
+        setSnackbar({ open: true, message: 'Benutzer erfolgreich zur Gruppe hinzugefügt.', severity: 'success' });
+        await loadGroupUsers(selectedGroup.id);
         handleCloseAddUserDialog();
-        await loadGroupUsers(Number(selectedGroup.id));
-        await loadGroups();
       } else {
-        setSnackbar({
-          open: true,
-          message: response.message || 'Fehler beim Hinzufügen des Benutzers.',
-          severity: 'error'
-        });
+        throw new Error(response.message || 'Fehler beim Hinzufügen des Benutzers.');
       }
     } catch (error) {
-      console.error(`[UserGroupManagement] CATCH-Fehler beim Hinzufügen von Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id}:`, error);
-      const errorMessage = handleApiError(error);
-      setSnackbar({ open: true, message: `Fehler beim Hinzufügen des Benutzers: ${errorMessage}`, severity: 'error' });
+      console.error('Fehler beim Hinzufügen des Benutzers zur Gruppe:', error);
+      setSnackbar({ open: true, message: `Fehler: ${handleApiError(error)}`, severity: 'error' });
     } finally {
       setDialogLoading(false);
     }
@@ -423,39 +411,28 @@ const UserGroupManagement: React.FC = () => {
   };
 
   const executeRemoveUserFromGroup = async () => {
-    if (!selectedGroup || !userToRemoveFromGroup) return;
+    if (!userToRemoveFromGroup || !selectedGroup) return;
 
-    const userId = userToRemoveFromGroup.id;
-    const groupId = selectedGroup.id;
-
-    handleCloseConfirmRemoveUserDialog(); // Dialog sofort schließen
-    setLoadingUsers(true); // Oder einen anderen Ladeindikator?
-
+    setDialogLoading(true);
     try {
-      console.log(`[UserGroupManagement] Entferne Benutzer ${userId} aus Gruppe ${groupId}...`);
-      const response: ApiResponse<void> = await userGroupApi.removeUserFromGroup(Number(groupId), String(userId));
+      const userIdToRemove = Number(userToRemoveFromGroup.id);
+      if (isNaN(userIdToRemove)) {
+        throw new Error('Ungültige Benutzer-ID zum Entfernen.');
+      }
+      const response = await userGroupApi.removeUserFromGroup(selectedGroup.id, userIdToRemove);
 
       if (response.success) {
-        setSnackbar({
-          open: true,
-          message: response.message || 'Benutzer erfolgreich aus Gruppe entfernt',
-          severity: 'success'
-        });
-        await loadGroupUsers(Number(groupId));
-        await loadGroups();
+        setSnackbar({ open: true, message: `Benutzer "${userToRemoveFromGroup.username}" erfolgreich aus Gruppe entfernt.`, severity: 'success' });
+        await loadGroupUsers(selectedGroup.id);
       } else {
-        setSnackbar({
-          open: true,
-          message: response.message || 'Fehler beim Entfernen des Benutzers.',
-          severity: 'error'
-        });
+        throw new Error(response.message || 'Fehler beim Entfernen des Benutzers.');
       }
     } catch (error) {
-      console.error(`[UserGroupManagement] CATCH-Fehler beim Entfernen von Benutzer ${userId} aus Gruppe ${groupId}:`, error);
-      const errorMessage = handleApiError(error);
-      setSnackbar({ open: true, message: `Fehler beim Entfernen des Benutzers: ${errorMessage}`, severity: 'error' });
+      console.error('Fehler beim Entfernen des Benutzers aus Gruppe:', error);
+      setSnackbar({ open: true, message: `Fehler: ${handleApiError(error)}`, severity: 'error' });
     } finally {
-      setLoadingUsers(false);
+      setDialogLoading(false);
+      handleCloseConfirmRemoveUserDialog();
     }
   };
 

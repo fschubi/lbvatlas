@@ -16,11 +16,19 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   active?: boolean;
+  login_allowed?: boolean;
+  email_notifications_enabled?: boolean;
   permissions?: Set<string>;
   departmentName?: string;
   locationName?: string;
   roomName?: string;
   assignedDevicesCount?: number;
+  display_name?: string;
+  department_name?: string | null;
+  location_name?: string | null;
+  room_name?: string | null;
+  last_login?: string;
+  assigned_devices_count?: number;
 }
 
 export type Department = {
@@ -73,4 +81,24 @@ export interface Permission {
   description?: string;
   module?: string;
   action?: string;
+}
+
+export interface UserUpdateData {
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  role?: string;
+  department_id?: number | undefined;
+  location_id?: number | undefined;
+  room_id?: number | undefined;
+  title?: string;
+  phone?: string | undefined;
+  address?: string;
+  postal_code?: string;
+  city?: string;
+  active?: boolean;
+  login_allowed?: boolean;
+  email_notifications_enabled?: boolean;
+  password?: string;
 }

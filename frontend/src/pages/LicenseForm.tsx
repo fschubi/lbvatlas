@@ -23,7 +23,7 @@ import {
   Cancel as CancelIcon,
   ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
-import { licensesApi, usersApi } from '../utils/api';
+import api, { usersApi, licensesApi } from '../utils/api';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import deLocale from 'date-fns/locale/de';
@@ -33,7 +33,7 @@ import useCacheService from '../services/cacheService';
 // Schnittstelle für Formularfelder
 interface LicenseFormData {
   name: string;
-  type: string;
+  type_id: string;
   product: string;
   publisher: string;
   licenseKey: string;
@@ -48,15 +48,22 @@ interface LicenseFormData {
   notes: string;
 }
 
+// Schnittstelle für LicenseType von der API
+interface LicenseType {
+  id: number;
+  name: string;
+}
+
 const LicenseForm: React.FC = () => {
   const { licenseId } = useParams<{ licenseId: string }>();
   const cacheService = useCacheService();
 
-  // Optionen für Dropdown-Menüs
-  const licenseTypeOptions = [
-    'Einzelplatz', 'Mehrplatz', 'Volumenvertrag', 'Enterprise', 'Abonnement', 'Cloud', 'Freeware', 'Open Source', 'Sonstiges'
-  ];
+  // Optionen für Status Dropdown
   const statusOptions = ['Aktiv', 'Abgelaufen', 'Gekündigt', 'In Warnung', 'Wartung'];
+
+  // State für Lizenztypen
+  const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
+  const [licenseTypesLoading, setLicenseTypesLoading] = useState<boolean>(true);
 
   // Validierungsfunktion für das Formular
   const validateForm = (data: LicenseFormData) => {
@@ -64,7 +71,7 @@ const LicenseForm: React.FC = () => {
 
     // Pflichtfelder prüfen
     if (!data.name.trim()) errors.name = 'Name ist erforderlich';
-    if (!data.type) errors.type = 'Typ ist erforderlich';
+    if (!data.type_id) errors.type_id = 'Typ ist erforderlich';
     if (!data.publisher.trim()) errors.publisher = 'Hersteller ist erforderlich';
     if (!data.status) errors.status = 'Status ist erforderlich';
 
@@ -90,6 +97,7 @@ const LicenseForm: React.FC = () => {
   // useEntityForm Hook initialisieren
   const {
     formData,
+    setFormData,
     errors,
     loading,
     saving,
@@ -103,7 +111,7 @@ const LicenseForm: React.FC = () => {
   } = useEntityForm<LicenseFormData>({
     initialData: {
       name: '',
-      type: '',
+      type_id: '',
       product: '',
       publisher: '',
       licenseKey: '',
@@ -118,16 +126,28 @@ const LicenseForm: React.FC = () => {
       notes: ''
     },
     entityId: licenseId,
-    getById: async (id) => await licensesApi.getLicenseById(id),
+    getById: async (id) => {
+      const response = await licensesApi.getById(id);
+      if (response.data.type_id) {
+        response.data.type_id = String(response.data.type_id);
+      }
+      return response;
+    },
     create: async (data) => {
-      const result = await licensesApi.createLicense(data);
-      // Cache nach Erstellung invalidieren
+      const payload = {
+        ...data,
+        type_id: parseInt(data.type_id, 10) || null
+      };
+      const result = await licensesApi.create(payload);
       cacheService.licenses.invalidateAll();
       return result;
     },
     update: async (id, data) => {
-      const result = await licensesApi.updateLicense(id, data);
-      // Cache nach Aktualisierung invalidieren
+      const payload = {
+        ...data,
+        type_id: parseInt(data.type_id, 10) || null
+      };
+      const result = await licensesApi.update(id, payload);
       cacheService.licenses.invalidateById(id);
       return result;
     },
@@ -141,24 +161,38 @@ const LicenseForm: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
-  // Daten laden
+  // Daten laden (Benutzer und Lizenztypen)
   useEffect(() => {
     // Benutzer laden mit Cache
     const loadUsers = async () => {
       try {
         setUsersLoading(true);
         const response = await cacheService.references.getUsers(
-          () => usersApi.getAllUsers()
+          () => usersApi.getAll()
         );
-        setUsers(response.data);
-      } catch (err) {
+        setUsers((response as { data: any[] }).data || []);
+      } catch (err: any) {
         console.error('Fehler beim Laden der Benutzer:', err);
       } finally {
         setUsersLoading(false);
       }
     };
 
+    // Lizenztypen laden
+    const loadLicenseTypes = async () => {
+      setLicenseTypesLoading(true);
+      try {
+        const response = await api.get<{ data: LicenseType[] }>('/license-types');
+        setLicenseTypes(response.data.data || []);
+      } catch (err) {
+        console.error('Fehler beim Laden der Lizenztypen:', err);
+      } finally {
+        setLicenseTypesLoading(false);
+      }
+    };
+
     loadUsers();
+    loadLicenseTypes();
   }, []);
 
   // Ladeanzeige während des Ladens der Daten
@@ -251,24 +285,23 @@ const LicenseForm: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth margin="normal" error={!!errors.type}>
-                  <InputLabel>Typ *</InputLabel>
+                <FormControl fullWidth margin="normal" required error={!!errors.type_id}>
+                  <InputLabel>Typ</InputLabel>
                   <Select
-                    name="type"
-                    value={formData.type}
+                    name="type_id"
+                    value={formData.type_id}
                     onChange={handleSelectChange}
-                    label="Typ *"
+                    label="Typ"
+                    disabled={licenseTypesLoading}
                   >
-                    <MenuItem value="">
-                      <em>Bitte wählen</em>
-                    </MenuItem>
-                    {licenseTypeOptions.map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {option}
+                    {licenseTypes.map((type) => (
+                      <MenuItem key={type.id} value={String(type.id)}>
+                        {type.name}
                       </MenuItem>
                     ))}
                   </Select>
-                  {errors.type && <FormHelperText>{errors.type}</FormHelperText>}
+                  {(errors.type_id) && <FormHelperText>{errors.type_id}</FormHelperText>}
+                  {licenseTypesLoading && <FormHelperText>Lade Typen...</FormHelperText>}
                 </FormControl>
               </Grid>
 

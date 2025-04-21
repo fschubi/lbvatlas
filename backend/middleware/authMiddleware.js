@@ -27,7 +27,7 @@ const mockUser = {
  */
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (token == null) {
     logger.warn('Auth Middleware: Kein Token bereitgestellt.');
@@ -35,26 +35,17 @@ const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    // Token verifizieren
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.id; // Annahme: User ID ist im Token Payload als 'id'
+    const userId = decoded.id;
 
     if (!userId) {
       logger.error('Auth Middleware: Ungültiger Token-Payload (fehlende ID).');
       return res.status(403).json({ success: false, message: 'Zugriff verweigert. Ungültiger Token.' });
     }
 
-    // Benutzerdaten und Rollen aus der Datenbank laden
+    // Benutzerdaten laden
     const userQuery = 'SELECT id, username, active FROM users WHERE id = $1';
-    const roleQuery = `
-      SELECT r.name
-      FROM roles r
-      JOIN user_roles ur ON r.id = ur.role_id
-      WHERE ur.user_id = $1
-    `;
-
     const userResult = await db.query(userQuery, [userId]);
-    const roleResult = await db.query(roleQuery, [userId]);
 
     if (userResult.rows.length === 0) {
       logger.warn(`Auth Middleware: Benutzer mit ID ${userId} aus Token nicht gefunden.`);
@@ -63,23 +54,46 @@ const authenticateToken = async (req, res, next) => {
 
     const user = userResult.rows[0];
 
-    // Prüfen, ob Benutzer aktiv ist
     if (!user.active) {
         logger.warn(`Auth Middleware: Benutzer ${userId} ist inaktiv.`);
         return res.status(403).json({ success: false, message: 'Zugriff verweigert. Benutzerkonto ist deaktiviert.' });
     }
 
-    // Rollen extrahieren
+    // Rollen und Berechtigungen des Benutzers laden
+    const permissionsQuery = `
+        SELECT DISTINCT p.name
+        FROM permissions p
+        JOIN role_permissions rp ON p.id = rp.permission_id
+        JOIN user_roles ur ON rp.role_id = ur.role_id
+        WHERE ur.user_id = $1
+    `;
+    // Rollen laden (optional, wenn nur Berechtigungen gebraucht werden, aber oft nützlich)
+    const roleQuery = `
+        SELECT r.name
+        FROM roles r
+        JOIN user_roles ur ON r.id = ur.role_id
+        WHERE ur.user_id = $1
+    `;
+
+    const [permissionsResult, roleResult] = await Promise.all([
+        db.query(permissionsQuery, [userId]),
+        db.query(roleQuery, [userId])
+    ]);
+
+    const permissions = permissionsResult.rows.map(row => row.name);
     const roles = roleResult.rows.map(row => row.name);
 
-    // Benutzerinformationen (inkl. Rollen) an das Request-Objekt anhängen
+    // Benutzerinformationen an das Request-Objekt anhängen
     req.user = {
       id: user.id,
       username: user.username,
-      roles: roles // Array von Rollennamen
+      roles: roles, // Array von Rollennamen
+      permissions: permissions // Array von Berechtigungsnamen
     };
 
-    next(); // Authentifizierung erfolgreich
+    logger.debug(`Auth Middleware: Benutzer ${user.id} authentifiziert. Rollen: [${roles.join(', ')}], Berechtigungen: [${permissions.join(', ')}]`);
+
+    next();
 
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -90,9 +104,8 @@ const authenticateToken = async (req, res, next) => {
       logger.error('Auth Middleware: Ungültiger Token.', { error: error.message });
       return res.status(403).json({ success: false, message: 'Zugriff verweigert. Ungültiger Token.' });
     }
-    // Andere Fehler
     logger.error('Auth Middleware: Interner Fehler bei der Token-Verifizierung:', error);
-    next(error); // An zentrale Fehlerbehandlung weiterleiten
+    next(error);
   }
 };
 
@@ -132,8 +145,55 @@ const isManager = async (req, res, next) => {
   next();
 };
 
+/**
+ * Middleware zur Überprüfung spezifischer Berechtigungen.
+ * Akzeptiert eine einzelne Berechtigung oder ein Array von Berechtigungen.
+ * Der Benutzer muss ALLE angegebenen Berechtigungen besitzen.
+ *
+ * @param {string|string[]} requiredPermissions - Die erforderliche(n) Berechtigung(en).
+ * @returns {Function} Express Middleware-Funktion.
+ */
+const hasPermission = (requiredPermissions) => {
+  // Sicherstellen, dass requiredPermissions immer ein Array ist
+  const permissionsToCheck = Array.isArray(requiredPermissions)
+    ? requiredPermissions
+    : [requiredPermissions];
+
+  // Die eigentliche Middleware-Funktion zurückgeben
+  return async (req, res, next) => {
+    // Prüfen, ob Benutzer und Berechtigungen im Request-Objekt vorhanden sind
+    if (!req.user || !req.user.permissions) {
+      logger.warn(`Zugriff verweigert (hasPermission): Benutzer nicht authentifiziert oder Berechtigungen nicht geladen für Route ${req.originalUrl}.`);
+      return res.status(401).json({
+        success: false,
+        message: 'Nicht authentifiziert oder Berechtigungen konnten nicht geladen werden.'
+      });
+    }
+
+    // Prüfen, ob der Benutzer ALLE erforderlichen Berechtigungen hat
+    const hasAllPermissions = permissionsToCheck.every(permission =>
+      req.user.permissions.includes(permission)
+    );
+
+    if (hasAllPermissions) {
+      // Benutzer hat alle erforderlichen Berechtigungen
+      logger.debug(`Zugriff erlaubt (hasPermission): Benutzer ${req.user.id} hat erforderliche Berechtigungen [${permissionsToCheck.join(', ')}] für ${req.originalUrl}.`);
+      next();
+    } else {
+      // Mindestens eine Berechtigung fehlt
+      const missingPermissions = permissionsToCheck.filter(p => !req.user.permissions.includes(p));
+      logger.warn(`Zugriff verweigert (hasPermission): Benutzer ${req.user.id} fehlen Berechtigungen [${missingPermissions.join(', ')}] für ${req.originalUrl}.`);
+      return res.status(403).json({
+        success: false,
+        message: `Zugriff verweigert: Erforderliche Berechtigung(en) [${missingPermissions.join(', ')}] nicht vorhanden.`
+      });
+    }
+  };
+};
+
 module.exports = {
   authenticateToken,
   isAdmin,
-  isManager
+  isManager,
+  hasPermission
 };

@@ -549,7 +549,7 @@ const RoleManagement: React.FC = () => {
                           <Checkbox
                             checked={rolePermissions.includes(modPerms.create)}
                             onChange={() => handleTogglePermission(modPerms.create)}
-                            disabled={!canUpdate || selectedRole.isSystem}
+                            disabled={!canAssignPermissions || selectedRole?.isSystem}
                             size="small"
                             color="success"
                           />
@@ -562,7 +562,7 @@ const RoleManagement: React.FC = () => {
                           <Checkbox
                             checked={rolePermissions.includes(modPerms.read)}
                             onChange={() => handleTogglePermission(modPerms.read)}
-                            disabled={!canUpdate || selectedRole.isSystem}
+                            disabled={!canAssignPermissions || selectedRole?.isSystem}
                              size="small"
                              color="primary"
                           />
@@ -575,7 +575,7 @@ const RoleManagement: React.FC = () => {
                           <Checkbox
                             checked={rolePermissions.includes(modPerms.update)}
                             onChange={() => handleTogglePermission(modPerms.update)}
-                            disabled={!canUpdate || selectedRole.isSystem}
+                            disabled={!canAssignPermissions || selectedRole?.isSystem}
                              size="small"
                              color="warning"
                           />
@@ -588,7 +588,7 @@ const RoleManagement: React.FC = () => {
                           <Checkbox
                             checked={rolePermissions.includes(modPerms.delete)}
                             onChange={() => handleTogglePermission(modPerms.delete)}
-                            disabled={!canUpdate || selectedRole.isSystem}
+                            disabled={!canAssignPermissions || selectedRole?.isSystem}
                              size="small"
                              color="error"
                           />
