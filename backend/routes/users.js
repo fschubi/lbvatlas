@@ -1,13 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { body, validationResult } = require('express-validator');
+const { body, check, validationResult } = require('express-validator');
 const UserController = require('../controllers/userController');
-const { authMiddleware } = require('../middleware/auth');
-const { checkRole } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/authMiddleware');
+const { authorize } = require('../middleware/permissionMiddleware');
 const { pool } = require('../db');
 const logger = require('../utils/logger');
 const { getLocations, getRoomsByLocation } = require('../models/userModel');
-const { authenticateToken } = require('../middleware/authMiddleware');
+
+// Berechtigungen definieren
+const USERS_READ = 'users.read';
+const USERS_CREATE = 'users.create';
+const USERS_UPDATE = 'users.update';
+const USERS_DELETE = 'users.delete';
 
 /**
  * @route   POST /api/users/login
@@ -19,20 +24,22 @@ router.post('/login', [
   body('password').notEmpty().withMessage('Passwort ist erforderlich')
 ], UserController.login);
 
+// Middleware für alle folgenden Routen
+router.use(authenticateToken);
+
 /**
  * @route   GET /api/users/profile
  * @desc    Aktuelles Benutzerprofil abrufen
- * @access  Private
+ * @access  Private (Authentifiziert)
  */
-router.get('/profile', authMiddleware, UserController.getProfile);
+router.get('/profile', UserController.getProfile);
 
 /**
  * @route   PUT /api/users/change-password
  * @desc    Passwort ändern
- * @access  Private
+ * @access  Private (Authentifiziert)
  */
 router.put('/change-password', [
-  authMiddleware,
   body('currentPassword').notEmpty().withMessage('Aktuelles Passwort ist erforderlich'),
   body('newPassword')
     .notEmpty().withMessage('Neues Passwort ist erforderlich')
@@ -42,25 +49,18 @@ router.put('/change-password', [
 ], UserController.changePassword);
 
 /**
- * @route   GET /api/users/roles
- * @desc    Alle Benutzerrollen abrufen
- * @access  Private (Admin)
- */
-router.get('/roles', [authMiddleware, checkRole(['admin'])], UserController.getUserRoles);
-
-/**
  * @route   GET /api/users/departments
  * @desc    Alle Abteilungen abrufen
- * @access  Private
+ * @access  Private (Authentifiziert, keine spezielle Berechtigung?)
  */
-router.get('/departments', authMiddleware, UserController.getDepartments);
+router.get('/departments', UserController.getDepartments);
 
 /**
  * @route   GET /api/users/locations
  * @desc    Alle verfügbaren Standorte für Benutzer abrufen
- * @access  Private
+ * @access  Private (Authentifiziert)
  */
-router.get('/locations', authMiddleware, async (req, res) => {
+router.get('/locations', async (req, res) => {
   try {
     // Verwenden der getLocations-Funktion aus dem userModel
     const locations = await getLocations();
@@ -82,9 +82,9 @@ router.get('/locations', authMiddleware, async (req, res) => {
 /**
  * @route   GET /api/users/locations/:locationId/rooms
  * @desc    Räume für einen bestimmten Standort abrufen
- * @access  Private
+ * @access  Private (Authentifiziert)
  */
-router.get('/locations/:locationId/rooms', authMiddleware, async (req, res) => {
+router.get('/locations/:locationId/rooms', async (req, res) => {
   try {
     const { locationId } = req.params;
     // Verwenden der getRoomsByLocation-Funktion aus dem userModel
@@ -106,27 +106,47 @@ router.get('/locations/:locationId/rooms', authMiddleware, async (req, res) => {
 
 /**
  * @route   GET /api/users
- * @desc    Alle Benutzer abrufen
- * @access  Private (Admin)
+ * @desc    Alle Benutzer abrufen (jetzt /all)
+ * @access  Private (Berechtigung: users.read)
  */
-router.get('/', [authMiddleware, checkRole(['admin'])], UserController.getAllUsers);
+router.get('/all', authorize(USERS_READ), UserController.getAllUsers);
+
+/**
+ * @route   GET /api/users/search
+ * @desc    Benutzer suchen
+ * @access  Private (Berechtigung: users.read)
+ */
+router.get('/search',
+    authorize(USERS_READ),
+    [check('term').optional().isString().trim().withMessage('Suchbegriff muss ein String sein')],
+    UserController.searchUsers
+);
+
+/**
+ * @route   GET /api/users/:userId/groups
+ * @desc    Gruppen eines Benutzers abrufen
+ * @access  Private (Berechtigung: users.read oder usergroups.read?)
+ */
+router.get('/:userId/groups',
+    authorize(USERS_READ), // Oder spezifischere Berechtigung prüfen?
+    [check('userId').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
+    UserController.getUserGroups
+);
 
 /**
  * @route   GET /api/users/:id
  * @desc    Benutzer nach ID abrufen
- * @access  Private (Admin)
+ * @access  Private (Berechtigung: users.read)
  */
-router.get('/:id', [authMiddleware, checkRole(['admin'])], UserController.getUserById);
+router.get('/:id', authorize(USERS_READ), UserController.getUserById);
 
 /**
  * @route   POST /api/users
  * @desc    Neuen Benutzer erstellen
- * @access  Private (Admin)
+ * @access  Private (Berechtigung: users.create)
  */
 router.post('/', [
-  authMiddleware,
-  checkRole(['admin']),
-  // Validierungsregeln
+  authorize(USERS_CREATE),
   body('username')
     .notEmpty().withMessage('Benutzername ist erforderlich')
     .isLength({ min: 3 }).withMessage('Benutzername muss mindestens 3 Zeichen lang sein'),
@@ -146,12 +166,10 @@ router.post('/', [
 /**
  * @route   PUT /api/users/:id
  * @desc    Benutzer aktualisieren
- * @access  Private (Admin)
+ * @access  Private (Berechtigung: users.update)
  */
 router.put('/:id', [
-  authMiddleware,
-  checkRole(['admin']),
-  // Validierungsregeln für Updates
+  authorize(USERS_UPDATE),
   body('username')
     .optional()
     .isLength({ min: 3 }).withMessage('Benutzername muss mindestens 3 Zeichen lang sein'),
@@ -168,8 +186,8 @@ router.put('/:id', [
 /**
  * @route   DELETE /api/users/:id
  * @desc    Benutzer löschen
- * @access  Private (Admin)
+ * @access  Private (Berechtigung: users.delete)
  */
-router.delete('/:id', [authMiddleware, checkRole(['admin'])], UserController.deleteUser);
+router.delete('/:id', authorize(USERS_DELETE), UserController.deleteUser);
 
 module.exports = router;

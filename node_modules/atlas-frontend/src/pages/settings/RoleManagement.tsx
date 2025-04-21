@@ -44,6 +44,7 @@ import { roleApi, permissionApi } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import { useAuth } from '../../context/AuthContext'; // Importiere useAuth
 
 // API-Basis-URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
@@ -151,16 +152,15 @@ const RoleManagement: React.FC = () => {
   const [confirmDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<RoleType | null>(null);
 
-  // TODO: Berechtigungsprüfung aktivieren
-  // const { userPermissions } = usePermissions();
-  // const canCreate = userPermissions.includes('roles.create');
-  // const canUpdate = userPermissions.includes('roles.update');
-  // const canDelete = userPermissions.includes('roles.delete');
-  // const canViewPermissions = userPermissions.includes('permissions.read');
-  const canCreate = true; // Placeholder
-  const canUpdate = true; // Placeholder
-  const canDelete = true; // Placeholder
-  const canViewPermissions = true; // Placeholder
+  // --- Berechtigungen ---
+  const { user, isLoading: isAuthLoading } = useAuth(); // Holen von isLoading
+  // TODO: Echte Berechtigungen prüfen
+  const userPermissions = user?.permissions || new Set<string>();
+  const canCreate = userPermissions.has('roles.create');
+  const canUpdate = userPermissions.has('roles.update');
+  const canDelete = userPermissions.has('roles.delete');
+  const canViewPermissions = userPermissions.has('permissions.read');
+  const canAssignPermissions = userPermissions.has('roles.assign_permissions'); // Berechtigung für Zuweisen
 
   // Berechtigungen laden
   const fetchPermissions = useCallback(async () => {
@@ -262,20 +262,31 @@ const RoleManagement: React.FC = () => {
     setPermissionMatrix(matrix);
   }, [permissions]); // Hängt von allen Berechtigungen ab
 
-  // --- UseEffects --- (ans Ende verschoben)
-  useEffect(() => {
-    fetchPermissions();
-    fetchRoles();
-  }, [fetchPermissions, fetchRoles]);
+  // --- useEffect Hooks ---
 
+  // Initiales Laden der Rollen und Berechtigungen, wartet auf AuthContext
+  useEffect(() => {
+    if (!isAuthLoading) {
+      // Nur laden, wenn Authentifizierung abgeschlossen
+      // TODO: Prüfen, ob Leseberechtigung für Rollen/Permissions vorhanden ist?
+      // if (userPermissions.has('roles.read')) { fetchRoles(); }
+      // if (canViewPermissions) { fetchPermissions(); }
+      fetchRoles(); // Vorläufig ohne explizite Berechtigungsprüfung hier
+      fetchPermissions(); // Vorläufig ohne explizite Berechtigungsprüfung hier
+    } else {
+       setLoading(true); // Zeige Ladezustand während Auth-Prüfung
+    }
+  }, [isAuthLoading, fetchRoles, fetchPermissions]); // Abhängigkeit von isAuthLoading!
+
+  // Laden der spezifischen Rollenberechtigungen, wenn eine Rolle ausgewählt wird
   useEffect(() => {
     if (selectedRole) {
-        fetchRolePermissions(selectedRole.id);
+      fetchRolePermissions(selectedRole.id);
     } else {
-        setRolePermissions([]);
-        setPermissionMatrix({}); // Matrix zurücksetzen
+      setRolePermissions([]);
+      setPermissionMatrix({}); // Matrix zurücksetzen, wenn keine Rolle ausgewählt ist
     }
-  }, [selectedRole, fetchRolePermissions]);
+  }, [selectedRole, fetchRolePermissions]); // Abhängigkeit fetchRolePermissions hinzugefügt?
 
   useEffect(() => {
     // Erstelle die Matrix neu, wenn sich die allgemeinen Berechtigungen ändern

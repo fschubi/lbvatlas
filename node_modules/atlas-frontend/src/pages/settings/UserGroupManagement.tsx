@@ -348,10 +348,19 @@ const UserGroupManagement: React.FC = () => {
 
   const handleOpenAddUserDialog = () => {
     if (!canManageMembers) {
-       setSnackbar({ open: true, message: 'Keine Berechtigung zum Verwalten von Mitgliedern.', severity: 'warning' });
-       return;
+      setSnackbar({ open: true, message: 'Keine Berechtigung zum Verwalten von Mitgliedern.', severity: 'warning' });
+      return;
     }
     if (!selectedGroup) return;
+
+    const currentGroupUsers = groupUsers;
+    const currentAllUsers = allUsers;
+    const filteredNonMembers = currentAllUsers.filter(user => !currentGroupUsers.some(groupUser => groupUser.id === user.id));
+    console.log('[UserGroupManagement - handleOpenAddUserDialog] Öffne Dialog für Gruppe:', selectedGroup?.id);
+    console.log('[UserGroupManagement - handleOpenAddUserDialog] Aktuelle Gruppenmitglieder:', currentGroupUsers.map(u => u.id));
+    console.log('[UserGroupManagement - handleOpenAddUserDialog] Alle Benutzer:', currentAllUsers.map(u => u.id));
+    console.log('[UserGroupManagement - handleOpenAddUserDialog] Gefilterte Nicht-Mitglieder:', filteredNonMembers.map(u => u.id));
+
     setSelectedUserIdToAdd('');
     setAddUserDialogOpen(true);
   };
@@ -362,7 +371,13 @@ const UserGroupManagement: React.FC = () => {
   };
 
   const handleAddUserToGroup = async () => {
-    if (!selectedGroup || !selectedUserIdToAdd) return;
+    if (!selectedGroup || !selectedUserIdToAdd) {
+      console.warn('[UserGroupManagement - handleAddUserToGroup] Abbruch: Keine Gruppe oder kein Benutzer ausgewählt.', { selectedGroupId: selectedGroup?.id, selectedUserIdToAdd });
+      return;
+    }
+
+    console.log(`[UserGroupManagement - handleAddUserToGroup] API Call vorbereitet: Gruppe ID=${selectedGroup.id}, Benutzer ID=${selectedUserIdToAdd}`);
+
     setDialogLoading(true);
     try {
       console.log(`[UserGroupManagement] Füge Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id} hinzu...`);
@@ -418,7 +433,7 @@ const UserGroupManagement: React.FC = () => {
 
     try {
       console.log(`[UserGroupManagement] Entferne Benutzer ${userId} aus Gruppe ${groupId}...`);
-      const response: ApiResponse<void> = await userGroupApi.removeUserFromGroup(Number(groupId), userId);
+      const response: ApiResponse<void> = await userGroupApi.removeUserFromGroup(Number(groupId), String(userId));
 
       if (response.success) {
         setSnackbar({
@@ -621,7 +636,11 @@ const UserGroupManagement: React.FC = () => {
                       fullWidth
                       label="Benutzer auswählen"
                       value={selectedUserIdToAdd}
-                      onChange={(e) => setSelectedUserIdToAdd(e.target.value)}
+                      onChange={(e) => {
+                        const newUserId = e.target.value;
+                        console.log(`[UserGroupManagement - AddUserDialog] Benutzer ausgewählt: ID=${newUserId}`);
+                        setSelectedUserIdToAdd(newUserId);
+                      }}
                       variant="outlined"
                       margin="normal"
                       disabled={nonMemberUsers.length === 0 || loadingUsers || !canManageMembers}

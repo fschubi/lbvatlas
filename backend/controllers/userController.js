@@ -14,11 +14,14 @@ const {
   createUser: createUserModel,
   updateUser: updateUserModel,
   deleteUser: deleteUserModel,
-  verifyPassword: verifyPasswordModel
+  verifyPassword: verifyPasswordModel,
+  searchUsers: searchUsersModel
 } = require('../models/userModel');
+const userGroupModel = require('../models/userGroupModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
+const { validationResult } = require('express-validator');
 
 /**
  * Login-Handler
@@ -197,13 +200,11 @@ const createUser = async (req, res) => {
       password,
       first_name,
       last_name,
-      gender,
       role,
-      department,
-      location,
-      room,
-      phone,
-      is_active
+      department_id,
+      location_id,
+      room_id,
+      active
     } = req.body;
 
     // Prüfen, ob Benutzername bereits existiert
@@ -225,24 +226,26 @@ const createUser = async (req, res) => {
       password,
       first_name,
       last_name,
-      gender,
       role,
-      department,
-      location,
-      room,
-      phone,
-      active: is_active !== undefined ? is_active : true
+      department_id: department_id || null,
+      location_id: location_id || null,
+      room_id: room_id || null,
+      active: active !== undefined ? active : true
     };
 
     const newUser = await createUserModel(userData);
 
     res.status(201).json({
+      success: true,
       message: 'Benutzer erfolgreich erstellt',
-      user: newUser
+      data: newUser
     });
   } catch (error) {
     logger.error('Fehler beim Erstellen des Benutzers:', error);
-    res.status(500).json({ message: 'Serverfehler beim Erstellen des Benutzers' });
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Erstellen des Benutzers'
+    });
   }
 };
 
@@ -258,13 +261,11 @@ const updateUser = async (req, res) => {
       password,
       first_name,
       last_name,
-      gender,
       role,
-      department,
-      location,
-      room,
-      phone,
-      is_active
+      department_id,
+      location_id,
+      room_id,
+      active
     } = req.body;
 
     // Prüfen, ob Benutzer existiert
@@ -295,13 +296,11 @@ const updateUser = async (req, res) => {
       email,
       first_name,
       last_name,
-      gender,
       role,
-      department,
-      location,
-      room,
-      phone,
-      active: is_active
+      department_id: department_id,
+      location_id: location_id,
+      room_id: room_id,
+      active: active
     };
 
     // Optional Passwort hinzufügen, wenn angegeben
@@ -309,16 +308,28 @@ const updateUser = async (req, res) => {
       userData.password = password;
     }
 
+    // Entferne undefined Properties, damit nur vorhandene Felder upgedated werden
+    Object.keys(userData).forEach(key => userData[key] === undefined && delete userData[key]);
+
+    // Prüfen ob überhaupt Daten zum Updaten da sind (nach Entfernung von undefined)
+    if (Object.keys(userData).length === 0) {
+        return res.status(400).json({ success: false, message: 'Keine Daten zum Aktualisieren angegeben.' });
+    }
+
     // Benutzer aktualisieren
     const updatedUser = await updateUserModel(id, userData);
 
     res.json({
+      success: true,
       message: 'Benutzer erfolgreich aktualisiert',
-      user: updatedUser
+      data: updatedUser
     });
   } catch (error) {
     logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${req.params.id}:`, error);
-    res.status(500).json({ message: 'Serverfehler beim Aktualisieren des Benutzers' });
+    res.status(500).json({
+      success: false,
+      message: 'Serverfehler beim Aktualisieren des Benutzers'
+    });
   }
 };
 
@@ -404,6 +415,66 @@ const getRoomsForLocation = async (req, res) => {
   }
 };
 
+/**
+ * Benutzer suchen (Aktualisiert)
+ */
+const searchUsers = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { term } = req.query;
+  console.log(`[UserController] Anfrage: searchUsers mit term: ${term}`);
+
+  try {
+      // Model-Funktion aufrufen
+      const users = await searchUsersModel(term);
+
+      console.log(`[UserController] Suchergebnisse für "${term}" gefunden:`, users);
+      return res.json({
+          success: true,
+          data: users
+      });
+  } catch (error) {
+      logger.error('Fehler bei der Benutzersuche:', error);
+      return res.status(500).json({
+          success: false,
+          message: 'Serverfehler bei der Benutzersuche'
+      });
+  }
+};
+
+/**
+ * Gruppen eines Benutzers abrufen (Aktualisiert)
+ */
+const getUserGroups = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+  }
+
+  const { userId } = req.params;
+  console.log(`[UserController] Anfrage: getUserGroups für userId: ${userId}`);
+
+  try {
+      // Model-Funktion aufrufen
+      const groups = await userGroupModel.getGroupsByUserId(userId);
+
+      console.log(`[UserController] Gruppen für userId ${userId} gefunden:`, groups);
+      return res.json({
+          success: true,
+          data: groups
+      });
+  } catch (error) {
+      logger.error(`Fehler beim Abrufen der Gruppen für Benutzer ${userId}:`, error);
+      return res.status(500).json({
+          success: false,
+          message: `Serverfehler beim Abrufen der Gruppen für Benutzer ${userId}`
+      });
+  }
+};
+
 module.exports = {
   login,
   getProfile,
@@ -416,5 +487,7 @@ module.exports = {
   updateUser,
   deleteUser,
   getLocations,
-  getRoomsForLocation
+  getRoomsForLocation,
+  searchUsers,
+  getUserGroups
 };

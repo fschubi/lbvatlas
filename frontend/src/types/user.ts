@@ -1,11 +1,13 @@
 export interface User {
-  id: string;
+  id: number;
   username: string;
   first_name: string;
   last_name: string;
   email: string;
   role: string;
-  department_id?: string;
+  department_id?: number;
+  location_id?: number;
+  room_id?: number;
   title?: string;
   phone?: string;
   address?: string;
@@ -15,6 +17,10 @@ export interface User {
   updated_at?: string;
   active?: boolean;
   permissions?: Set<string>;
+  departmentName?: string;
+  locationName?: string;
+  roomName?: string;
+  assignedDevicesCount?: number;
 }
 
 export type Department = {

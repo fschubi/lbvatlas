@@ -419,59 +419,75 @@ const createUser = async (userData) => {
  * @returns {Promise<Object>} - Aktualisierter Benutzer
  */
 const updateUser = async (id, userData) => {
+  logger.debug(`[userModel] updateUser aufgerufen für ID: ${id} mit Daten:`, userData);
   try {
-    // Ermittle aktuelle Daten für Felder, die nicht aktualisiert werden
-    const currentUserQuery = 'SELECT * FROM users WHERE id = $1';
-    const currentUser = await pool.query(currentUserQuery, [id]);
+    const setClauses = [];
+    const values = [];
+    let valueIndex = 1;
 
-    if (currentUser.rows.length === 0) {
-      throw new Error('Benutzer nicht gefunden');
-    }
-
-    // Bereite Passwort vor, falls aktualisiert
-    let hashedPassword = currentUser.rows[0].password_hash;
+    // Passwort separat behandeln
     if (userData.password) {
       const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(userData.password, salt);
+      const hashedPassword = await bcrypt.hash(userData.password, salt);
+      setClauses.push(`password_hash = $${valueIndex}`);
+      values.push(hashedPassword);
+      valueIndex++;
+      delete userData.password;
     }
 
+    // Dynamisch SET-Klauseln für andere Felder erstellen
+    for (const key in userData) {
+      if (userData[key] === undefined) continue;
+
+      // Annahme: Controller liefert bereits korrekte snake_case Schlüssel
+      const dbKey = key;
+
+      if (dbKey === 'active') {
+          const boolValue = typeof userData[key] === 'boolean' ? userData[key] : (String(userData[key]).toLowerCase() === 'true' || userData[key] === 1);
+          setClauses.push(`${dbKey} = $${valueIndex}`);
+          values.push(boolValue);
+          valueIndex++;
+      } else {
+          const value = userData[key] === '' && (dbKey === 'department_id' || dbKey === 'location_id' || dbKey === 'room_id') ? null : userData[key];
+          setClauses.push(`${dbKey} = $${valueIndex}`);
+          values.push(value);
+          valueIndex++;
+      }
+    }
+
+    if (setClauses.length === 0) {
+      logger.warn(`[userModel] updateUser für ID ${id} aufgerufen, aber keine Felder zum Aktualisieren gefunden (nach Passwortbehandlung).`);
+      const currentUser = await getUserById(id); // Hole aktuellen User für Rückgabe
+      return currentUser;
+    }
+
+    setClauses.push(`updated_at = NOW()`);
+
+    // Korrigierter Query-String Aufbau
     const query = `
       UPDATE users SET
-        username = $1,
-        password_hash = $2,
-        email = $3,
-        first_name = $4,
-        last_name = $5,
-        display_name = $6,
-        department_id = $7,
-        location_id = $8,
-        room_id = $9,
-        role = $10,
-        active = $11,
-        updated_at = NOW()
-      WHERE id = $12
+        ${setClauses.join(', ')}
+      WHERE id = $${valueIndex}
       RETURNING id, username, email, first_name, last_name, display_name,
         department_id, location_id, room_id, role, active, created_at, updated_at
-    `;
+    `; // Korrektes Komma nach join()
 
-    const { rows } = await pool.query(query, [
-      userData.username || currentUser.rows[0].username,
-      hashedPassword,
-      userData.email || currentUser.rows[0].email,
-      userData.first_name || currentUser.rows[0].first_name,
-      userData.last_name || currentUser.rows[0].last_name,
-      userData.display_name || currentUser.rows[0].display_name,
-      userData.department_id !== undefined ? userData.department_id : currentUser.rows[0].department_id,
-      userData.location_id !== undefined ? userData.location_id : currentUser.rows[0].location_id,
-      userData.room_id !== undefined ? userData.room_id : currentUser.rows[0].room_id,
-      userData.role || currentUser.rows[0].role,
-      userData.active !== undefined ? userData.active : currentUser.rows[0].active,
-      id
-    ]);
+    values.push(id);
 
+    logger.debug(`[userModel] updateUser Query: ${query}`);
+    logger.debug(`[userModel] updateUser Values: ${JSON.stringify(values)}`); // JSON.stringify für bessere Lesbarkeit
+
+    const { rows } = await pool.query(query, values);
+
+    if (rows.length === 0) {
+        logger.error(`[userModel] updateUser für ID ${id} hat keine Zeile zurückgegeben.`);
+        throw new Error('Benutzer nach Update nicht gefunden oder Update fehlgeschlagen.');
+    }
+
+    logger.debug(`[userModel] updateUser erfolgreich für ID ${id}, Ergebnis:`, rows[0]);
     return rows[0];
   } catch (error) {
-    logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${id}:`, error);
+    logger.error(`[userModel] Fehler beim Aktualisieren des Benutzers mit ID ${id}:`, error);
     throw error;
   }
 };
@@ -604,6 +620,66 @@ const getRoomsByLocation = async (locationId) => {
   }
 };
 
+/**
+ * NEUE FUNKTION: Benutzer suchen
+ * @param {string} term - Suchbegriff
+ * @returns {Promise<Array>} - Liste der gefundenen Benutzer
+ */
+const searchUsers = async (term) => {
+  if (!term || typeof term !== 'string' || term.trim().length === 0) {
+    // Wenn kein Suchbegriff vorhanden ist, alle Benutzer zurückgeben (oder leeres Array?)
+    // Hier wählen wir, alle Benutzer zurückzugeben, analog zu keiner Filterung.
+    // return getAllUsers(); // Könnte zu Performance-Problemen führen
+    return []; // Sicherer, ein leeres Array zurückzugeben, wenn der Term ungültig ist.
+  }
+
+  const searchTerm = `%${term.trim()}%`;
+
+  try {
+    const query = `
+      SELECT
+        u.id,
+        u.username,
+        u.email,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        u.role,
+        u.active,
+        u.created_at,
+        u.updated_at,
+        u.last_login,
+        u.department_id,
+        d.name AS department_name,
+        u.location_id,
+        l.name AS location_name,
+        u.room_id,
+        r.name AS room_name,
+        COALESCE(
+          (SELECT COUNT(*) FROM devices WHERE assigned_to_user_id = u.id),
+          0
+        ) as assigned_devices_count
+      FROM users u
+      LEFT JOIN departments d ON d.id = u.department_id
+      LEFT JOIN locations l ON l.id = u.location_id
+      LEFT JOIN rooms r ON r.id = u.room_id
+      WHERE
+        u.username ILIKE $1
+        OR u.first_name ILIKE $1
+        OR u.last_name ILIKE $1
+        OR u.display_name ILIKE $1
+        OR u.email ILIKE $1
+      ORDER BY u.username ASC
+    `;
+
+    const { rows } = await pool.query(query, [searchTerm]);
+    return rows;
+  } catch (error) {
+    logger.error(`Fehler bei der Benutzersuche mit Begriff "${term}":`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -617,5 +693,7 @@ module.exports = {
   getUserRoles,
   getDepartments,
   getLocations,
-  getRoomsByLocation
+  getRoomsByLocation,
+  createAdminUserIfNotExists,
+  searchUsers
 };

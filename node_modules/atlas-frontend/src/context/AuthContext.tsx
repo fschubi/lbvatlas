@@ -32,12 +32,13 @@ interface ValidateResponse {
 }
 
 interface AuthContextType {
-  user: User | null; // Hier wird der globale User-Typ mit Set<string> verwendet
+  user: User | null; // User-Objekt enthält jetzt das permissions-Set
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   error: string | null;
   isLoading: boolean;
+  // userPermissions: Set<string>; // Explizites Feld nicht mehr nötig, da im User-Objekt
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -138,6 +139,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Setze den User-State mit dem Set
       setUser({ ...userData, permissions: permissionsSet });
 
+      // *** NEU: Ladezustand nach erfolgreichem Login beenden ***
+      setIsLoading(false);
+
     } catch (err) {
       console.error('Login fehlgeschlagen:', err);
       setError('Anmeldung fehlgeschlagen');
@@ -153,13 +157,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(false);
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
     login,
     logout,
     error,
-    isLoading
+    isLoading,
+    // userPermissions: user?.permissions || new Set<string>() // Nicht mehr nötig, da user.permissions direkt verwendet werden kann
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

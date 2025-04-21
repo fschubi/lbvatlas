@@ -204,10 +204,14 @@ const UserGroupModel = {
    * @param {number} userId - Benutzer-ID
    * @returns {Promise<Array>} - Array von Benutzergruppen
    */
-  getUserGroups: async (userId) => {
+  getGroupsByUserId: async (userId) => {
     try {
       const query = `
-        SELECT * FROM get_user_groups($1)
+        SELECT ug.*, ugm.added_at, ugm.added_by
+        FROM user_groups ug
+        JOIN user_group_members ugm ON ug.id = ugm.group_id
+        WHERE ugm.user_id = $1
+        ORDER BY ug.name
       `;
 
       const { rows } = await db.query(query, [userId]);

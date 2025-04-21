@@ -38,7 +38,10 @@ const axiosInstance = axios.create({
 // Request Interceptor: Fügt Token zu jeder Anfrage hinzu
 axiosInstance.interceptors.request.use(
   (config) => {
+
+    console.debug(`[Request Interceptor] Running for URL: ${config.url}`);
     const token = localStorage.getItem('token');
+    console.debug(`[Request Interceptor] Token from localStorage for ${config.url}: ${token ? 'Found' : '!!! NOT Found !!!'}`);
     if (config.headers) {
       if (token) {
         // Füge den Authorization Header hinzu, wenn ein Token vorhanden ist
@@ -46,9 +49,12 @@ axiosInstance.interceptors.request.use(
         console.debug('[Request Interceptor] Token hinzugefügt für:', config.url);
       } else {
         console.debug('[Request Interceptor] Kein Token gefunden für:', config.url);
-        // Optional: Header entfernen, falls er existiert
-        // delete config.headers.Authorization;
+        // Sicherheitsmaßnahme: Entferne den Auth-Header, falls er versehentlich gesetzt wurde
+        // delete config.headers.Authorization; // Kann helfen, wenn alte Header gecached werden
       }
+    } else {
+       // Dieser Fall sollte eigentlich nicht eintreten, wenn Axios korrekt verwendet wird
+       console.warn(`[Request Interceptor] Config hat keine 'headers'-Eigenschaft für URL: ${config.url}`);
     }
     return config;
   },
@@ -74,19 +80,12 @@ axiosInstance.interceptors.response.use(
 // Generische API-Request-Funktion
 const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<ApiResponse<T>> => {
   const url = `${BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('token');
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  // DEBUG: Logge den gesendeten Header - wird jetzt entfernt
-  // console.log(`[apiRequest ${method} ${endpoint}] Sending headers:`, JSON.stringify(headers));
-
   try {
+    // Sende Daten als snake_case
     const snakeCasedData = data ? toSnakeCase(data) : undefined;
 
     const config = {
@@ -97,33 +96,25 @@ const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 
     };
     const response = await axiosInstance(config);
 
-    // *** KORREKTUR: CamelCase auf response.data anwenden und als ApiResponse<T> zurückgeben ***
-    const responseData = response.data; // Das gesamte Response-Objekt { success, data, message }
+    // Das gesamte Response-Objekt { success, data, message }
+    const responseData = response.data;
 
-    // Füge Robustheitschecks hinzu
     if (typeof responseData !== 'object' || responseData === null) {
       console.error(`[apiRequest] Unerwartete Antwortstruktur (kein Objekt) für ${method} ${endpoint}:`, responseData);
       throw new Error('Ungültige Server-Antwortstruktur.');
     }
     if (typeof responseData.success !== 'boolean') {
        console.warn(`[apiRequest] Fehlendes oder ungültiges 'success'-Feld für ${method} ${endpoint}:`, responseData);
-       // Optional: Versuche trotzdem fortzufahren, wenn Daten vorhanden sind?
-       // Oder wirf einen Fehler für Konsistenz
-       // throw new Error("Server-Antwort fehlt 'success'-Feld.");
     }
 
-    const camelCasedPayload = responseData.data ? toCamelCase(responseData.data) : responseData.data; // Fallback, falls Konvertierung nicht nötig/möglich
-
     return {
-      success: responseData.success === true, // Stelle sicher, dass es boolean true ist
-      data: camelCasedPayload as T, // Das ist jetzt der eigentliche Payload (z.B. Location[])
+      success: responseData.success === true,
+      data: responseData.data as T, // Direkte Rückgabe der Daten
       message: responseData.message,
     };
 
   } catch (error: any) {
-    // Fehlerbehandlung muss ggf. angepasst werden, um die neue Struktur zu berücksichtigen
     const handledError = handleApiError(error as Error);
-    // Wirf den standardisierten Fehler weiter
     throw { success: false, message: handledError, data: null };
   }
 };
@@ -138,7 +129,9 @@ export const authApi = {
 };
 
 export const usersApi = {
-  getAll: (): Promise<ApiResponse<User[]>> => apiRequest<User[]>('/users'),
+  getAll: (): Promise<ApiResponse<User[]>> => apiRequest<User[]>('/users/all'),
+  search: (term: string): Promise<ApiResponse<User[]>> =>
+    apiRequest<User[]>(`/users/search?term=${encodeURIComponent(term)}`),
   getById: (id: number): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`),
   create: (data: any): Promise<ApiResponse<User>> => apiRequest<User>('/users', 'POST', data),
   update: (id: number, data: any): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`, 'PUT', data),
@@ -238,9 +231,7 @@ export const locationApi = {
   ): Promise<boolean> => {
     try {
       const locationsResponse = await locationApi.getAll();
-
       const locationsArray = locationsResponse.data;
-
       if (locationsResponse.success && Array.isArray(locationsArray)) {
         const found = locationsArray.some(
           (loc) =>
@@ -248,14 +239,16 @@ export const locationApi = {
         );
         return found;
       } else {
-        console.error(`[checkLocationNameExists] Prüfung fehlgeschlagen oder Datenstruktur ungültig. Success: ${locationsResponse.success}, IsArray: ${Array.isArray(locationsArray)}.`);
-        return true;
+        console.error(`[checkLocationNameExists] API-Antwort ungültig: success=${locationsResponse.success}, isArray=${Array.isArray(locationsArray)}`);
+        return true; // Fehlerfall: Blockieren
       }
     } catch (error) {
-      console.error('[checkLocationNameExists] Fehler im try-Block:', error);
-      return true;
+      console.error('Fehler bei der Überprüfung des Standortnamens:', error);
+      return true; // Fehlerfall: Blockieren
     }
   },
+  getRoomsForLocation: (locationId: number): Promise<ApiResponse<Room[]>> =>
+    apiRequest<Room[]>(`/locations/${locationId}/rooms`),
 };
 
 export const departmentApi = {
@@ -336,28 +329,37 @@ export const roomApi = {
     locationId?: number,
     currentId?: number
   ): Promise<boolean> => {
-    if (locationId === undefined || locationId === null) {
-        console.warn('[checkRoomNameExists] Keine locationId für die Prüfung angegeben.');
-        return true;
-    }
-
     try {
-      const roomsResponse = await roomApi.getAll();
-      const roomsArray = roomsResponse.data;
-       if (roomsResponse.success && Array.isArray(roomsArray)) {
-        return roomsArray.some(
-          (room) =>
-            room.locationId === locationId &&
-            room.name.toLowerCase() === name.toLowerCase() &&
-            room.id !== currentId
-        );
+      let roomsToCheck: Room[] = [];
+      if (locationId) {
+        // Lade nur Räume des spezifischen Standorts
+        const response = await locationApi.getRoomsForLocation(locationId);
+        if (response.success && Array.isArray(response.data)) {
+          roomsToCheck = response.data;
+        } else {
+          console.error(`[checkRoomNameExists] Fehler beim Laden der Räume für Standort ${locationId}`);
+          return true; // Blockieren im Fehlerfall
+        }
       } else {
-        console.error(`[checkRoomNameExists] Prüfung fehlgeschlagen. Success: ${roomsResponse.success}, IsArray: ${Array.isArray(roomsArray)}.`);
-        return true;
+        // Lade alle Räume, wenn kein Standort angegeben
+        const response = await roomApi.getAll();
+        if (response.success && Array.isArray(response.data)) {
+          roomsToCheck = response.data;
+        } else {
+          console.error('[checkRoomNameExists] Fehler beim Laden aller Räume');
+          return true; // Blockieren im Fehlerfall
+        }
       }
+
+      // Prüfe auf Namenskonflikt
+      return roomsToCheck.some(
+        (room) =>
+          room.name.toLowerCase() === name.toLowerCase() &&
+          room.id !== currentId
+      );
     } catch (error) {
       console.error('Fehler bei der Überprüfung des Raumnamens:', error);
-      return true;
+      return true; // Blockieren im Fehlerfall
     }
   },
 };
@@ -627,32 +629,29 @@ export const userGroupApi = {
   delete: (id: number): Promise<ApiResponse<{ message?: string }>> =>
     apiRequest<{ message?: string }>(`/user-groups/${id}`, 'DELETE'),
   getUsersInGroup: (groupId: number): Promise<ApiResponse<User[]>> =>
-    apiRequest<User[]>(`/user-groups/${groupId}/members`),
+    apiRequest<User[]>(`/user-groups/${groupId}/users`),
   addUserToGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
-    apiRequest<void>(`/user-groups/${groupId}/members`, 'POST', { userId }),
+    apiRequest<void>(`/user-groups/${groupId}/users/${userId}`, 'POST'),
   removeUserFromGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
-    apiRequest<void>(`/user-groups/${groupId}/members/${userId}`, 'DELETE'),
-  checkGroupNameExists: async (
-    name: string,
-    currentId?: number
-  ): Promise<boolean> => {
+    apiRequest<void>(`/user-groups/${groupId}/users/${userId}`, 'DELETE'),
+  checkGroupNameExists: async (name: string, currentId?: number): Promise<boolean> => {
     try {
-      const groupsResponse = await userGroupApi.getAll();
-      const groupsArray = groupsResponse.data;
-      if (groupsResponse.success && Array.isArray(groupsArray)) {
-        return groupsArray.some(
-          (group) =>
-            group.name.toLowerCase() === name.toLowerCase() && group.id !== currentId
+      const response = await userGroupApi.getAll();
+      if (response.success && Array.isArray(response.data)) {
+        return response.data.some(
+          (group) => group.name.toLowerCase() === name.toLowerCase() && group.id !== currentId
         );
       } else {
-        console.error(`[checkGroupNameExists] Prüfung fehlgeschlagen. Success: ${groupsResponse.success}, IsArray: ${Array.isArray(groupsArray)}.`);
-        return true;
+        console.error('[checkGroupNameExists] Fehler oder ungültige Daten');
+        return true; // Im Fehlerfall lieber blockieren
       }
     } catch (error) {
-      console.error('Fehler bei der Überprüfung des Gruppennamens:', error);
-      return true;
+      console.error('[checkGroupNameExists] Exception:', error);
+      return true; // Im Fehlerfall lieber blockieren
     }
   },
+  getGroupsForUser: (userId: number): Promise<ApiResponse<UserGroup[]>> =>
+    apiRequest<UserGroup[]>(`/users/${userId}/groups`),
 };
 
 const allApis = {
