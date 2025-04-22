@@ -253,46 +253,6 @@ exports.deleteGroup = async (req, res) => {
 };
 
 /**
- * Prüft, ob ein Gruppenname bereits existiert.
- * Erlaubt das Ausschließen einer ID (nützlich beim Bearbeiten).
- * @param {Object} req - Express Request Objekt (req.params.name, req.query.excludeId)
- * @param {Object} res - Express Response Objekt
- */
-exports.checkGroupNameExists = async (req, res) => {
-  const { name } = req.params;
-  const { excludeId } = req.query; // Optional: ID der Gruppe, die bei der Prüfung ignoriert werden soll
-
-  if (!name || name.trim() === '') {
-    // Obwohl die Route den Namen als Parameter hat, eine zusätzliche Prüfung schadet nicht.
-    return res.status(400).json({ success: false, message: 'Gruppenname fehlt.' });
-  }
-
-  try {
-    logger.debug(`Prüfe Existenz von Gruppenname: "${name}", excludeId: ${excludeId}`);
-
-    // Hier benötigen wir eine Modellfunktion, die den Namen prüft und optional eine ID ausschließt.
-    // Nennen wir sie userGroupModel.findByName
-    const existingGroup = await db.query(
-        `SELECT id FROM user_groups WHERE name = $1 ${excludeId ? 'AND id != $2' : ''}`,
-        excludeId ? [name, excludeId] : [name]
-    );
-
-    const exists = existingGroup.rows.length > 0;
-    logger.debug(`Gruppenname "${name}" ${exists ? 'existiert' : 'existiert nicht'} (excludeId: ${excludeId}).`);
-
-    return res.status(200).json({ success: true, exists: exists });
-
-  } catch (error) {
-    logger.error(`Fehler bei der Prüfung des Gruppennamens "${name}":`, error);
-    return res.status(500).json({
-      success: false,
-      message: 'Fehler bei der Prüfung des Gruppennamens',
-      error: error.message
-    });
-  }
-};
-
-/**
  * Mitglieder einer Benutzergruppe abrufen
  * @param {Object} req - Express Request Objekt
  * @param {Object} res - Express Response Objekt

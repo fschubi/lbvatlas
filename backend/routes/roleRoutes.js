@@ -99,29 +99,8 @@ router.post(
 router.delete(
     '/:roleId/permissions/:permissionId',
     authorize(ASSIGN_PERMISSIONS),
-    removePermissionValidation,
+    removePermissionValidation, // Füge Validierung hinzu
     roleController.removePermissionFromRole
-);
-
-// --- NEU: PUT /api/roles/:roleId/permissions - Alle Berechtigungen für eine Rolle setzen ---
-const updatePermissionsValidation = [
-  param('roleId').isInt({ gt: 0 }).withMessage('Ungültige Rollen-ID.'),
-  body('permission_ids')
-    .isArray().withMessage('permission_ids muss ein Array sein.')
-    .custom((ids) => {
-      // Optional: Tiefere Prüfung, ob alle Elemente Zahlen sind
-      if (!ids.every(id => typeof id === 'number' && Number.isInteger(id) && id > 0)) {
-        throw new Error('permission_ids darf nur positive Ganzzahlen enthalten.');
-      }
-      return true;
-    })
-];
-
-router.put(
-    '/:roleId/permissions',
-    authorize(ASSIGN_PERMISSIONS),
-    updatePermissionsValidation,   // Validierung prüft jetzt permission_ids
-    roleController.updateRolePermissions
 );
 
 module.exports = router;

@@ -16,7 +16,7 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   active?: boolean;
-  permissions?: Set<string>;
+  permissions?: string[];
   departmentName?: string;
   locationName?: string;
   roomName?: string;
@@ -24,16 +24,10 @@ export interface User {
 }
 
 export type Department = {
-  id: string;
+  id: number;
   name: string;
   description?: string;
-  location_id?: string;
-};
-
-export type UserRole = {
-  id: string;
-  name: string;
-  description?: string;
+  location_id?: number;
 };
 
 export interface UserFilters {
@@ -48,8 +42,8 @@ export interface UserGroup {
   id: number;
   name: string;
   description: string;
-  added_at: string;
-  added_by: string;
+  added_at?: string;
+  added_by?: string;
   createdAt?: string;
   updatedAt?: string;
   userCount?: number;
@@ -58,12 +52,11 @@ export interface UserGroup {
 export interface Role {
   id: number;
   name: string;
-  label: string;
   description?: string;
-  isSystem?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  permissions?: Permission[];
+  is_system: boolean;
+  created_at?: string;
+  updated_at?: string;
+  permissions?: number[];
   userCount?: number;
 }
 
@@ -71,6 +64,7 @@ export interface Permission {
   id: number;
   name: string;
   description?: string;
-  module?: string;
-  action?: string;
+  module: string;
+  action: string;
+  category?: string;
 }

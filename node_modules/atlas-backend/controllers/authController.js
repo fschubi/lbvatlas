@@ -7,7 +7,6 @@ const {
   getUserByUsername,
   updateLastLogin
 } = require('../models/userModel');
-const db = require('../db'); // Importiere die DB-Verbindung
 
 /**
  * Login-Controller
@@ -40,26 +39,25 @@ exports.login = async (req, res) => {
     // Letzten Login aktualisieren
     await updateLastLogin(user.id);
 
-    // Token generieren (nur Kerninfos ins Token!)
+    // Token generieren
     const token = jwt.sign(
       {
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role // Rollenname hier wichtig für spätere Abfragen
+        role: user.role
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    // Benutzerinformationen für die Antwort vorbereiten (inkl. permissions)
+    // Benutzerinformationen für die Antwort vorbereiten (ohne sensible Daten)
     const userResponse = {
       id: user.id,
       username: user.username,
       name: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username,
       email: user.email,
-      role: user.role,
-      permissions: user.permissions || [] // Permissions aus userModel hinzufügen
+      role: user.role
     };
 
     res.json({
@@ -79,64 +77,27 @@ exports.login = async (req, res) => {
  * @param {Response} res - Express Response-Objekt
  */
 exports.validate = async (req, res) => {
-  // Original-Code wiederhergestellt
   try {
     // Der Benutzer wurde bereits durch den authMiddleware validiert
-    // und an req.user angehängt (enthält id, username, email, role aus dem Token)
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: "Nicht authentifiziert oder ungültige Benutzerdaten im Token" });
+    // und an req.user angehängt
+    if (!req.user) {
+      return res.status(401).json({ message: "Nicht authentifiziert" });
     }
 
-    const userId = req.user.id;
-    const userRoleName = req.user.role; // Annahme: Rolle ist als Name im Token
-
-    // Hole die Berechtigungen für die Rolle des Benutzers
-    let permissions = [];
-    // Log mit INFO für Sichtbarkeit beibehalten
-    logger.info(`[AuthValidate] Versuche Berechtigungen für Rolle '${userRoleName}' zu laden...`);
-    try {
-      // WICHTIG: Hole die role_id basierend auf dem Rollennamen
-      const roleResult = await db.query('SELECT id FROM roles WHERE name = $1', [userRoleName]);
-      if (roleResult.rows.length === 0) {
-          logger.warn(`Rolle '${userRoleName}' für Benutzer ${userId} nicht in der DB gefunden.`);
-          // Keine Rolle -> Keine Berechtigungen
-      } else {
-          const roleId = roleResult.rows[0].id;
-          const permissionsQuery = `
-            SELECT p.name
-            FROM permissions p
-            JOIN role_permissions rp ON p.id = rp.permission_id
-            WHERE rp.role_id = $1
-          `;
-          const permissionsResult = await db.query(permissionsQuery, [roleId]);
-          permissions = permissionsResult.rows.map(row => row.name);
-          // Log mit INFO für Sichtbarkeit beibehalten
-          logger.info(`Berechtigungen für Benutzer ${userId} (Rolle: ${userRoleName}, ID: ${roleId}): ${permissions.join(', ')}`);
-      }
-    } catch (dbError) {
-      logger.error(`Fehler beim Abrufen der Berechtigungen für Benutzer ${userId} (Rolle: ${userRoleName}):`, dbError);
-      permissions = []; // Im Fehlerfall leere Berechtigungen
-    }
-
-    // Benutzerinformationen für die Antwort zusammenstellen
-    const userResponse = {
-      id: req.user.id,
-      username: req.user.username,
-      // Token enthält normalerweise nicht first/last name, daher username als Fallback
-      name: req.user.name || req.user.username,
-      email: req.user.email,
-      role: userRoleName,
-      permissions: permissions // Füge das Berechtigungs-Array hinzu
-    };
-
+    // Benutzerinformationen zurückgeben
     res.json({
-      message: "Token validiert",
-      user: userResponse
+      user: {
+        id: req.user.id,
+        username: req.user.username,
+        name: req.user.first_name && req.user.last_name
+          ? `${req.user.first_name} ${req.user.last_name}`
+          : req.user.username,
+        email: req.user.email,
+        role: req.user.role
+      }
     });
-
   } catch (err) {
-    // Allgemeiner Fehler in der Validierungslogik
-    logger.error("Token-Validierungsfehler (Controller):", err);
+    logger.error("Token-Validierungsfehler:", err);
     res.status(500).json({ message: "Serverfehler bei der Token-Validierung" });
   }
 };

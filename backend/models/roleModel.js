@@ -249,68 +249,18 @@ const RoleModel = {
    * @returns {Promise<boolean>} - Erfolg
    */
   removePermissionFromRole: async (roleId, permissionId) => {
-    logger.debug('roleModel: removePermissionFromRole aufgerufen', { roleId, permissionId });
     try {
       const query = `
         DELETE FROM role_permissions
         WHERE role_id = $1 AND permission_id = $2
-        RETURNING *
+        RETURNING id
       `;
-      const { rowCount } = await db.query(query, [roleId, permissionId]);
-      return rowCount > 0;
+
+      const { rows } = await db.query(query, [roleId, permissionId]);
+      return rows.length > 0;
     } catch (error) {
-      logger.error(`Fehler beim Entfernen der Berechtigung ${permissionId} von Rolle ${roleId}:`, error);
+      logger.error(`Fehler beim Entfernen der Berechtigung ${permissionId} von der Rolle ${roleId}:`, error);
       throw error;
-    }
-  },
-
-  /**
-   * NEU: Alle Berechtigungen für eine Rolle setzen (überschreibt bestehende).
-   * @param {number | string} roleId - Die ID der Rolle.
-   * @param {number[]} permissionIds - Ein Array mit den IDs der Berechtigungen, die die Rolle haben soll.
-   * @returns {Promise<void>}
-   */
-  setRolePermissions: async (roleId, permissionIds) => {
-    logger.debug('roleModel: setRolePermissions aufgerufen', { roleId, permissionIds });
-    // Verwende die Transaktionsfunktionen aus db.js
-    const client = await db.beginTransaction();
-
-    try {
-      // Transaktion ist bereits gestartet durch beginTransaction()
-
-      // 1. Lösche alle vorhandenen Berechtigungen für diese Rolle (innerhalb der Transaktion)
-      logger.debug(`Lösche alte Berechtigungen für Rolle ${roleId}`);
-      await db.transactionQuery(client, 'DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
-
-      // 2. Füge die neuen Berechtigungen hinzu (nur wenn permissionIds nicht leer ist)
-      if (permissionIds && permissionIds.length > 0) {
-        logger.debug(`Füge ${permissionIds.length} neue Berechtigungen für Rolle ${roleId} hinzu`);
-
-        // Baue die VALUES-Klausel für mehrere Inserts
-        const valuesClause = permissionIds.map((_, index) => `($1, $${index + 2})`).join(',');
-        // Die Parameterliste für die Abfrage: [roleId, permId1, permId2, ...]
-        const queryParams = [roleId, ...permissionIds];
-
-        const insertQuery = `
-          INSERT INTO role_permissions (role_id, permission_id)
-          VALUES ${valuesClause}
-          ON CONFLICT (role_id, permission_id) DO NOTHING
-        `;
-
-        // Führe die Abfrage innerhalb der Transaktion aus
-        await db.transactionQuery(client, insertQuery, queryParams);
-      }
-
-      await db.commitTransaction(client); // Schließe Transaktion erfolgreich ab
-      logger.info(`Berechtigungen für Rolle ${roleId} erfolgreich aktualisiert.`);
-
-    } catch (error) {
-      await db.rollbackTransaction(client); // Mache Änderungen rückgängig bei Fehler
-      logger.error(`Fehler beim Setzen der Berechtigungen für Rolle ${roleId} (Rollback durchgeführt):`, error);
-      throw error; // Leite den Fehler weiter
-    } finally {
-      // Das Freigeben des Clients wird jetzt von commitTransaction/rollbackTransaction übernommen
-      // client.release(); // Nicht mehr nötig
     }
   },
 

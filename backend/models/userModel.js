@@ -221,8 +221,7 @@ const getUserByUsername = async (username) => {
         u.first_name,
         u.last_name,
         u.display_name,
-        u.role, -- Rolle des Benutzers
-        r.id AS role_id, -- ID der Rolle des Benutzers
+        u.role,
         u.active,
         u.created_at,
         u.updated_at,
@@ -232,22 +231,11 @@ const getUserByUsername = async (username) => {
         u.location_id,
         l.name AS location_name,
         u.room_id,
-        ro.name AS room_name,
-        -- Berechtigungen des Benutzers sammeln (über die Rolle)
-        COALESCE(
-            (
-              SELECT array_agg(p.name)
-              FROM role_permissions rp
-              JOIN permissions p ON p.id = rp.permission_id
-              WHERE rp.role_id = r.id
-            ),
-            '{}'
-        ) AS permissions
+        r.name AS room_name
       FROM users u
-      LEFT JOIN roles r ON r.name = u.role -- Join mit roles über den Namen (oder ID, falls u.role die ID ist)
       LEFT JOIN departments d ON d.id = u.department_id
       LEFT JOIN locations l ON l.id = u.location_id
-      LEFT JOIN rooms ro ON ro.id = u.room_id
+      LEFT JOIN rooms r ON r.id = u.room_id
       WHERE u.username = $1
     `;
 
@@ -310,9 +298,9 @@ const createAdminUserIfNotExists = async () => {
 createAdminUserIfNotExists();
 
 /**
- * Benutzer anhand der E-Mail-Adresse abrufen
+ * Benutzer nach E-Mail abrufen
  * @param {string} email - E-Mail-Adresse
- * @returns {Promise<Object|null>} - Benutzerobjekt oder null
+ * @returns {Promise<Object|null>} - Benutzerobjekt oder null wenn nicht gefunden
  */
 const getUserByEmail = async (email) => {
   try {
@@ -325,8 +313,7 @@ const getUserByEmail = async (email) => {
         u.first_name,
         u.last_name,
         u.display_name,
-        u.role, -- Rolle des Benutzers
-        r.id AS role_id, -- ID der Rolle des Benutzers
+        u.role,
         u.active,
         u.created_at,
         u.updated_at,
@@ -336,26 +323,16 @@ const getUserByEmail = async (email) => {
         u.location_id,
         l.name AS location_name,
         u.room_id,
-        ro.name AS room_name,
-        -- Berechtigungen des Benutzers sammeln (über die Rolle)
-        COALESCE(
-            (
-              SELECT array_agg(p.name)
-              FROM role_permissions rp
-              JOIN permissions p ON p.id = rp.permission_id
-              WHERE rp.role_id = r.id
-            ),
-            '{}'
-        ) AS permissions
+        r.name AS room_name
       FROM users u
-      LEFT JOIN roles r ON r.name = u.role -- Join mit roles über den Namen (oder ID, falls u.role die ID ist)
       LEFT JOIN departments d ON d.id = u.department_id
       LEFT JOIN locations l ON l.id = u.location_id
-      LEFT JOIN rooms ro ON ro.id = u.room_id
+      LEFT JOIN rooms r ON r.id = u.room_id
       WHERE u.email = $1
     `;
+
     const { rows } = await pool.query(query, [email]);
-    return rows.length ? rows[0] : null;
+    return rows[0] || null;
   } catch (error) {
     logger.error(`Fehler beim Abrufen des Benutzers mit E-Mail ${email}:`, error);
     throw error;

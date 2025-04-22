@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
-// Importiere den globalen User-Typ
-import { User } from '../types/user'; // Pfad ggf. anpassen
 
 // API-Basis-URL aus Umgebungsvariablen
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3500/api';
@@ -18,27 +16,33 @@ const isValidTokenFormat = (token: string): boolean => {
   return parts.length === 3;
 };
 
+interface User {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  role: string;
+  permissions?: string[]; // oder Set<string>, je nach Backend-Antwort
+}
+
 interface LoginResponse {
   token: string;
-  // Verwende den importierten User-Typ und erwarte permissions
-  user: User & { permissions?: string[] };
+  user: User;
   message?: string;
 }
 
 interface ValidateResponse {
-  // Verwende den importierten User-Typ und erwarte permissions
-  user: User & { permissions?: string[] };
+  user: User;
   message?: string;
 }
 
 interface AuthContextType {
-  user: User | null; // User-Objekt enthält jetzt das permissions-Set
+  user: User | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   error: string | null;
   isLoading: boolean;
-  // userPermissions: Set<string>; // Explizites Feld nicht mehr nötig, da im User-Objekt
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,20 +65,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Beim Start der App prüfen, ob ein Token existiert
     const token = localStorage.getItem('token');
 
     if (token) {
-      // Prüfe, ob das Token das richtige Format hat
       if (!isValidTokenFormat(token)) {
         console.error('Ungültiges Token-Format gefunden, Token wird entfernt');
         localStorage.removeItem('token');
         setIsLoading(false);
         return;
       }
-
       console.log('Gültiges Token gefunden, validiere mit Backend...');
-      // Token validieren und Benutzerinformationen abrufen
       validateToken(token);
     } else {
       console.log('Kein Token gefunden, Benutzer ist nicht authentifiziert');
@@ -83,24 +83,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const validateToken = async (token: string) => {
+    setIsLoading(true);
     try {
       console.log('Validiere Token mit Backend...');
-      // Response erwartet jetzt user mit permissions Array
       const response = await axios.get<ValidateResponse>(`${API_BASE_URL}/auth/validate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
-      const userData = response.data.user;
-      console.log('Token erfolgreich validiert, verarbeite Benutzer:', userData);
-
-      // Erstelle das Set aus dem Array
-      const permissionsSet = new Set(userData.permissions || []);
-
-      // Setze den User-State mit dem Set
-      setUser({ ...userData, permissions: permissionsSet });
-
+      console.log('Token erfolgreich validiert, setze Benutzer:', response.data.user);
+      setUser(response.data.user);
     } catch (err) {
-      // Token ungültig - ausloggen
       console.error('Token-Validierung fehlgeschlagen:', err);
       logout();
     } finally {
@@ -114,15 +105,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setError(null);
       console.log('Versuche Login mit:', username);
 
-      // Response erwartet jetzt user mit permissions Array
       const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login`, {
         email: username,
         password
       });
 
-      const { token, user: userData } = response.data;
+      const { token, user } = response.data;
 
-      // Prüfe, ob das erhaltene Token gültig ist
       if (!isValidTokenFormat(token)) {
         console.error('Ungültiges Token vom Server erhalten', token);
         setError('Ungültiges Token vom Server erhalten');
@@ -130,23 +119,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('Ungültiges Token vom Server erhalten');
       }
 
-      console.log('Login erfolgreich, verarbeite Benutzer:', userData);
+      console.log('Login erfolgreich, Token erhalten:', token.substring(0, 10) + '...');
       localStorage.setItem('token', token);
-
-      // Erstelle das Set aus dem Array
-      const permissionsSet = new Set(userData.permissions || []);
-
-      // Setze den User-State mit dem Set
-      setUser({ ...userData, permissions: permissionsSet });
-
-      // *** NEU: Ladezustand nach erfolgreichem Login beenden ***
-      setIsLoading(false);
-
+      setUser(user);
     } catch (err) {
       console.error('Login fehlgeschlagen:', err);
       setError('Anmeldung fehlgeschlagen');
+    } finally {
       setIsLoading(false);
-      throw err;
     }
   };
 
@@ -164,7 +144,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     error,
     isLoading,
-    // userPermissions: user?.permissions || new Set<string>() // Nicht mehr nötig, da user.permissions direkt verwendet werden kann
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

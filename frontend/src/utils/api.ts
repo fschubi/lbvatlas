@@ -79,20 +79,14 @@ axiosInstance.interceptors.response.use(
 
 // Generische API-Request-Funktion
 const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any): Promise<ApiResponse<T>> => {
-  const url = `${BASE_URL}${endpoint}`;
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
   try {
     // Sende Daten als snake_case
     const snakeCasedData = data ? toSnakeCase(data) : undefined;
 
     const config = {
       method,
-      url,
+      url: endpoint,
       data: snakeCasedData,
-      headers,
     };
     const response = await axiosInstance(config);
 
@@ -107,15 +101,19 @@ const apiRequest = async <T>(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 
        console.warn(`[apiRequest] Fehlendes oder ungültiges 'success'-Feld für ${method} ${endpoint}:`, responseData);
     }
 
+    // Konvertiere Daten von snake_case zu camelCase
+    const camelCasedData = responseData.data ? toCamelCase(responseData.data) : null;
+
     return {
       success: responseData.success === true,
-      data: responseData.data as T, // Direkte Rückgabe der Daten
+      data: camelCasedData as T,
       message: responseData.message,
     };
 
   } catch (error: any) {
+    console.error(`[apiRequest] Fehler bei ${method} ${endpoint}:`, error);
     const handledError = handleApiError(error as Error);
-    throw { success: false, message: handledError, data: null };
+    return { success: false, message: handledError, data: null as T };
   }
 };
 
