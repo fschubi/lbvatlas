@@ -16,11 +16,14 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   active?: boolean;
+<<<<<<< HEAD
   permissions?: string[];
   departmentName?: string;
   locationName?: string;
   roomName?: string;
   assignedDevicesCount?: number;
+=======
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 }
 
 export type Department = {
@@ -52,6 +55,7 @@ export interface UserGroup {
 export interface Role {
   id: number;
   name: string;
+<<<<<<< HEAD
   description?: string;
   is_system: boolean;
   created_at?: string;
@@ -67,4 +71,7 @@ export interface Permission {
   module: string;
   action: string;
   category?: string;
+=======
+  label: string;
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 }

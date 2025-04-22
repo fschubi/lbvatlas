@@ -36,10 +36,15 @@ import {
 } from '@mui/icons-material';
 import { styled, useTheme } from '@mui/material/styles';
 import axios from 'axios';
+<<<<<<< HEAD
 import { Role as RoleType, Permission as PermissionType } from '../../types/user'; // Korrekte Typen importieren
 import { roleApi, permissionApi } from '../../utils/api';
+=======
+import { Role as RoleType } from '../../types/user'; // Assuming types exist
+import { roleApi, permissionApi } from '../../utils/api'; // Assuming API utility
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 import handleApiError from '../../utils/errorHandler';
-import ConfirmationDialog from '../../components/ConfirmationDialog';
+import ConfirmationDialog from '../../components/ConfirmationDialog'; // Import the dialog
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 import { useAuth } from '../../context/AuthContext';
 
@@ -50,9 +55,33 @@ import { useAuth } from '../../context/AuthContext';
 // interface Role { ... } // Entfernt
 // interface Permission { ... } // Entfernt
 
+<<<<<<< HEAD
+=======
+// Typen
+interface Role {
+  id: string;
+  name: string;
+  description: string;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+  permissions: string[];
+  userCount: number;
+}
+
+interface Permission {
+  id: string;
+  name: string;
+  description: string;
+  module: string;
+  action: string;
+  category: string;
+}
+
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 interface Module {
   name: string;
-  permissions: PermissionType[];
+  permissions: Permission[];
 }
 
 interface SnackbarState {
@@ -128,11 +157,19 @@ const getAuthConfig = () => {
 // Hauptkomponente
 const RoleManagement: React.FC = () => {
   // Zustände
+<<<<<<< HEAD
   const [roles, setRoles] = useState<RoleType[]>([]); // Verwende RoleType
   const [permissions, setPermissions] = useState<PermissionType[]>([]); // Verwende PermissionType
   const [modules, setModules] = useState<Module[]>([]); // Verwendet PermissionType intern
   const [selectedRole, setSelectedRole] = useState<RoleType | null>(null); // Verwende RoleType
   const [rolePermissions, setRolePermissions] = useState<number[]>([]); // Annahme: Backend gibt IDs als number[] zurück?
+=======
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
   const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [openDialog, setOpenDialog] = useState<boolean>(false);
@@ -140,9 +177,19 @@ const RoleManagement: React.FC = () => {
   const [roleName, setRoleName] = useState<string>('');
   const [roleDescription, setRoleDescription] = useState<string>('');
   const [tabValue, setTabValue] = useState<number>(0);
+<<<<<<< HEAD
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<RoleType | null>(null); // Verwende RoleType
+=======
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 
   const { user, isLoading: isAuthLoading } = useAuth();
   // --- Berechtigungen prüfen ---
@@ -154,6 +201,7 @@ const RoleManagement: React.FC = () => {
   const canViewPermissions = true; // userPermissions.has('settings.permissions.read');
   const canAssignPermissions = true; // userPermissions.has('settings.roles.assign_permissions');
 
+<<<<<<< HEAD
   // --- Datenladefunktionen --- (useCallback für stabile Referenzen)
 
   const fetchRoles = useCallback(async () => {
@@ -164,9 +212,28 @@ const RoleManagement: React.FC = () => {
         setRoles(response.data);
       } else {
         throw new Error(response.message || 'Fehler beim Laden der Rollen.');
+=======
+  // Daten laden
+  useEffect(() => {
+    fetchRoles();
+    fetchPermissions();
+  }, []);
+
+  // Rollen laden
+  const fetchRoles = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get<ApiResponse<Role[]>>(`${API_BASE_URL}/roles`, getAuthConfig());
+
+      if (!response.data.success) {
+        throw new Error('Keine gültige Antwort vom Server');
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       }
+
+      setRoles(response.data.data || []);
     } catch (error) {
       console.error('Fehler beim Laden der Rollen:', error);
+<<<<<<< HEAD
       setSnackbar({ open: true, message: `Fehler beim Laden der Rollen: ${handleApiError(error)}`, severity: 'error' });
     } finally {
       setLoading(false);
@@ -267,26 +334,167 @@ const RoleManagement: React.FC = () => {
   const handleSelectRole = (role: RoleType) => {
     setSelectedRole(role);
     setTabValue(0); // Zum ersten Tab wechseln
+=======
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Laden der Rollen: Verbindungsproblem',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
   };
 
+  // Berechtigungen laden
+  const fetchPermissions = async () => {
+    try {
+      const response = await axios.get<ApiResponse<Permission[]>>(`${API_BASE_URL}/permissions`, getAuthConfig());
+
+      if (!response.data.success) {
+        throw new Error('Keine gültige Antwort vom Server');
+      }
+
+      const permissionsData = response.data.data || [];
+      setPermissions(permissionsData);
+
+      // Berechtigungen nach Modulen gruppieren
+      const moduleMap = new Map<string, Permission[]>();
+      permissionsData.forEach((permission: Permission) => {
+        if (!moduleMap.has(permission.module)) {
+          moduleMap.set(permission.module, []);
+        }
+        moduleMap.get(permission.module)?.push(permission);
+      });
+
+      const moduleArray: Module[] = [];
+      moduleMap.forEach((perms, moduleName) => {
+        moduleArray.push({
+          name: moduleName,
+          permissions: perms
+        });
+      });
+
+      setModules(moduleArray);
+    } catch (error) {
+      console.error('Fehler beim Laden der Berechtigungen:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Laden der Berechtigungen: Verbindungsproblem',
+        severity: 'error'
+      });
+    }
+  };
+
+  // Rollenberechtigungen laden
+  const fetchRolePermissions = async (roleId: string) => {
+    try {
+      setLoading(true);
+      const response = await axios.get<ApiResponse<Permission[]>>(
+        `${API_BASE_URL}/roles/${roleId}/permissions`,
+        getAuthConfig()
+      );
+
+      if (!response.data.success) {
+        throw new Error('Ungültige Antwort vom Server');
+      }
+
+      const permissionIds = (response.data.data || []).map((perm: Permission) => perm.id);
+      setRolePermissions(permissionIds);
+
+      // Berechtigungsmatrix erstellen
+      createPermissionMatrix(response.data.data || []);
+    } catch (error) {
+      console.error(`Fehler beim Laden der Berechtigungen für Rolle ${roleId}:`, error);
+      setSnackbar({
+        open: true,
+        message: `Fehler beim Laden der Berechtigungen für Rolle: Verbindungsproblem`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Berechtigungsmatrix erstellen
+  const createPermissionMatrix = (rolePermissions: Permission[]) => {
+    // Erstelle Matrix für jedes Modul mit Erstellen, Lesen, Bearbeiten, Löschen
+    const matrix: PermissionMatrix = {};
+
+    // Alle Module initialisieren
+    modules.forEach(module => {
+      matrix[module.name] = {
+        create: null,
+        read: null,
+        update: null,
+        delete: null
+      };
+    });
+
+    // Zugewiesene Berechtigungen setzen
+    rolePermissions.forEach(permission => {
+      const module = permission.module;
+      const action = permission.action;
+
+      if (!matrix[module]) {
+        matrix[module] = {
+          create: null,
+          read: null,
+          update: null,
+          delete: null
+        };
+      }
+
+      // Aktion zuordnen
+      if (action === 'create' || action === 'add') {
+        matrix[module].create = permission.id;
+      } else if (action === 'read' || action === 'view' || action === 'list') {
+        matrix[module].read = permission.id;
+      } else if (action === 'update' || action === 'edit') {
+        matrix[module].update = permission.id;
+      } else if (action === 'delete' || action === 'remove') {
+        matrix[module].delete = permission.id;
+      }
+    });
+
+    setPermissionMatrix(matrix);
+  };
+
+  // Rolle auswählen
+  const handleSelectRole = (role: Role) => {
+    setSelectedRole(role);
+    fetchRolePermissions(role.id);
+    setTabValue(1);
+  };
+
+  // Tab wechseln
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  const handleOpenDialog = (type: 'create' | 'edit', role?: RoleType) => {
+  // Dialog öffnen
+  const handleOpenDialog = (type: 'create' | 'edit', role?: Role) => {
     setDialogType(type);
     if (type === 'edit' && role) {
+<<<<<<< HEAD
       setSelectedRole(role); // Setze selectedRole für Bearbeiten
+=======
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       setRoleName(role.name);
       setRoleDescription(role.description || '');
+      setSelectedRole(role);
     } else {
+<<<<<<< HEAD
       setSelectedRole(null); // Kein selectedRole für Erstellen
+=======
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       setRoleName('');
       setRoleDescription('');
     }
     setOpenDialog(true);
   };
 
+  // Dialog schließen
   const handleCloseDialog = () => {
     setOpenDialog(false);
     // Felder zurücksetzen
@@ -295,6 +503,7 @@ const RoleManagement: React.FC = () => {
     setSelectedRole(null); // Auch selectedRole zurücksetzen
   };
 
+<<<<<<< HEAD
   const handleDialogAction = async () => {
     if (dialogType === 'create') {
       if (!canCreate) return; // Berechtigungsprüfung
@@ -338,9 +547,97 @@ const RoleManagement: React.FC = () => {
   const handleCloseConfirmDialog = () => {
     setConfirmDialogOpen(false);
     setRoleToDelete(null);
+=======
+  // Rolle erstellen
+  const handleCreateRole = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.post<ApiResponse<Role>>(
+        `${API_BASE_URL}/roles`,
+        {
+          name: roleName,
+          description: roleDescription
+        },
+        getAuthConfig()
+      );
+
+      if (!response.data.success) {
+        throw new Error('Ungültige Antwort vom Server');
+      }
+
+      setRoles([...roles, response.data.data as Role]);
+      handleCloseDialog();
+      setSnackbar({
+        open: true,
+        message: 'Rolle erfolgreich erstellt',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Fehler beim Erstellen der Rolle:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Erstellen der Rolle: Verbindungsproblem',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // Rolle aktualisieren
+  const handleUpdateRole = async () => {
+    if (!selectedRole) return;
+
+    try {
+      setLoading(true);
+      const response = await axios.put<ApiResponse<Role>>(
+        `${API_BASE_URL}/roles/${selectedRole.id}`,
+        {
+          name: roleName,
+          description: roleDescription
+        },
+        getAuthConfig()
+      );
+
+      if (!response.data.success) {
+        throw new Error('Ungültige Antwort vom Server');
+      }
+
+      setRoles(roles.map(role =>
+        role.id === selectedRole.id ? (response.data.data as Role) : role
+      ));
+      handleCloseDialog();
+      setSnackbar({
+        open: true,
+        message: 'Rolle erfolgreich aktualisiert',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren der Rolle:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Aktualisieren der Rolle: Verbindungsproblem',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Rolle löschen
+  const handleDeleteRequest = (role: Role) => {
+    if (role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin') {
+       setSnackbar({ open: true, message: 'Die Admin/Superadmin-Rolle kann nicht gelöscht werden.', severity: 'warning' });
+       return;
+    }
+    setRoleToDelete(role);
+    setConfirmDialogOpen(true);
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
+  };
+
+  // Step 2: Actual delete logic
   const executeDelete = async () => {
+<<<<<<< HEAD
     if (!roleToDelete || !canDelete) return;
     try {
       const response = await roleApi.delete(roleToDelete.id);
@@ -352,15 +649,53 @@ const RoleManagement: React.FC = () => {
         }
       } else {
         throw new Error(response.message || 'Fehler beim Löschen der Rolle.');
+=======
+    if (!roleToDelete) return;
+
+    setConfirmDialogOpen(false); // Close dialog first
+    const roleIdToDelete = roleToDelete.id;
+    const roleName = roleToDelete.name; // Store name
+
+    try {
+      setLoading(true);
+      // Assuming rolesApi.delete exists and takes an ID
+      await roleApi.delete(roleIdToDelete);
+
+      const updatedRoles = roles.filter(role => role.id !== roleIdToDelete);
+      setRoles(updatedRoles);
+
+      // If the deleted role was selected, select the first remaining role or null
+      if (selectedRole?.id === roleIdToDelete) {
+        setSelectedRole(updatedRoles.length > 0 ? updatedRoles[0] : null);
+        // Optionally reset tab value if applicable
+        // setTabValue(0);
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       }
+
+      setSnackbar({
+        open: true,
+        message: `Rolle "${roleName}" erfolgreich gelöscht.`,
+        severity: 'success'
+      });
+
     } catch (error) {
       console.error('Fehler beim Löschen der Rolle:', error);
+<<<<<<< HEAD
       setSnackbar({ open: true, message: `Fehler beim Löschen: ${handleApiError(error)}`, severity: 'error' });
+=======
+      setSnackbar({
+        open: true,
+        message: `Fehler beim Löschen der Rolle: ${handleApiError(error)}`,
+        severity: 'error'
+      });
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
     } finally {
-      handleCloseConfirmDialog();
+      setLoading(false);
+      setRoleToDelete(null); // Clear the role to delete
     }
   };
 
+<<<<<<< HEAD
   const handleTogglePermission = async (permissionId: number | null) => {
     if (!selectedRole || !canAssignPermissions || permissionId === null) return;
 
@@ -446,6 +781,150 @@ const RoleManagement: React.FC = () => {
   }
 
   // --- Render ---
+=======
+  // Step 3: Close confirmation dialog without deleting
+   const handleCloseConfirmDialog = () => {
+      setConfirmDialogOpen(false);
+      setRoleToDelete(null);
+   };
+
+  // Berechtigung umschalten
+  const handleTogglePermission = async (permissionId: string | null) => {
+    if (!selectedRole || !permissionId) return;
+
+    const isPermissionAssigned = rolePermissions.includes(permissionId);
+    setLoading(true);
+
+    try {
+      if (isPermissionAssigned) {
+        // Berechtigung entfernen
+        const response = await axios.delete<ApiResponse<null>>(
+          `${API_BASE_URL}/roles/${selectedRole.id}/permissions/${permissionId}`,
+          getAuthConfig()
+        );
+
+        if (!response.data.success) {
+          throw new Error('Ungültige Antwort vom Server');
+        }
+
+        setRolePermissions(rolePermissions.filter(id => id !== permissionId));
+      } else {
+        // Berechtigung hinzufügen
+        const response = await axios.post<ApiResponse<null>>(
+          `${API_BASE_URL}/roles/${selectedRole.id}/permissions`,
+          { permission_id: permissionId },
+          getAuthConfig()
+        );
+
+        if (!response.data.success) {
+          throw new Error('Ungültige Antwort vom Server');
+        }
+
+        setRolePermissions([...rolePermissions, permissionId]);
+      }
+
+      // Berechtigungen neu laden
+      fetchRolePermissions(selectedRole.id);
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren der Berechtigung:', error);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Aktualisieren der Berechtigung',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Snackbar schließen
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Dialog-Aktion
+  const handleDialogAction = () => {
+    if (dialogType === 'create') {
+      handleCreateRole();
+    } else {
+      handleUpdateRole();
+    }
+  };
+
+  // Finde eine Berechtigung in den verfügbaren Berechtigungen
+  const findPermission = (module: string, action: string): string | null => {
+    const moduleObj = modules.find(m => m.name === module);
+    if (!moduleObj) return null;
+
+    const permission = moduleObj.permissions.find(p => p.action === action);
+    return permission ? permission.id : null;
+  };
+
+  const RoleRow = ({ role }: { role: Role }) => {
+    const isSystemRole = role.is_system;
+    const theme = useTheme();
+
+    return (
+      <TableRow
+        hover
+        key={role.id}
+        selected={selectedRole?.id === role.id}
+        onClick={() => handleSelectRole(role)}
+        sx={{
+          cursor: 'pointer',
+          bgcolor: isSystemRole ? theme.palette.action.focus : 'inherit',
+          '&:hover': {
+            bgcolor: theme.palette.action.hover,
+          }
+        }}
+      >
+        <TableCell>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {role.name}
+            {isSystemRole && (
+              <Tooltip title="Systemrolle">
+                <InfoIcon fontSize="small" color="info" sx={{ ml: 1, fontSize: '0.9rem' }} />
+              </Tooltip>
+            )}
+          </Box>
+        </TableCell>
+        <TableCell>{role.description || '—'}</TableCell>
+        <TableCell align="right">
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDialog('edit', role);
+              }}
+              disabled={isSystemRole}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteRequest(role);
+              }}
+              disabled={isSystemRole}
+            >
+              <DeleteIcon fontSize="small" color={role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'superadmin' ? 'disabled' : 'error'} />
+            </IconButton>
+          </Box>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  if (loading && roles.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 
   return (
     <Box sx={{ p: 2 }}>
@@ -473,6 +952,7 @@ const RoleManagement: React.FC = () => {
           </TableHead>
           <TableBody>
             {roles.map((role) => (
+<<<<<<< HEAD
               <TableRow
                 hover
                 key={role.id}
@@ -522,6 +1002,9 @@ const RoleManagement: React.FC = () => {
                   </Box>
                 </TableCell>
               </TableRow>
+=======
+              <RoleRow key={role.id} role={role} />
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
             ))}
             {roles.length === 0 && !loading && (
               <TableRow>
@@ -570,7 +1053,11 @@ const RoleManagement: React.FC = () => {
                       sx={{ cursor: actions.create ? 'pointer' : 'default' }}
                     >
                       {actions.create !== null ? (
+<<<<<<< HEAD
                         rolePermissions.includes(Number(actions.create)) ? (
+=======
+                        rolePermissions.includes(actions.create) ? (
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
                           <PermissionYes>Ja</PermissionYes>
                         ) : (
                           "—"
@@ -584,7 +1071,11 @@ const RoleManagement: React.FC = () => {
                       sx={{ cursor: actions.read ? 'pointer' : 'default' }}
                     >
                       {actions.read !== null ? (
+<<<<<<< HEAD
                         rolePermissions.includes(Number(actions.read)) ? (
+=======
+                        rolePermissions.includes(actions.read) ? (
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
                           <PermissionYes>Ja</PermissionYes>
                         ) : (
                           "—"
@@ -598,7 +1089,11 @@ const RoleManagement: React.FC = () => {
                       sx={{ cursor: actions.update ? 'pointer' : 'default' }}
                     >
                       {actions.update !== null ? (
+<<<<<<< HEAD
                         rolePermissions.includes(Number(actions.update)) ? (
+=======
+                        rolePermissions.includes(actions.update) ? (
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
                           <PermissionYes>Ja</PermissionYes>
                         ) : (
                           "—"
@@ -612,7 +1107,11 @@ const RoleManagement: React.FC = () => {
                       sx={{ cursor: actions.delete ? 'pointer' : 'default' }}
                     >
                       {actions.delete !== null ? (
+<<<<<<< HEAD
                         rolePermissions.includes(Number(actions.delete)) ? (
+=======
+                        rolePermissions.includes(actions.delete) ? (
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
                           <PermissionYes>Ja</PermissionYes>
                         ) : (
                           "—"
