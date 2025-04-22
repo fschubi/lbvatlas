@@ -1,18 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { body, check, validationResult } = require('express-validator');
+const { body, validationResult } = require('express-validator');
 const UserController = require('../controllers/userController');
-const { authenticateToken } = require('../middleware/authMiddleware');
-const { authorize } = require('../middleware/permissionMiddleware');
+const { authMiddleware } = require('../middleware/auth');
+const { checkRole } = require('../middleware/auth');
 const { pool } = require('../db');
 const logger = require('../utils/logger');
 const { getLocations, getRoomsByLocation } = require('../models/userModel');
-
-// Berechtigungen definieren
-const USERS_READ = 'users.read';
-const USERS_CREATE = 'users.create';
-const USERS_UPDATE = 'users.update';
-const USERS_DELETE = 'users.delete';
+const { authenticateToken } = require('../middleware/authMiddleware');
 
 /**
  * @route   POST /api/users/login
@@ -24,22 +19,20 @@ router.post('/login', [
   body('password').notEmpty().withMessage('Passwort ist erforderlich')
 ], UserController.login);
 
-// Middleware für alle folgenden Routen
-router.use(authenticateToken);
-
 /**
  * @route   GET /api/users/profile
  * @desc    Aktuelles Benutzerprofil abrufen
- * @access  Private (Authentifiziert)
+ * @access  Private
  */
-router.get('/profile', UserController.getProfile);
+router.get('/profile', authMiddleware, UserController.getProfile);
 
 /**
  * @route   PUT /api/users/change-password
  * @desc    Passwort ändern
- * @access  Private (Authentifiziert)
+ * @access  Private
  */
 router.put('/change-password', [
+  authMiddleware,
   body('currentPassword').notEmpty().withMessage('Aktuelles Passwort ist erforderlich'),
   body('newPassword')
     .notEmpty().withMessage('Neues Passwort ist erforderlich')
@@ -49,18 +42,25 @@ router.put('/change-password', [
 ], UserController.changePassword);
 
 /**
+ * @route   GET /api/users/roles
+ * @desc    Alle Benutzerrollen abrufen
+ * @access  Private (Admin)
+ */
+router.get('/roles', [authMiddleware, checkRole(['admin'])], UserController.getUserRoles);
+
+/**
  * @route   GET /api/users/departments
  * @desc    Alle Abteilungen abrufen
- * @access  Private (Authentifiziert, keine spezielle Berechtigung?)
+ * @access  Private
  */
-router.get('/departments', UserController.getDepartments);
+router.get('/departments', authMiddleware, UserController.getDepartments);
 
 /**
  * @route   GET /api/users/locations
  * @desc    Alle verfügbaren Standorte für Benutzer abrufen
- * @access  Private (Authentifiziert)
+ * @access  Private
  */
-router.get('/locations', async (req, res) => {
+router.get('/locations', authMiddleware, async (req, res) => {
   try {
     // Verwenden der getLocations-Funktion aus dem userModel
     const locations = await getLocations();
@@ -82,9 +82,9 @@ router.get('/locations', async (req, res) => {
 /**
  * @route   GET /api/users/locations/:locationId/rooms
  * @desc    Räume für einen bestimmten Standort abrufen
- * @access  Private (Authentifiziert)
+ * @access  Private
  */
-router.get('/locations/:locationId/rooms', async (req, res) => {
+router.get('/locations/:locationId/rooms', authMiddleware, async (req, res) => {
   try {
     const { locationId } = req.params;
     // Verwenden der getRoomsByLocation-Funktion aus dem userModel
@@ -106,47 +106,27 @@ router.get('/locations/:locationId/rooms', async (req, res) => {
 
 /**
  * @route   GET /api/users
- * @desc    Alle Benutzer abrufen (jetzt /all)
- * @access  Private (Berechtigung: users.read)
+ * @desc    Alle Benutzer abrufen
+ * @access  Private (Admin)
  */
-router.get('/all', authorize(USERS_READ), UserController.getAllUsers);
-
-/**
- * @route   GET /api/users/search
- * @desc    Benutzer suchen
- * @access  Private (Berechtigung: users.read)
- */
-router.get('/search',
-    authorize(USERS_READ),
-    [check('term').optional().isString().trim().withMessage('Suchbegriff muss ein String sein')],
-    UserController.searchUsers
-);
-
-/**
- * @route   GET /api/users/:userId/groups
- * @desc    Gruppen eines Benutzers abrufen
- * @access  Private (Berechtigung: users.read oder usergroups.read?)
- */
-router.get('/:userId/groups',
-    authorize(USERS_READ), // Oder spezifischere Berechtigung prüfen?
-    [check('userId').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
-    UserController.getUserGroups
-);
+router.get('/', [authMiddleware, checkRole(['admin'])], UserController.getAllUsers);
 
 /**
  * @route   GET /api/users/:id
  * @desc    Benutzer nach ID abrufen
- * @access  Private (Berechtigung: users.read)
+ * @access  Private (Admin)
  */
-router.get('/:id', authorize(USERS_READ), UserController.getUserById);
+router.get('/:id', [authMiddleware, checkRole(['admin'])], UserController.getUserById);
 
 /**
  * @route   POST /api/users
  * @desc    Neuen Benutzer erstellen
- * @access  Private (Berechtigung: users.create)
+ * @access  Private (Admin)
  */
 router.post('/', [
-  authorize(USERS_CREATE),
+  authMiddleware,
+  checkRole(['admin']),
+  // Validierungsregeln
   body('username')
     .notEmpty().withMessage('Benutzername ist erforderlich')
     .isLength({ min: 3 }).withMessage('Benutzername muss mindestens 3 Zeichen lang sein'),
@@ -166,10 +146,12 @@ router.post('/', [
 /**
  * @route   PUT /api/users/:id
  * @desc    Benutzer aktualisieren
- * @access  Private (Berechtigung: users.update)
+ * @access  Private (Admin)
  */
 router.put('/:id', [
-  authorize(USERS_UPDATE),
+  authMiddleware,
+  checkRole(['admin']),
+  // Validierungsregeln für Updates
   body('username')
     .optional()
     .isLength({ min: 3 }).withMessage('Benutzername muss mindestens 3 Zeichen lang sein'),
@@ -186,8 +168,8 @@ router.put('/:id', [
 /**
  * @route   DELETE /api/users/:id
  * @desc    Benutzer löschen
- * @access  Private (Berechtigung: users.delete)
+ * @access  Private (Admin)
  */
-router.delete('/:id', authorize(USERS_DELETE), UserController.deleteUser);
+router.delete('/:id', [authMiddleware, checkRole(['admin'])], UserController.deleteUser);
 
 module.exports = router;

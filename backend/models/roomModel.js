@@ -200,29 +200,6 @@ class RoomModel {
       throw error;
     }
   }
-
-  // NEUE FUNKTION: Räume für einen Standort abfragen
-  async getRoomsByLocation(locationId) {
-    if (!locationId) {
-        throw new Error('Location ID ist erforderlich, um Räume abzurufen.');
-    }
-    try {
-      const query = `
-        SELECT
-          r.*,
-          l.name as location_name
-        FROM rooms r
-        LEFT JOIN locations l ON r.location_id = l.id
-        WHERE r.location_id = $1
-        ORDER BY r.name ASC
-      `;
-      const { rows } = await db.query(query, [locationId]);
-      return rows;
-    } catch (error) {
-      console.error(`Fehler beim Abrufen der Räume für Standort ${locationId}:`, error);
-      throw error;
-    }
-  }
 }
 
 module.exports = new RoomModel();

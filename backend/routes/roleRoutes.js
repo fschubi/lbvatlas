@@ -32,7 +32,8 @@ const createRoleValidation = [
 
 const updateRoleValidation = [
   ...roleIdValidation,
-  body('name').trim().notEmpty().withMessage('Rollenname ist erforderlich.').isLength({ min: 2, max: 50 }).withMessage('Rollenname muss zwischen 2 und 50 Zeichen lang sein.'),
+  // Name ist optional bei reiner Berechtigungsänderung
+  body('name').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Rollenname muss zwischen 2 und 50 Zeichen lang sein.'),
   body('description').optional({ checkFalsy: true }).trim().isLength({ max: 255 }).withMessage('Beschreibung darf maximal 255 Zeichen lang sein.')
 ];
 
@@ -88,19 +89,25 @@ router.get(
 );
 
 // POST /api/roles/:roleId/permissions - Berechtigung zu einer Rolle hinzufügen
+// Diese Route ist obsolet, da Berechtigungen über PUT /api/roles/:roleId aktualisiert werden.
+/*
 router.post(
     '/:roleId/permissions',
     authorize(ASSIGN_PERMISSIONS),
-    assignPermissionValidation, // Füge Validierung hinzu
+    assignPermissionValidation,
     roleController.addPermissionToRole
 );
+*/
 
 // DELETE /api/roles/:roleId/permissions/:permissionId - Berechtigung von Rolle entfernen
+// Diese Route ist obsolet, da Berechtigungen über PUT /api/roles/:roleId aktualisiert werden.
+/*
 router.delete(
     '/:roleId/permissions/:permissionId',
     authorize(ASSIGN_PERMISSIONS),
-    removePermissionValidation, // Füge Validierung hinzu
+    removePermissionValidation,
     roleController.removePermissionFromRole
 );
+*/
 
 module.exports = router;

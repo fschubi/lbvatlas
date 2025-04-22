@@ -201,7 +201,7 @@ const authorize = (...requiredPermissions) => {
       // 2. Hole die Berechtigungen für jede Rolle und sammle sie
       let allPermissionObjects = [];
       for (const role of userRoles) {
-        const permissionsForRole = await roleModel.getRolePermissions(role.id);
+        const permissionsForRole = await roleModel.getPermissionsForRole(role.id);
         allPermissionObjects = allPermissionObjects.concat(permissionsForRole);
       }
 

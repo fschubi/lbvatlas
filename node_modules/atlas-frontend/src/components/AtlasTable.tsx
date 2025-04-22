@@ -561,66 +561,90 @@ const AtlasTable = <T extends { id: number | string }>({
 
   // Zeilen für die Tabelle
   const rowContent = (_index: number, row: T) => {
+    // **** NEUE PRÜFUNG ****
+    // Sicherstellen, dass das row-Objekt existiert, bevor wir versuchen, Zellen zu rendern
+    if (!row) {
+        console.warn('[AtlasTable] rowContent received undefined row at index', _index);
+        return null; // Rendere nichts, wenn die Zeile undefiniert ist
+    }
+    // **** ENDE NEUE PRÜFUNG ****
+
+    // Generische Typannahme entfernen und spezifischer werden, falls möglich.
+    // Statt `row[column.dataKey as keyof T]` direkten Zugriff oder Typprüfung verwenden.
+    // Dies erfordert möglicherweise Anpassungen je nach Struktur von T.
+    // Beispiel für robustere Handhabung (optional, je nach Komplexität):
+    const getCellValue = (dataKey: string) => {
+        const keys = dataKey.split('.');
+        let value: any = row;
+        try {
+            for (const key of keys) {
+                if (value === null || value === undefined) return ''; // Frühzeitiger Ausstieg
+                value = value[key];
+            }
+            return value ?? ''; // Gib leeren String zurück, wenn Wert null/undefined ist
+        } catch (e) {
+            console.error(`[AtlasTable] Error accessing key "${dataKey}" in row:`, row, e);
+            return ''; // Fehlerfall
+        }
+    };
+
     return (
-      <React.Fragment>
-        {columns.map((column) => (
-          <TableCell
-            key={String(column.dataKey)}
-            align={column.numeric ? 'right' : 'left'}
-            sx={{ height: '100%' }}
-          >
-            {column.render
-              ? column.render(row[column.dataKey as keyof T], row)
-              : String(row[column.dataKey as keyof T] ?? '')}
-          </TableCell>
-        ))}
-        {/* Action columns */}
-        {(onEdit || onDelete || onView) && (
-          <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-            {onEdit && (
-              <Tooltip title="Bearbeiten">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(row);
-                  }}
-                  sx={{ mr: 1 }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {onView && (
-              <Tooltip title="Anzeigen">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onView(row);
-                  }}
-                  sx={{ mr: 1 }}
-                >
-                  <ViewIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {onDelete && (
-              <Tooltip title="Löschen">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(row);
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-          </TableCell>
+      <>
+        {columns.map((column) => {
+           // Hole den Wert sicher
+           const cellValue = getCellValue(column.dataKey);
+           return (
+             <TableCell
+                key={String(column.dataKey)}
+                align={column.numeric ? 'right' : 'left'}
+                sx={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: column.width ? `${column.width}px` : undefined,
+                    // Füge Tooltip nur hinzu, wenn Text tatsächlich überläuft (erfordert komplexere Logik oder immer anzeigen)
+                }}
+             >
+               {column.render
+                 ? column.render(cellValue, row) // Übergibt den sicher geholten Wert und die Zeile
+                 : String(cellValue) // Rendert den sicher geholten Wert
+                }
+             </TableCell>
+           );
+        })}
+
+        {/* Actions Columns - NACH der Map-Schleife, damit 'row' verfügbar ist */}
+         {onView && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Anzeigen">
+                    {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView(row); }}>
+                        <ViewIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </TableCell>
         )}
-      </React.Fragment>
+        {onEdit && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Bearbeiten">
+                     {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(row); }}>
+                        <EditIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </TableCell>
+        )}
+        {onDelete && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Löschen">
+                     {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete(row); }}>
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </TableCell>
+        )}
+      </>
     );
   };
 

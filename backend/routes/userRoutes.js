@@ -1,76 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const { authenticateToken } = require('../middleware/authMiddleware');
-const { authorize } = require('../middleware/permissionMiddleware');
-const { check } = require('express-validator');
-
-// Definiere Berechtigungs-Strings für Users
-const READ_USERS = 'users.read';
-const CREATE_USERS = 'users.create';
-const UPDATE_USERS = 'users.update';
-const DELETE_USERS = 'users.delete';
+const { authenticateToken, checkRole } = require('../middleware/auth');
 
 // Öffentliche Routen
 router.post('/login', userController.login);
 router.post('/register', userController.register);
 
-// Geschützte Routen - Authentifizierung für alle folgenden Routen
-router.use(authenticateToken);
+// Geschützte Routen - Benutzer Management
+router.use(authenticateToken); // Authentifizierung für alle folgenden Routen
 
-// Benutzer Profil (spezifisch für den eingeloggten Benutzer)
+// Benutzer Profil
 router.get('/profile', userController.getUserProfile);
 router.put('/profile', userController.updateUserProfile);
 router.put('/password', userController.changePassword);
 
-// Benutzer Management (allgemein)
-router.get(
-    '/all',
-    authorize(READ_USERS),
-    userController.getAllUsers
-);
+// Admin Routen
+router.get('/all', checkRole(['admin']), userController.getAllUsers);
+router.get('/:id', checkRole(['admin']), userController.getUserById);
+router.post('/', checkRole(['admin']), userController.createUser);
+router.put('/:id', checkRole(['admin']), userController.updateUser);
+router.delete('/:id', checkRole(['admin']), userController.deleteUser);
 
-// NEUE ROUTE: Benutzersuche
-router.get(
-    '/search',
-    authorize(READ_USERS),
-    [check('term').optional().isString().trim().withMessage('Suchbegriff muss ein String sein')],
-    userController.searchUsers
-);
-
-// NEUE ROUTE: Gruppen eines Benutzers abrufen
-router.get(
-    '/:userId/groups',
-    authorize(READ_USERS),
-    [check('userId').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
-    userController.getUserGroups
-);
-
-router.get(
-    '/:id',
-    authorize(READ_USERS),
-    [check('id').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
-    userController.getUserById
-);
-
-router.post(
-    '/',
-    authorize(CREATE_USERS),
-    userController.createUser
-);
-
-router.put(
-    '/:id',
-    authorize(UPDATE_USERS),
-    [check('id').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
-    userController.updateUser
-);
-
-router.delete(
-    '/:id',
-    authorize(DELETE_USERS),
-    [check('id').isInt({ gt: 0 }).withMessage('Ungültige User-ID')],
-    userController.deleteUser
-);
+// Rollen Management
+router.get('/:id/roles', checkRole(['admin']), userController.getUserRoles);
+router.post('/:id/roles', checkRole(['admin']), userController.assignRole);
+router.delete('/:id/roles/:roleId', checkRole(['admin']), userController.removeRole);
 
 module.exports = router;

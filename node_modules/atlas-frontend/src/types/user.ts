@@ -1,13 +1,11 @@
 export interface User {
-  id: number;
+  id: string;
   username: string;
   first_name: string;
   last_name: string;
   email: string;
   role: string;
-  department_id?: number;
-  location_id?: number;
-  room_id?: number;
+  department_id?: string;
   title?: string;
   phone?: string;
   address?: string;
@@ -17,6 +15,7 @@ export interface User {
   updated_at?: string;
   active?: boolean;
 <<<<<<< HEAD
+<<<<<<< HEAD
   permissions?: string[];
   departmentName?: string;
   locationName?: string;
@@ -24,6 +23,9 @@ export interface User {
   assignedDevicesCount?: number;
 =======
 >>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
+=======
+  permissions?: Set<string>;
+>>>>>>> parent of 077dfb62 (grund benutzer verwaltung steht)
 }
 
 export type Department = {

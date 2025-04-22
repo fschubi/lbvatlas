@@ -27,13 +27,8 @@ import {
   PersonAdd as PersonAddIcon,
   PersonRemove as PersonRemoveIcon
 } from '@mui/icons-material';
-<<<<<<< HEAD
 import { UserGroup, User } from '../../types/user';
 import { userGroupApi, usersApi, ApiResponse } from '../../utils/api';
-=======
-import { UserGroup, User } from '../../types/user'; // Echte Typen verwenden
-import { userGroupApi } from '../../utils/api'; // API importieren
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 import handleApiError from '../../utils/errorHandler';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
@@ -56,15 +51,11 @@ const UserGroupManagement: React.FC = () => {
   const [dialogType, setDialogType] = useState<'create' | 'edit'>('create');
   const [groupInDialog, setGroupInDialog] = useState<Partial<UserGroup>>({ name: '', description: '' });
   const [addUserDialogOpen, setAddUserDialogOpen] = useState<boolean>(false);
-  const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState<number>(0); // User ID ist number, 0 als Platzhalter?
+  const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState<number>(0);
   const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<UserGroup | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
 
-<<<<<<< HEAD
-  // TODO: Echte Berechtigungsprüfung implementieren
-=======
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
   const canRead = true;
   const canCreate = true;
   const canUpdate = true;
@@ -72,7 +63,6 @@ const UserGroupManagement: React.FC = () => {
   const canManageMembers = true;
 
   const loadGroups = useCallback(async () => {
-<<<<<<< HEAD
     if (!canRead) return;
     setLoading(true);
     try {
@@ -83,19 +73,6 @@ const UserGroupManagement: React.FC = () => {
          throw new Error(response.message || 'Fehler beim Laden der Gruppen.');
       }
     } catch (error) {
-=======
-    if (!canRead) {
-      return;
-    }
-    setLoading(true);
-    try {
-      console.log('[UserGroupManagement] Lade Benutzergruppen...');
-      const fetchedGroups = await userGroupApi.getAll();
-      setGroups(fetchedGroups || []);
-      console.log('[UserGroupManagement] Benutzergruppen geladen:', fetchedGroups);
-    } catch (error) {
-      console.error('[UserGroupManagement] Fehler beim Laden der Gruppen:', error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Laden der Benutzergruppen: ${errorMessage}`, severity: 'error' });
       setGroups([]);
@@ -107,7 +84,6 @@ const UserGroupManagement: React.FC = () => {
   const loadAllUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-<<<<<<< HEAD
       const response: ApiResponse<User[]> = await usersApi.getAll();
        if (response.success && Array.isArray(response.data)) {
         setAllUsers(response.data || []);
@@ -115,18 +91,6 @@ const UserGroupManagement: React.FC = () => {
          throw new Error(response.message || 'Fehler beim Laden der Benutzer.');
       }
     } catch (error) {
-=======
-      console.log('[UserGroupManagement] Lade alle Benutzer...');
-      await new Promise(resolve => setTimeout(resolve, 150));
-      setAllUsers([
-        { id: 'auth0|663bfa8e59f91a237d0d1111', username: 'test.user', first_name: 'Test', last_name: 'User', email: 'test@example.com', role: 'Admin' },
-        { id: 'google-oauth2|112233445566778899000', username: 'anna.dev', first_name: 'Anna', last_name: 'Developer', email: 'anna.dev@example.com', role: 'User' },
-        { id: 'auth0|unique-id-peter-support-123', username: 'peter.support', first_name: 'Peter', last_name: 'Support', email: 'peter.s@example.org', role: 'Support' },
-      ]);
-      console.log('[UserGroupManagement] Alle Benutzer geladen (Mock).');
-    } catch (error) {
-      console.error('[UserGroupManagement] Fehler beim Laden aller Benutzer:', error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Laden der Benutzerliste: ${errorMessage}`, severity: 'error' });
       setAllUsers([]);
@@ -142,7 +106,6 @@ const UserGroupManagement: React.FC = () => {
     }
     setLoadingUsers(true);
     try {
-<<<<<<< HEAD
       const response: ApiResponse<User[]> = await userGroupApi.getUsersInGroup(groupId);
       if (response.success && Array.isArray(response.data)) {
         setGroupUsers(response.data || []);
@@ -150,14 +113,6 @@ const UserGroupManagement: React.FC = () => {
          throw new Error(response.message || 'Fehler beim Laden der Gruppenmitglieder.');
       }
     } catch (error) {
-=======
-      console.log(`[UserGroupManagement] Lade Benutzer für Gruppe ${groupId}...`);
-      const fetchedGroupUsers = await userGroupApi.getUsersInGroup(groupId);
-      setGroupUsers(fetchedGroupUsers || []);
-      console.log(`[UserGroupManagement] Benutzer für Gruppe ${groupId} geladen:`, fetchedGroupUsers);
-    } catch (error) {
-      console.error(`[UserGroupManagement] Fehler beim Laden der Benutzer für Gruppe ${groupId}:`, error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Laden der Gruppenmitglieder: ${errorMessage}`, severity: 'error' });
       setGroupUsers([]);
@@ -215,35 +170,21 @@ const UserGroupManagement: React.FC = () => {
 
     setDialogLoading(true);
     try {
-<<<<<<< HEAD
       const groupData = { name: groupName, description: groupInDialog.description || '' };
+      let response: ApiResponse<UserGroup>;
 
       if (dialogType === 'edit' && groupInDialog.id) {
-        const response = await userGroupApi.update(Number(groupInDialog.id), groupData);
-         if (!response.success) throw new Error(response.message || 'Update fehlgeschlagen');
-        setSnackbar({ open: true, message: 'Gruppe erfolgreich aktualisiert', severity: 'success' });
+        response = await userGroupApi.update(Number(groupInDialog.id), groupData);
       } else {
-        const response = await userGroupApi.create(groupData);
-        if (!response.success) throw new Error(response.message || 'Erstellen fehlgeschlagen');
-=======
-      console.log(`[UserGroupManagement] Versuche Gruppe zu ${action}...`, groupInDialog);
-      const groupData = { name: groupName, description: groupInDialog.description || '' };
-
-      if (dialogType === 'edit' && groupInDialog.id) {
-        await userGroupApi.update(Number(groupInDialog.id), groupData);
-        setSnackbar({ open: true, message: 'Gruppe erfolgreich aktualisiert', severity: 'success' });
-      } else {
-        await userGroupApi.create(groupData);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
-        setSnackbar({ open: true, message: 'Gruppe erfolgreich erstellt', severity: 'success' });
+        response = await userGroupApi.create(groupData);
       }
+
+      if (!response.success) throw new Error(response.message || `Fehler beim ${action} der Gruppe.`);
+
+      setSnackbar({ open: true, message: `Gruppe erfolgreich ${action}t`, severity: 'success' });
       handleCloseEditDialog();
       await loadGroups();
     } catch (error) {
-<<<<<<< HEAD
-=======
-      console.error(`[UserGroupManagement] Fehler beim ${action} der Gruppe:`, error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim ${action} der Gruppe: ${errorMessage}`, severity: 'error' });
     } finally {
@@ -264,23 +205,15 @@ const UserGroupManagement: React.FC = () => {
     setConfirmDeleteDialogOpen(false);
     setDialogLoading(true);
     try {
-<<<<<<< HEAD
       const response = await userGroupApi.delete(groupIdToDelete);
       if (!response.success) throw new Error(response.message || 'Löschen fehlgeschlagen');
-=======
-      console.log(`[UserGroupManagement] Versuche Gruppe ${groupIdToDelete} zu löschen...`);
-      await userGroupApi.delete(groupIdToDelete);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
+
       setSnackbar({ open: true, message: `Gruppe "${groupName}" erfolgreich gelöscht`, severity: 'success' });
       await loadGroups();
       if (selectedGroup?.id === groupIdToDelete) {
         setSelectedGroup(null);
       }
     } catch (error) {
-<<<<<<< HEAD
-=======
-      console.error(`[UserGroupManagement] Fehler beim Löschen der Gruppe ${groupIdToDelete}:`, error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Löschen der Gruppe: ${errorMessage}`, severity: 'error' });
     } finally {
@@ -295,55 +228,31 @@ const UserGroupManagement: React.FC = () => {
   };
 
   const handleOpenAddUserDialog = () => {
-<<<<<<< HEAD
     if (!canManageMembers || !selectedGroup) return;
-
-    // Benutzer filtern, die noch nicht in der Gruppe sind
     const filteredNonMembers = allUsers.filter(user => !groupUsers.some(groupUser => groupUser.id === user.id));
-    console.log('[UserGroupManagement] Nicht-Mitglieder für Auswahl:', filteredNonMembers.map(u => u.id));
-
-    setSelectedUserIdToAdd(0); // Reset selection, 0 als ungültige ID?
-=======
-    if (!canManageMembers) { return; }
-    if (!selectedGroup) return;
-    setSelectedUserIdToAdd('');
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
+    setSelectedUserIdToAdd(0);
     setAddUserDialogOpen(true);
   };
 
   const handleCloseAddUserDialog = () => {
     setAddUserDialogOpen(false);
-    setSelectedUserIdToAdd(0); // Reset
+    setSelectedUserIdToAdd(0);
   };
 
   const handleAddUserToGroup = async () => {
-<<<<<<< HEAD
     if (!selectedGroup || !selectedUserIdToAdd || selectedUserIdToAdd === 0) {
       console.warn('[UserGroupManagement] Abbruch: Keine Gruppe oder kein gültiger Benutzer ausgewählt.', { selectedGroupId: selectedGroup?.id, selectedUserIdToAdd });
       return;
     }
-
     setDialogLoading(true);
     try {
       const response = await userGroupApi.addUserToGroup(Number(selectedGroup.id), String(selectedUserIdToAdd));
        if (!response.success) throw new Error(response.message || 'Hinzufügen fehlgeschlagen');
-=======
-    if (!selectedGroup || !selectedUserIdToAdd) return;
-    if (!canManageMembers) { return; }
-    setDialogLoading(true);
-    try {
-      console.log(`[UserGroupManagement] Füge Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id} hinzu...`);
-      await userGroupApi.addUserToGroup(Number(selectedGroup.id), selectedUserIdToAdd);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       setSnackbar({ open: true, message: 'Benutzer erfolgreich zur Gruppe hinzugefügt', severity: 'success' });
       handleCloseAddUserDialog();
       await loadGroupUsers(Number(selectedGroup.id));
       await loadGroups();
     } catch (error) {
-<<<<<<< HEAD
-=======
-      console.error(`[UserGroupManagement] Fehler beim Hinzufügen von Benutzer ${selectedUserIdToAdd} zu Gruppe ${selectedGroup.id}:`, error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
       const errorMessage = handleApiError(error);
       setSnackbar({ open: true, message: `Fehler beim Hinzufügen des Benutzers: ${errorMessage}`, severity: 'error' });
     } finally {
@@ -351,44 +260,22 @@ const UserGroupManagement: React.FC = () => {
     }
   };
 
-<<<<<<< HEAD
   const handleRemoveUserFromGroup = async (userId: number) => {
     if (!selectedGroup || !canManageMembers) return;
-=======
-  const handleRemoveUserFromGroup = async (userId: string) => {
-    if (!selectedGroup) return;
-    if (!canManageMembers) { return; }
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
-
     const userToRemove = groupUsers.find(u => u.id === userId);
     if (!window.confirm(`Benutzer "${userToRemove?.first_name} ${userToRemove?.last_name}" (@${userToRemove?.username}) wirklich aus der Gruppe "${selectedGroup.name}" entfernen?`)) return;
-
     setLoadingUsers(true);
     try {
-<<<<<<< HEAD
         const groupId = selectedGroup.id;
         const response = await userGroupApi.removeUserFromGroup(Number(groupId), String(userId));
         if (response.success) {
-            setSnackbar({
-              open: true,
-              message: response.message || 'Benutzer erfolgreich aus Gruppe entfernt',
-              severity: 'success'
-            });
+            setSnackbar({ open: true, message: response.message || 'Benutzer erfolgreich aus Gruppe entfernt', severity: 'success' });
             await loadGroupUsers(Number(groupId));
             await loadGroups();
         } else {
             throw new Error(response.message || 'Fehler beim Entfernen des Benutzers.');
         }
     } catch (error) {
-=======
-      console.log(`[UserGroupManagement] Entferne Benutzer ${userId} aus Gruppe ${selectedGroup.id}...`);
-      await userGroupApi.removeUserFromGroup(Number(selectedGroup.id), userId);
-      setSnackbar({ open: true, message: 'Benutzer erfolgreich aus Gruppe entfernt', severity: 'success' });
-      await loadGroupUsers(Number(selectedGroup.id));
-      await loadGroups();
-    } catch (error) {
-        console.error(`[UserGroupManagement] Fehler beim Entfernen von Benutzer ${userId} aus Gruppe ${selectedGroup.id}:`, error);
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
         const errorMessage = handleApiError(error);
         setSnackbar({ open: true, message: `Fehler beim Entfernen des Benutzers: ${errorMessage}`, severity: 'error' });
     } finally {
@@ -400,16 +287,10 @@ const UserGroupManagement: React.FC = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  // --- Spaltendefinitionen ---
-
   const groupColumns: AtlasColumn<UserGroup>[] = [
     { label: 'Name', dataKey: 'name', width: 250 },
     { label: 'Beschreibung', dataKey: 'description', width: 400 },
-<<<<<<< HEAD
     { label: 'Mitglieder', dataKey: 'userCount', numeric: true, width: 100, render: (value) => value ?? 0 },
-=======
-    { label: 'Hinzugefügt am', dataKey: 'added_at', width: 180, render: (value: string | undefined) => value ? new Date(value).toLocaleString('de-DE') : '-' },
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
     { label: 'Aktionen', dataKey: 'actions', width: 120, render: (_value: any, row: UserGroup) => (
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Tooltip title="Bearbeiten">
@@ -446,10 +327,6 @@ const UserGroupManagement: React.FC = () => {
     )}
   ];
 
-<<<<<<< HEAD
-  // --- Ladezustand ---
-=======
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
   if (loading && groups.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 112px)', p: 3 }}>
@@ -459,10 +336,8 @@ const UserGroupManagement: React.FC = () => {
     );
   }
 
-  // Filtered users for the add dialog dropdown
   const nonMemberUsers = allUsers.filter(user => !groupUsers.some(groupUser => groupUser.id === user.id));
 
-  // --- Render ---
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -537,7 +412,7 @@ const UserGroupManagement: React.FC = () => {
             value={groupInDialog.name || ''}
             onChange={(e) => setGroupInDialog(prev => ({ ...prev, name: e.target.value }))}
             required
-            sx={{ mb: 2 }}
+            sx={{ mb: 2, mt: 1 }}
           />
           <TextField
             margin="dense"
@@ -552,7 +427,7 @@ const UserGroupManagement: React.FC = () => {
             rows={3}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={handleCloseEditDialog} disabled={dialogLoading}>Abbrechen</Button>
           <Button
             onClick={handleSaveGroup}
@@ -567,42 +442,38 @@ const UserGroupManagement: React.FC = () => {
 
       <Dialog open={addUserDialogOpen} onClose={handleCloseAddUserDialog} maxWidth="xs" fullWidth>
           <DialogTitle>Benutzer zu "{selectedGroup?.name}" hinzufügen</DialogTitle>
-          <DialogContent dividers>
+          <DialogContent dividers sx={{ pt: 1 }}>
               {loadingUsers && !allUsers.length ? (
                   <CircularProgress sx={{ display: 'block', margin: 'auto' }} />
               ) : (
-                  <TextField
-                      select
-                      fullWidth
-                      label="Benutzer auswählen"
-                      value={selectedUserIdToAdd}
-                      onChange={(e) => {
-                        const newUserId = e.target.value;
-                        console.log(`[UserGroupManagement - AddUserDialog] Benutzer ausgewählt: ID=${newUserId}`);
-                        setSelectedUserIdToAdd(newUserId);
-                      }}
-                      variant="outlined"
-                      margin="normal"
-                      disabled={nonMemberUsers.length === 0 || loadingUsers}
-                      SelectProps={{ displayEmpty: true }}
-                  >
-                      <MenuItem value=""><em>-- Benutzer wählen --</em></MenuItem>
-                      {nonMemberUsers.map(user => (
-                          <MenuItem key={user.id} value={user.id}>
-                              {user.first_name} {user.last_name} (@{user.username})
-                          </MenuItem>
-                      ))}
-                      {nonMemberUsers.length === 0 && <MenuItem value="" disabled><em>Keine weiteren Benutzer verfügbar</em></MenuItem>}
-                  </TextField>
+                  <FormControl fullWidth margin="normal">
+                      <InputLabel id="select-user-label">Benutzer auswählen</InputLabel>
+                      <Select
+                          labelId="select-user-label"
+                          id="select-user"
+                          value={selectedUserIdToAdd === 0 ? '' : selectedUserIdToAdd}
+                          label="Benutzer auswählen"
+                          onChange={(e: SelectChangeEvent<number>) => setSelectedUserIdToAdd(Number(e.target.value))}
+                          disabled={nonMemberUsers.length === 0 || loadingUsers}
+                      >
+                          <MenuItem value={0} disabled><em>-- Benutzer wählen --</em></MenuItem>
+                          {nonMemberUsers.map(user => (
+                              <MenuItem key={user.id} value={user.id}>
+                                  {user.first_name} {user.last_name} (@{user.username})
+                              </MenuItem>
+                          ))}
+                          {nonMemberUsers.length === 0 && <MenuItem value={0} disabled><em>Keine weiteren Benutzer verfügbar</em></MenuItem>}
+                      </Select>
+                  </FormControl>
               )}
           </DialogContent>
-          <DialogActions>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
               <Button onClick={handleCloseAddUserDialog} disabled={dialogLoading}>Abbrechen</Button>
               <Button
                   onClick={handleAddUserToGroup}
                   variant="contained"
                   color="secondary"
-                  disabled={!selectedUserIdToAdd || dialogLoading || nonMemberUsers.length === 0}
+                  disabled={!selectedUserIdToAdd || selectedUserIdToAdd === 0 || dialogLoading || nonMemberUsers.length === 0}
               >
                   {dialogLoading ? <CircularProgress size={24} /> : 'Hinzufügen'}
               </Button>
@@ -612,10 +483,12 @@ const UserGroupManagement: React.FC = () => {
       <ConfirmationDialog
         open={confirmDeleteDialogOpen}
         onClose={handleCloseConfirmDeleteDialog}
-        onConfirm={() => { if (!dialogLoading) executeDelete(); }}
+        onConfirm={executeDelete}
         title="Benutzergruppe löschen?"
         message={`Möchten Sie die Benutzergruppe "${groupToDelete?.name}" wirklich endgültig löschen? Zugehörige Benutzer werden nicht gelöscht.`}
         confirmText="Löschen"
+        confirmButtonProps={{ color: 'error' }}
+        loading={dialogLoading}
       />
 
       <Snackbar

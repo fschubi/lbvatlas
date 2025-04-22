@@ -22,10 +22,7 @@ interface User {
   name: string;
   email: string;
   role: string;
-<<<<<<< HEAD
   permissions?: string[]; // oder Set<string>, je nach Backend-Antwort
-=======
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 }
 
 interface LoginResponse {
@@ -45,6 +42,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   error: string | null;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -64,47 +62,42 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-
     if (token) {
       if (!isValidTokenFormat(token)) {
         console.error('Ungültiges Token-Format gefunden, Token wird entfernt');
         localStorage.removeItem('token');
+        setIsLoading(false);
         return;
       }
-      console.log('Gültiges Token gefunden, validiere mit Backend...');
       validateToken(token);
     } else {
-      console.log('Kein Token gefunden, Benutzer ist nicht authentifiziert');
+      setIsLoading(false);
     }
   }, []);
 
   const validateToken = async (token: string) => {
     setIsLoading(true);
     try {
-      console.log('Validiere Token mit Backend...');
       const response = await axios.get<ValidateResponse>(`${API_BASE_URL}/auth/validate`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-<<<<<<< HEAD
-=======
-
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
-      console.log('Token erfolgreich validiert, setze Benutzer:', response.data.user);
       setUser(response.data.user);
     } catch (err) {
       console.error('Token-Validierung fehlgeschlagen:', err);
       logout();
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const login = async (username: string, password: string) => {
+    setIsLoading(true);
+    setError(null);
     try {
-      setError(null);
-      console.log('Versuche Login mit:', username);
-
       const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login`, {
         email: username,
         password
@@ -118,25 +111,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('Ungültiges Token vom Server erhalten');
       }
 
-      console.log('Login erfolgreich, Token erhalten:', token.substring(0, 10) + '...');
       localStorage.setItem('token', token);
       setUser(user);
     } catch (err) {
       console.error('Login fehlgeschlagen:', err);
       setError('Anmeldung fehlgeschlagen');
-<<<<<<< HEAD
     } finally {
       setIsLoading(false);
-=======
-      throw err;
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
     }
   };
 
   const logout = () => {
-    console.log('Benutzer wird abgemeldet...');
     localStorage.removeItem('token');
     setUser(null);
+    setIsLoading(false);
   };
 
   const value: AuthContextType = {
@@ -144,12 +132,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isAuthenticated: !!user,
     login,
     logout,
-<<<<<<< HEAD
     error,
     isLoading,
-=======
-    error
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

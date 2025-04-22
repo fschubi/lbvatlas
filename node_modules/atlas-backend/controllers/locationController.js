@@ -1,6 +1,5 @@
 const locationModel = require('../models/locationModel'); // Geändert
 const { validationResult } = require('express-validator');
-const roomModel = require('../models/roomModel'); // Stelle sicher, dass roomModel importiert wird
 
 class LocationController {
     // Standorte abfragen
@@ -174,36 +173,6 @@ class LocationController {
                 success: false,
                 message: 'Fehler beim Löschen des Standorts',
                 error: error.message
-            });
-        }
-    }
-
-    // Räume für einen Standort abfragen (Aktualisiert)
-    async getRoomsByLocationId(req, res) {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-        const { locationId } = req.params;
-        console.log(`[LocationController] Anfrage: getRoomsByLocationId für locationId: ${locationId}`);
-
-        try {
-            // Model-Funktion aufrufen
-            const rooms = await roomModel.getRoomsByLocation(locationId);
-
-            console.log(`[LocationController] Räume für locationId ${locationId} gefunden:`, rooms);
-            return res.json({
-                success: true,
-                // message: `Räume für Standort ${locationId} erfolgreich abgerufen.`,
-                data: rooms
-            });
-        } catch (error) {
-            console.error(`Fehler beim Abrufen der Räume für Standort ${locationId}:`, error);
-            // Gib eine spezifischere Fehlermeldung zurück, wenn möglich
-            return res.status(500).json({
-                success: false,
-                message: error.message || `Serverfehler beim Abrufen der Räume für Standort ${locationId}`,
             });
         }
     }

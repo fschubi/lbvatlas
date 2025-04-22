@@ -64,12 +64,4 @@ router.delete(
   locationController.deleteLocation
 );
 
-// NEUE ROUTE: GET /api/locations/:locationId/rooms - Räume für einen Standort abrufen
-router.get(
-    '/:locationId/rooms',
-    authorize(READ_LOCATIONS), // Annahme: Leseberechtigung für Standorte genügt, um Räume zu sehen?
-    [check('locationId').isInt({ gt: 0 }).withMessage('Ungültige Location-ID')],
-    locationController.getRoomsByLocationId // Neue Controller-Funktion
-);
-
 module.exports = router;

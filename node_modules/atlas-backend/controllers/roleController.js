@@ -48,15 +48,37 @@ const updateRole = async (req, res, next) => {
 
   const { roleId } = req.params;
   const { name, description } = req.body;
+  let permissionIds = req.body.permissionIds;
+  if (!permissionIds && Array.isArray(req.body.permission_ids)) {
+    permissionIds = req.body.permission_ids;
+  }
+
+  if (permissionIds && !Array.isArray(permissionIds)) {
+    return res.status(400).json({ success: false, message: 'permissionIds muss ein Array sein.' });
+  }
+
+  const validPermissionIds = Array.isArray(permissionIds)
+    ? permissionIds.filter(id => typeof id === 'number' && Number.isInteger(id))
+    : [];
+
   try {
-    logger.info('Controller: updateRole aufgerufen', { roleId, name, description });
-    const updatedRole = await roleModel.updateRole(roleId, { name: name.trim(), description });
+    logger.info('Controller: updateRole aufgerufen', { roleId, name, description, permissionIds: validPermissionIds });
+    const updatedRole = await roleModel.updateRole(roleId, {
+      name: name ? name.trim() : undefined,
+      description: description ? description.trim() : (description === null ? null : undefined),
+      permissionIds: validPermissionIds
+    });
+
     if (!updatedRole) {
       const roleExists = await roleModel.getRoleById(roleId);
       if (!roleExists) {
         return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
+      } else if (roleExists.is_system) {
+        logger.warn(`Versuch, Name/Beschreibung der Systemrolle ${roleId} zu ändern. Nur Berechtigungen werden aktualisiert.`);
+        const potentiallyUpdatedRole = await roleModel.getRoleById(roleId);
+        return res.status(200).json({ success: true, message: 'Systemrolle: Nur Berechtigungen wurden aktualisiert.', data: potentiallyUpdatedRole });
       } else {
-        return res.status(403).json({ success: false, message: 'Systemrollen können nicht bearbeitet werden.' });
+        return res.status(500).json({ success: false, message: 'Fehler beim Aktualisieren der Rolle.' });
       }
     }
     res.status(200).json({ success: true, data: updatedRole });
@@ -64,6 +86,9 @@ const updateRole = async (req, res, next) => {
     logger.error('Fehler in updateRole Controller:', error);
     if (error.message.includes('existiert bereits')) {
       return res.status(409).json({ success: false, message: error.message });
+    }
+    if (error.code === '23503' && error.constraint === 'role_permissions_permission_id_fkey') {
+        return res.status(400).json({ success: false, message: 'Eine oder mehrere Berechtigungs-IDs sind ungültig.' });
     }
     next(error);
   }
@@ -109,59 +134,10 @@ const getRolePermissions = async (req, res, next) => {
     if (!role) {
       return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
     }
-    const permissions = await permissionModel.findRolePermissions(roleId);
+    const permissions = await roleModel.getPermissionsForRole(roleId);
     res.status(200).json({ success: true, data: permissions });
   } catch (error) {
     logger.error('Fehler in getRolePermissions Controller:', error);
-    next(error);
-  }
-};
-
-// POST /api/roles/:roleId/permissions
-const addPermissionToRole = async (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-
-  const { roleId } = req.params;
-  const { permission_id } = req.body;
-  try {
-    logger.info('Controller: addPermissionToRole aufgerufen', { roleId, permission_id });
-    const role = await roleModel.getRoleById(roleId);
-    if (!role) {
-      return res.status(404).json({ success: false, message: 'Rolle nicht gefunden.' });
-    }
-    // TODO: Prüfen ob Permission existiert?
-
-    const success = await roleModel.assignPermissionToRole(roleId, permission_id);
-    res.status(200).json({ success: true, message: 'Berechtigung erfolgreich zugewiesen' });
-  } catch (error) {
-    logger.error('Fehler in addPermissionToRole Controller:', error);
-    if (error.code === '23503') { // foreign_key_violation
-      return res.status(404).json({ success: false, message: 'Berechtigung nicht gefunden.' });
-    }
-    next(error);
-  }
-};
-
-// DELETE /api/roles/:roleId/permissions/:permissionId
-const removePermissionFromRole = async (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-
-  const { roleId, permissionId } = req.params;
-  try {
-    logger.info('Controller: removePermissionFromRole aufgerufen', { roleId, permissionId });
-    const removed = await roleModel.removePermissionFromRole(roleId, permissionId);
-    if (!removed) {
-      return res.status(404).json({ success: false, message: 'Berechtigungszuweisung nicht gefunden oder konnte nicht entfernt werden.' });
-    }
-    res.status(200).json({ success: true, message: 'Berechtigung erfolgreich entfernt' });
-  } catch (error) {
-    logger.error('Fehler in removePermissionFromRole Controller:', error);
     next(error);
   }
 };
@@ -183,7 +159,5 @@ module.exports = {
   updateRole,
   deleteRole,
   getRolePermissions,
-  addPermissionToRole,
-  removePermissionFromRole,
   getPermissionsByModule
 };
