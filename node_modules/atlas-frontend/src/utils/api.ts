@@ -613,8 +613,11 @@ export const userGroupApi = {
     apiRequest<{ message?: string }>(`/user-groups/${id}`, 'DELETE'),
   getUsersInGroup: (groupId: number): Promise<ApiResponse<User[]>> =>
     apiRequest<User[]>(`/user-groups/${groupId}/members`),
-  addUserToGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
-    apiRequest<void>(`/user-groups/${groupId}/members`, 'POST', { userId }),
+  addUserToGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> => {
+    // DEBUG: Logge die Daten, die gesendet werden
+    console.log('[DEBUG addUserToGroup] Sending data:', { groupId, userId, payload: { userId } });
+    return apiRequest<void>(`/user-groups/${groupId}/members`, 'POST', { userId });
+  },
   removeUserFromGroup: (groupId: number, userId: string): Promise<ApiResponse<void>> =>
     apiRequest<void>(`/user-groups/${groupId}/members/${userId}`, 'DELETE'),
   checkGroupNameExists: async (

@@ -97,7 +97,7 @@ app.use('/api/todos', todoRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/documents', documentRoutes);
-app.use('/api/userGroupRoutes', userGroupRoutes);
+app.use('/api/user-groups', userGroupRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/userProfiles', userProfileRoutes);
 app.use('/api/suppliers', supplierRoutes);

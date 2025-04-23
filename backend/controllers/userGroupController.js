@@ -314,6 +314,12 @@ exports.addUsersToGroup = async (req, res) => {
   const { userIds } = req.body;
   const added_by = req.user.id;
 
+  // DEBUG: Zeige den Inhalt der Anfrage an
+  console.log('[DEBUG addUsersToGroup] Request body:', JSON.stringify(req.body));
+  console.log('[DEBUG addUsersToGroup] userIds:', userIds);
+  console.log('[DEBUG addUsersToGroup] params id:', id);
+  console.log('[DEBUG addUsersToGroup] user id:', added_by);
+
   // Validierung
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
     return res.status(400).json({
@@ -364,6 +370,19 @@ exports.addUserToGroup = async (req, res) => {
   const { id, userId } = req.params;
   const added_by = req.user.id;
 
+  // DEBUG: Zeige den Inhalt der Anfrage an
+  console.log('[DEBUG addUserToGroup] Request params:', { id, userId });
+  console.log('[DEBUG addUserToGroup] user id:', added_by);
+
+  // Konvertiere userId zu einem Integer
+  const userIdInt = parseInt(userId, 10);
+  if (isNaN(userIdInt)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Ungültige Benutzer-ID: Muss eine Zahl sein'
+    });
+  }
+
   try {
     // Prüfen, ob Gruppe existiert
     const groupExists = await db.query('SELECT id FROM user_groups WHERE id = $1', [id]);
@@ -375,7 +394,7 @@ exports.addUserToGroup = async (req, res) => {
     }
 
     // Prüfen, ob Benutzer existiert
-    const userExists = await db.query('SELECT id FROM users WHERE id = $1', [userId]);
+    const userExists = await db.query('SELECT id FROM users WHERE id = $1', [userIdInt]);
     if (userExists.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -383,12 +402,14 @@ exports.addUserToGroup = async (req, res) => {
       });
     }
 
+    console.log('[DEBUG addUserToGroup] Executing query to add user', userIdInt, 'to group', id);
+
     // Benutzer zu Gruppe hinzufügen, falls noch nicht Mitglied
     await db.query(`
       INSERT INTO user_group_members (group_id, user_id, added_by)
       VALUES ($1, $2, $3)
       ON CONFLICT (group_id, user_id) DO NOTHING
-    `, [id, userId, added_by]);
+    `, [id, userIdInt, added_by]);
 
     return res.status(200).json({
       success: true,
