@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, MouseEvent } from 'react';
 import {
   Box,
   Typography,
@@ -18,14 +18,20 @@ import {
   Select,
   FormControl,
   InputLabel,
-  SelectChangeEvent
+  SelectChangeEvent,
+  Menu,
+  ListItemIcon,
+  ListItemText,
+  Divider
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   PersonAdd as PersonAddIcon,
-  PersonRemove as PersonRemoveIcon
+  PersonRemove as PersonRemoveIcon,
+  MoreVert as MoreVertIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { UserGroup, User } from '../../types/user';
 import { userGroupApi, usersApi, ApiResponse } from '../../utils/api';
@@ -37,6 +43,12 @@ interface SnackbarState {
   open: boolean;
   message: string;
   severity: 'success' | 'error' | 'info' | 'warning';
+}
+
+interface MenuPosition {
+  mouseX: number;
+  mouseY: number;
+  groupId: number;
 }
 
 const UserGroupManagement: React.FC = () => {
@@ -55,6 +67,12 @@ const UserGroupManagement: React.FC = () => {
   const [confirmDeleteDialogOpen, setConfirmDeleteDialogOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<UserGroup | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [menuSelectedItem, setMenuSelectedItem] = useState<UserGroup | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState<boolean>(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
 
   const canRead = true;
   const canCreate = true;
@@ -246,8 +264,8 @@ const UserGroupManagement: React.FC = () => {
     }
     setDialogLoading(true);
     try {
-      const response = await userGroupApi.addUserToGroup(Number(selectedGroup.id), String(selectedUserIdToAdd));
-       if (!response.success) throw new Error(response.message || 'Hinzufügen fehlgeschlagen');
+      const response = await userGroupApi.addUserToGroup(Number(selectedGroup.id), selectedUserIdToAdd.toString());
+      if (!response.success) throw new Error(response.message || 'Hinzufügen fehlgeschlagen');
       setSnackbar({ open: true, message: 'Benutzer erfolgreich zur Gruppe hinzugefügt', severity: 'success' });
       handleCloseAddUserDialog();
       await loadGroupUsers(Number(selectedGroup.id));
@@ -260,14 +278,15 @@ const UserGroupManagement: React.FC = () => {
     }
   };
 
-  const handleRemoveUserFromGroup = async (userId: number) => {
+  const handleRemoveUserFromGroup = async (userId: string | number) => {
     if (!selectedGroup || !canManageMembers) return;
-    const userToRemove = groupUsers.find(u => u.id === userId);
+    const userIdStr = userId.toString();
+    const userToRemove = groupUsers.find(u => u.id.toString() === userIdStr);
     if (!window.confirm(`Benutzer "${userToRemove?.first_name} ${userToRemove?.last_name}" (@${userToRemove?.username}) wirklich aus der Gruppe "${selectedGroup.name}" entfernen?`)) return;
     setLoadingUsers(true);
     try {
         const groupId = selectedGroup.id;
-        const response = await userGroupApi.removeUserFromGroup(Number(groupId), String(userId));
+        const response = await userGroupApi.removeUserFromGroup(Number(groupId), userIdStr);
         if (response.success) {
             setSnackbar({ open: true, message: response.message || 'Benutzer erfolgreich aus Gruppe entfernt', severity: 'success' });
             await loadGroupUsers(Number(groupId));
@@ -292,21 +311,14 @@ const UserGroupManagement: React.FC = () => {
     { label: 'Beschreibung', dataKey: 'description', width: 400 },
     { label: 'Mitglieder', dataKey: 'userCount', numeric: true, width: 100, render: (value) => value ?? 0 },
     { label: 'Aktionen', dataKey: 'actions', width: 120, render: (_value: any, row: UserGroup) => (
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Tooltip title="Bearbeiten">
-          <span>
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenEditDialog('edit', row); }} disabled={!canUpdate}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-        <Tooltip title="Löschen">
-          <span>
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }} disabled={!canDelete}>
-              <DeleteIcon fontSize="small" color="error" />
-            </IconButton>
-          </span>
-        </Tooltip>
+      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+        <IconButton
+          size="small"
+          onClick={(e) => handleMenuOpen(e, row.id)}
+          aria-label="Aktionen"
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
       </Box>
     )}
   ];
@@ -326,6 +338,53 @@ const UserGroupManagement: React.FC = () => {
         </Tooltip>
     )}
   ];
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, id: number) => {
+    console.log("Menu wird geöffnet für Gruppe mit ID:", id);
+    event.preventDefault();
+    event.stopPropagation();
+
+    setMenuAnchorEl(event.currentTarget);
+    setMenuPosition({
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      groupId: id
+    });
+
+    setSelectedGroupId(id);
+    const group = groups.find(g => g.id === id) || null;
+    setMenuSelectedItem(group);
+  };
+
+  const handleMenuClose = () => {
+    console.log('Closing menu');
+    setMenuAnchorEl(null);
+    setMenuPosition(null);
+    setMenuSelectedItem(null);
+  };
+
+  const handleViewGroup = () => {
+    console.log("Ansehen-Funktion aufgerufen für Gruppe:", selectedGroupId);
+    handleMenuClose();
+    setSelectedGroup(groups.find(group => group.id === selectedGroupId) || null);
+    setViewDialogOpen(true);
+  };
+
+  const handleEditGroup = () => {
+    console.log('Edit group clicked:', menuSelectedItem?.name);
+    if (menuSelectedItem) {
+      handleOpenEditDialog('edit', menuSelectedItem);
+      handleMenuClose();
+    }
+  };
+
+  const handleDeleteGroup = () => {
+    console.log('Delete group clicked:', menuSelectedItem?.name);
+    if (menuSelectedItem) {
+      handleDeleteRequest(menuSelectedItem);
+      handleMenuClose();
+    }
+  };
 
   if (loading && groups.length === 0) {
     return (
@@ -487,8 +546,6 @@ const UserGroupManagement: React.FC = () => {
         title="Benutzergruppe löschen?"
         message={`Möchten Sie die Benutzergruppe "${groupToDelete?.name}" wirklich endgültig löschen? Zugehörige Benutzer werden nicht gelöscht.`}
         confirmText="Löschen"
-        confirmButtonProps={{ color: 'error' }}
-        loading={dialogLoading}
       />
 
       <Snackbar
@@ -501,6 +558,50 @@ const UserGroupManagement: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        onClick={(e) => e.stopPropagation()}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          menuPosition !== null
+            ? { top: menuPosition.mouseY, left: menuPosition.mouseX }
+            : undefined
+        }
+        PaperProps={{
+          sx: {
+            minWidth: 180,
+            boxShadow: 4,
+            '& .MuiMenuItem-root': {
+              px: 2,
+              py: 1.5,
+            }
+          }
+        }}
+        MenuListProps={{ dense: true }}
+      >
+        <MenuItem onClick={handleViewGroup}>
+          <ListItemIcon>
+            <VisibilityIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Anzeigen" />
+        </MenuItem>
+        <MenuItem onClick={handleEditGroup}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Bearbeiten" />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleDeleteGroup} sx={{ color: 'error.main' }}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText primary="Löschen" />
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };
