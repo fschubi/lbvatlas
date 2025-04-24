@@ -1,29 +1,63 @@
 export interface User {
   id: number;
   username: string;
-  first_name: string | null;
-  last_name: string | null;
   display_name?: string;
   email: string;
   role: string;
-  department_id?: number | null;
-  location_id?: number | null;
-  room_id?: number | null;
-  title?: string;
-  phone?: string | null;
-  address?: string;
-  postal_code?: string;
-  city?: string;
-  created_at?: string;
-  updated_at?: string;
-  last_login?: string | null;
   active: boolean;
-  can_receive_emails?: boolean;
-  permissions?: string[];
-  department?: { id: number; name: string };
-  location?: { id: number; name: string };
-  room?: { id: number; name: string };
-  assigned_devices_count?: number;
+  first_name?: string;
+  last_name?: string;
+  department?: string;
+  department_id?: number;
+  location_id?: number;
+  room_id?: number;
+  last_login: string;
+  created_at: string;
+  updated_at: string;
+  phone?: string;
+  login_allowed: boolean;
+  email_notifications_enabled: boolean;
+  location?: string;
+  room?: string;
+  email_verified: boolean;
+  password_expires_at?: string | null;
+  password_changed_at?: string | null;
+  failed_login_attempts: number;
+  account_locked_until?: string | null;
+  password?: string;
+}
+
+export interface UserProfile extends User {
+  profile_picture?: string;
+  position?: string;
+  bio?: string;
+  two_factor_enabled: boolean;
+}
+
+export interface UserPreferences {
+  id: number;
+  user_id: number;
+  theme: 'light' | 'dark';
+  language: string;
+  notifications_enabled: boolean;
+  email_notifications: boolean;
+  dashboard_layout: any; // JSON-Struktur für das Dashboard-Layout
+}
+
+export interface UserGroup {
+  id: number;
+  name: string;
+  description?: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserRole {
+  id: number;
+  name: string;
+  description?: string;
+  permissions: string[];
 }
 
 export type Department = {
@@ -55,17 +89,6 @@ export interface UserFilters {
   email?: string;
   search?: string;
   active?: boolean | string;
-}
-
-export interface UserGroup {
-  id: number;
-  name: string;
-  description: string;
-  added_at?: string;
-  added_by?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  userCount?: number;
 }
 
 export interface Role {

@@ -70,6 +70,25 @@ const UserDetailDialog: React.FC<UserDetailDialogProps> = ({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<User>>({
+    username: '',
+    email: '',
+    first_name: '',
+    last_name: '',
+    role: 'user',
+    active: true,
+    email_notifications_enabled: true,
+    location: '',
+    room: '',
+    department: '',
+    password_expires_at: null,
+    password_changed_at: null,
+    failed_login_attempts: 0,
+    account_locked_until: null,
+    phone: '',
+    login_allowed: true,
+    email_verified: false
+  });
 
   // State für die Einstellungen
   const [isLoginActive, setIsLoginActive] = useState<boolean>(true);
@@ -90,86 +109,43 @@ const UserDetailDialog: React.FC<UserDetailDialogProps> = ({
 
   useEffect(() => {
     const fetchUserAndAssets = async () => {
-      if (!userId || !open) {
-        setUser(null);
-        setError(null);
-        setSettingsError(null);
-        setDevices([]);
-        setDevicesLoading(false);
-        setDevicesError(null);
-        setLicenses([]);
-        setLicensesLoading(false);
-        setLicensesError(null);
-        setAccessories([]);
-        setAccessoriesLoading(false);
-        setAccessoriesError(null);
+      if (!open) {
+        resetForm();
         return;
       }
+
+      if (!userId) {
+        // Neuer Benutzer
+        resetForm();
+        return;
+      }
+
+      // Bestehender Benutzer
       setLoading(true);
       setError(null);
-      setSettingsError(null);
-      setDevices([]);
-      setDevicesLoading(true);
-      setDevicesError(null);
-      setLicenses([]);
-      setLicensesLoading(true);
-      setLicensesError(null);
-      setAccessories([]);
-      setAccessoriesLoading(true);
-      setAccessoriesError(null);
 
       try {
-        // User-Daten zuerst abrufen
         const userResponse = await usersApi.getById(userId);
         if (userResponse.success && userResponse.data) {
           setUser(userResponse.data);
+          setFormData(userResponse.data);
           setIsLoginActive(userResponse.data.active ?? true);
-          setCanReceiveEmails(userResponse.data.can_receive_emails ?? true);
-        } else {
-          throw new Error(userResponse.message || 'Benutzer nicht gefunden.');
+          setCanReceiveEmails(userResponse.data.email_notifications_enabled ?? true);
+
+          // Assets nur laden wenn ein bestehender Benutzer
+          const [devicesResponse, licensesResponse, accessoriesResponse] = await Promise.all([
+            usersApi.getUserDevices(userId),
+            usersApi.getUserLicenses(userId),
+            usersApi.getUserAccessories(userId)
+          ]);
+
+          if (devicesResponse.success) setDevices(devicesResponse.data);
+          if (licensesResponse.success) setLicenses(licensesResponse.data);
+          if (accessoriesResponse.success) setAccessories(accessoriesResponse.data);
         }
-
-        // Assets parallel abrufen
-        const [devicesResponse, licensesResponse, accessoriesResponse] = await Promise.all([
-          usersApi.getUserDevices(userId),
-          usersApi.getUserLicenses(userId),
-          usersApi.getUserAccessories(userId)
-        ]);
-
-        // Geräte verarbeiten
-        if (devicesResponse.success && Array.isArray(devicesResponse.data)) {
-          setDevices(devicesResponse.data);
-        } else {
-          setDevicesError(devicesResponse.message || 'Fehler beim Laden der Geräte.');
-        }
-        setDevicesLoading(false);
-
-        // Lizenzen verarbeiten
-        if (licensesResponse.success && Array.isArray(licensesResponse.data)) {
-          setLicenses(licensesResponse.data);
-        } else {
-          setLicensesError(licensesResponse.message || 'Fehler beim Laden der Lizenzen.');
-        }
-        setLicensesLoading(false);
-
-        // Zubehör verarbeiten
-        if (accessoriesResponse.success && Array.isArray(accessoriesResponse.data)) {
-          setAccessories(accessoriesResponse.data);
-        } else {
-          setAccessoriesError(accessoriesResponse.message || 'Fehler beim Laden des Zubehörs.');
-        }
-        setAccessoriesLoading(false);
-
       } catch (err) {
         const errorMessage = handleApiError(err);
         setError(`Fehler beim Laden der Benutzerdaten: ${errorMessage}`);
-        setUser(null);
-        setDevicesError(errorMessage);
-        setDevicesLoading(false);
-        setLicensesError(errorMessage);
-        setLicensesLoading(false);
-        setAccessoriesError(errorMessage);
-        setAccessoriesLoading(false);
       } finally {
         setLoading(false);
       }
@@ -177,6 +153,61 @@ const UserDetailDialog: React.FC<UserDetailDialogProps> = ({
 
     fetchUserAndAssets();
   }, [userId, open]);
+
+  const resetForm = () => {
+    setUser(null);
+    setFormData({
+      username: '',
+      email: '',
+      first_name: '',
+      last_name: '',
+      role: 'user',
+      active: true,
+      email_notifications_enabled: true,
+      location: '',
+      room: '',
+      department: '',
+      password_expires_at: null,
+      password_changed_at: null,
+      failed_login_attempts: 0,
+      account_locked_until: null,
+      phone: '',
+      login_allowed: true,
+      email_verified: false
+    });
+    setError(null);
+    setDevices([]);
+    setLicenses([]);
+    setAccessories([]);
+    setTabValue(0);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      if (userId) {
+        // Bestehenden Benutzer aktualisieren
+        await usersApi.update(userId, formData);
+      } else {
+        // Neuen Benutzer erstellen
+        await usersApi.create(formData);
+      }
+      onClose();
+    } catch (err) {
+      const errorMessage = handleApiError(err);
+      setError(`Fehler beim ${userId ? 'Aktualisieren' : 'Erstellen'} des Benutzers: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -234,122 +265,313 @@ const UserDetailDialog: React.FC<UserDetailDialogProps> = ({
   const accessoryColumns: AtlasColumn[] = [{ label: 'Name', dataKey: 'name' }, { label: 'Typ', dataKey: 'type' }];
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" scroll="paper">
-      <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider', pb: 1 }}>
-        Benutzerdetails: {loading ? 'Lade...' : user ? `${user.first_name} ${user.last_name}` : 'Nicht gefunden'}
-        {user && (
-          <Chip
-            label={user.active ? 'Aktiv' : 'Inaktiv'}
-            color={user.active ? 'success' : 'default'}
-            size="small"
-            sx={{ ml: 2 }}
-          />
-        )}
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        {userId ? 'Benutzer bearbeiten' : 'Neuer Benutzer'}
       </DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={tabValue} onChange={handleTabChange} aria-label="Benutzerdetails Tabs" variant="scrollable">
-            <Tab icon={<PersonIcon />} iconPosition="start" label="Übersicht" id="user-details-tab-0" aria-controls="user-details-tabpanel-0" />
-            <Tab icon={<GroupIcon />} iconPosition="start" label="Gruppen" id="user-details-tab-1" aria-controls="user-details-tabpanel-1" />
-            <Tab icon={<SettingsIcon />} iconPosition="start" label="Einstellungen" id="user-details-tab-2" aria-controls="user-details-tabpanel-2" />
-            <Tab icon={<DevicesIcon />} iconPosition="start" label="Geräte" id="user-details-tab-3" aria-controls="user-details-tabpanel-3" />
-            <Tab icon={<VpnKeyIcon />} iconPosition="start" label="Lizenzen" id="user-details-tab-4" aria-controls="user-details-tabpanel-4" />
-            <Tab icon={<ExtensionIcon />} iconPosition="start" label="Zubehör" id="user-details-tab-5" aria-controls="user-details-tabpanel-5" />
+      <DialogContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs value={tabValue} onChange={handleTabChange}>
+            <Tab icon={<PersonIcon />} label="Übersicht" />
+            {userId && (
+              <>
+                <Tab icon={<GroupIcon />} label="Gruppen" />
+                <Tab icon={<SettingsIcon />} label="Einstellungen" />
+                <Tab icon={<DevicesIcon />} label="Geräte" />
+                <Tab icon={<VpnKeyIcon />} label="Lizenzen" />
+                <Tab icon={<ExtensionIcon />} label="Zubehör" />
+              </>
+            )}
           </Tabs>
         </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>
-        )}
-
         <TabPanel value={tabValue} index={0}>
-          {loading && <CircularProgress sx={{ display: 'block', margin: 'auto', my: 5 }} />}
-          {!loading && user && (
-            <Grid container spacing={1} sx={{ px: 1, py: 2 }}>
-              {renderField('Benutzername', user.username)}
-              {renderField('E-Mail', user.email)}
-              {renderField('Vorname', user.first_name)}
-              {renderField('Nachname', user.last_name)}
-              {renderField('Anzeigename', user.display_name ?? `${user.first_name || ''} ${user.last_name || ''}`.trim())}
-              {renderField('Rolle', user.role)}
-              {renderField('Abteilung', user.department?.name)}
-              {renderField('Standort', user.location?.name)}
-              {renderField('Raum', user.room?.name)}
-              {renderField('Telefon', user.phone)}
-              {renderField('Status', user.active ? 'Aktiv' : 'Inaktiv')}
-              {renderField('Letzter Login', user.last_login ? new Date(user.last_login).toLocaleString('de-DE') : 'Nie')}
-              {renderField('Erstellt am', user.created_at ? new Date(user.created_at).toLocaleString('de-DE') : '-')}
-              {renderField('Aktualisiert am', user.updated_at ? new Date(user.updated_at).toLocaleString('de-DE') : '-')}
+          <Grid container spacing={2}>
+            {/* Persönliche Informationen */}
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mb: 2 }}>Persönliche Informationen</Typography>
             </Grid>
-          )}
-          {!loading && !user && !error && (
-            <Typography sx={{ p: 3, textAlign: 'center' }}>Keine Benutzerdaten zum Anzeigen.</Typography>
-          )}
-        </TabPanel>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Benutzername"
+                name="username"
+                value={formData.username}
+                onChange={handleInputChange}
+                required
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="E-Mail"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                required
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Vorname"
+                name="first_name"
+                value={formData.first_name}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Nachname"
+                name="last_name"
+                value={formData.last_name}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Telefon"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
 
-        <TabPanel value={tabValue} index={1}>
-          <Typography>Gruppenverwaltung (Platzhalter - benötigt API)</Typography>
-          <AtlasTable columns={[{ label: 'Gruppenname', dataKey: 'name' }]} rows={[]} loading={false} emptyMessage="Benutzer ist in keinen Gruppen." height={300} />
-        </TabPanel>
+            {/* Standort Informationen */}
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 2 }}>Standort</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Standort"
+                name="location"
+                value={formData.location}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Raum"
+                name="room"
+                value={formData.room}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Abteilung"
+                name="department"
+                value={formData.department}
+                onChange={handleInputChange}
+                margin="normal"
+              />
+            </Grid>
 
-        <TabPanel value={tabValue} index={2}>
-          <Typography variant="h6" gutterBottom>Kontoeinstellungen</Typography>
-          {settingsError && (
-            <Alert severity="error" sx={{ mb: 2 }}>{settingsError}</Alert>
-          )}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, position: 'relative' }}>
-            {settingsLoading && (
-              <CircularProgress size={24} sx={{ position: 'absolute', top: 8, right: 8 }} />
+            {/* Konto Einstellungen */}
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 2 }}>Konto Einstellungen</Typography>
+            </Grid>
+            {!userId && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Passwort"
+                  name="password"
+                  type="password"
+                  value={formData.password || ''}
+                  onChange={handleInputChange}
+                  required
+                  margin="normal"
+                />
+              </Grid>
             )}
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isLoginActive}
-                  onChange={(e) => handleSettingChange('active', e.target.checked)}
-                  name="loginActive"
-                  color="success"
-                  disabled={settingsLoading}
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.active}
+                    onChange={handleInputChange}
+                    name="active"
+                  />
+                }
+                label="Aktiv"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.email_notifications_enabled}
+                    onChange={handleInputChange}
+                    name="email_notifications_enabled"
+                  />
+                }
+                label="E-Mail-Benachrichtigungen"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.login_allowed}
+                    onChange={handleInputChange}
+                    name="login_allowed"
+                  />
+                }
+                label="Login erlaubt"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.email_verified}
+                    onChange={handleInputChange}
+                    name="email_verified"
+                  />
+                }
+                label="E-Mail verifiziert"
+              />
+            </Grid>
+
+            {/* Nur anzeigen wenn Benutzer existiert */}
+            {userId && (
+              <>
+                <Grid item xs={12}>
+                  <Typography variant="h6" sx={{ mt: 2, mb: 2 }}>Konto Status</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Fehlgeschlagene Login-Versuche"
+                    name="failed_login_attempts"
+                    value={formData.failed_login_attempts}
+                    InputProps={{ readOnly: true }}
+                    margin="normal"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Konto gesperrt bis"
+                    name="account_locked_until"
+                    value={formData.account_locked_until || '-'}
+                    InputProps={{ readOnly: true }}
+                    margin="normal"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Passwort geändert am"
+                    name="password_changed_at"
+                    value={formData.password_changed_at || '-'}
+                    InputProps={{ readOnly: true }}
+                    margin="normal"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Passwort läuft ab am"
+                    name="password_expires_at"
+                    value={formData.password_expires_at || '-'}
+                    InputProps={{ readOnly: true }}
+                    margin="normal"
+                  />
+                </Grid>
+              </>
+            )}
+          </Grid>
+        </TabPanel>
+
+        {userId && (
+          <>
+            <TabPanel value={tabValue} index={1}>
+              <Typography variant="h6">Gruppenverwaltung</Typography>
+              <AtlasTable columns={[{ label: 'Gruppenname', dataKey: 'name' }]} rows={[]} loading={false} emptyMessage="Benutzer ist in keinen Gruppen." height={300} />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={2}>
+              <Typography variant="h6">Kontoeinstellungen</Typography>
+              {settingsError && (
+                <Alert severity="error" sx={{ mb: 2 }}>{settingsError}</Alert>
+              )}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, position: 'relative' }}>
+                {settingsLoading && (
+                  <CircularProgress size={24} sx={{ position: 'absolute', top: 8, right: 8 }} />
+                )}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isLoginActive}
+                      onChange={(e) => handleSettingChange('active', e.target.checked)}
+                      name="loginActive"
+                      color="success"
+                      disabled={settingsLoading}
+                    />
+                  }
+                  label="Login aktiviert"
                 />
-              }
-              label="Login aktiviert"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={canReceiveEmails}
-                  onChange={(e) => handleSettingChange('can_receive_emails', e.target.checked)}
-                  name="emailActive"
-                  color="primary"
-                  disabled={settingsLoading}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={canReceiveEmails}
+                      onChange={(e) => handleSettingChange('can_receive_emails', e.target.checked)}
+                      name="emailActive"
+                      color="primary"
+                      disabled={settingsLoading}
+                    />
+                  }
+                  label="E-Mail-Benachrichtigungen aktiviert"
                 />
-              }
-              label="E-Mail-Benachrichtigungen aktiviert"
-            />
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="body2" color="text.secondary">
-              Hinweis: Änderungen werden direkt gespeichert.
-            </Typography>
-          </Box>
-        </TabPanel>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Hinweis: Änderungen werden direkt gespeichert.
+                </Typography>
+              </Box>
+            </TabPanel>
 
-        <TabPanel value={tabValue} index={3}>
-          <Typography variant="h6" gutterBottom>Zugeordnete Geräte</Typography>
-          <AtlasTable columns={deviceColumns} rows={[]} loading={false} emptyMessage="Keine Geräte zugeordnet." height={300} />
-        </TabPanel>
+            <TabPanel value={tabValue} index={3}>
+              <Typography variant="h6">Zugewiesene Geräte</Typography>
+              <AtlasTable columns={deviceColumns} rows={[]} loading={false} emptyMessage="Keine Geräte zugeordnet." height={300} />
+            </TabPanel>
 
-        <TabPanel value={tabValue} index={4}>
-          <Typography variant="h6" gutterBottom>Zugeordnete Lizenzen</Typography>
-          <AtlasTable columns={licenseColumns} rows={[]} loading={false} emptyMessage="Keine Lizenzen zugeordnet." height={300} />
-        </TabPanel>
+            <TabPanel value={tabValue} index={4}>
+              <Typography variant="h6">Zugewiesene Lizenzen</Typography>
+              <AtlasTable columns={licenseColumns} rows={[]} loading={false} emptyMessage="Keine Lizenzen zugeordnet." height={300} />
+            </TabPanel>
 
-        <TabPanel value={tabValue} index={5}>
-          <Typography variant="h6" gutterBottom>Zugeordnetes Zubehör</Typography>
-          <AtlasTable columns={accessoryColumns} rows={[]} loading={false} emptyMessage="Kein Zubehör zugeordnet." height={300} />
-        </TabPanel>
-
+            <TabPanel value={tabValue} index={5}>
+              <Typography variant="h6">Zugewiesenes Zubehör</Typography>
+              <AtlasTable columns={accessoryColumns} rows={[]} loading={false} emptyMessage="Kein Zubehör zugeordnet." height={300} />
+            </TabPanel>
+          </>
+        )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Schließen</Button>
+        <Button onClick={onClose}>Abbrechen</Button>
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          color="primary"
+          disabled={loading}
+        >
+          {loading ? <CircularProgress size={24} /> : (userId ? 'Speichern' : 'Erstellen')}
+        </Button>
       </DialogActions>
     </Dialog>
   );

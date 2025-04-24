@@ -45,24 +45,43 @@ import {
   Key as LicenseIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
-import api from '../utils/api'; // Annahme: api importieren
-// TODO: Korrekte Typen importieren
-// import { User, UserHistory, Role } from '../types/userTypes';
-// import { Asset } from '../types/assetTypes';
-// import { Accessory } from '../types/accessoryTypes';
-// import { License } from '../types/licenseTypes';
+import { useApi } from '../hooks/useApi';
+import { User } from '../types/user';
+import { usePermissions } from '../hooks/usePermissions';
 import ConfirmationDialog from '../components/ConfirmationDialog'; // Import ConfirmationDialog
-// TODO: usePermissions Hook importieren
-// import { usePermissions } from '../hooks/usePermissions';
 
-// --- Mock Typen als Platzhalter ---
-type User = any;
-type UserHistory = any;
-type Role = any;
-type Asset = any;
-type Accessory = any;
-type License = any;
-// --- Ende Mock Typen ---
+interface UserHistory {
+  id: number;
+  user_id: number;
+  action: string;
+  details: string;
+  created_at: string;
+  created_by: number;
+}
+
+interface Asset {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  assigned_at: string;
+}
+
+interface Accessory {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  assigned_at: string;
+}
+
+interface License {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  assigned_at: string;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -127,8 +146,7 @@ const generateMockUser = (id: string): User => ({
 const UserDetails: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
-  // const { userPermissions } = usePermissions(); // TODO: Aktivieren
-  const userPermissions = ['users.update', 'users.delete', 'users.reset_password', 'users.history', 'users.view_assets', 'roles.read']; // Placeholder
+  const { userPermissions } = usePermissions();
 
   // Berechtigungen
   const canEdit = userPermissions.includes('users.update');
@@ -163,60 +181,72 @@ const UserDetails: React.FC = () => {
 
   const loadUserData = useCallback(async () => {
     if (!userId) return;
+
     try {
       setLoading(true);
-      // TODO: usersApi Call aktivieren
-      // const response = await usersApi.getById(userId);
-      // const userData = response.data;
-      const userData = generateMockUser(userId);
+      const api = useApi();
+
+      // Lade Benutzerdaten
+      const response = await api.get(`/users/${userId}`);
+      const userData = response.data;
 
       setUser(userData);
       setFormData({
         ...userData,
-        // Konvertiere ggf. Daten für Formular
         department_id: userData.department_id ?? '',
         location_id: userData.location_id ?? '',
-        role_id: userData.role_id ?? ''
+        role: userData.role ?? ''
       });
 
-      // Verwandte Daten laden (Mock)
-      if (canViewHistory) setHistory(generateMockHistory(10));
+      // Lade verwandte Daten
+      if (canViewHistory) {
+        const historyResponse = await api.get(`/users/${userId}/history`);
+        setHistory(historyResponse.data);
+      }
+
       if (canViewAssets) {
-        setAssignedAssets(generateMockAssets(3));
-        setAssignedAccessories(generateMockAccessories(2));
-        setAssignedLicenses(generateMockLicenses(1));
+        const [assetsRes, accessoriesRes, licensesRes] = await Promise.all([
+          api.get(`/users/${userId}/assets`),
+          api.get(`/users/${userId}/accessories`),
+          api.get(`/users/${userId}/licenses`)
+        ]);
+
+        setAssignedAssets(assetsRes.data);
+        setAssignedAccessories(accessoriesRes.data);
+        setAssignedLicenses(licensesRes.data);
       }
 
     } catch (error) {
       console.error('Fehler beim Laden der Benutzerdaten:', error);
-      setSnackbar({ open: true, message: 'Fehler beim Laden der Benutzerdaten', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Laden der Benutzerdaten',
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
   }, [userId, canViewHistory, canViewAssets]);
 
+  // Lade Dropdown-Optionen
   const loadDropdownOptions = useCallback(async () => {
     try {
-      const [
-        rolesRes,
-        locationsRes,
-        departmentsRes
-      ] = await Promise.all([
-        canViewRoles ? roleApi.getAll() : Promise.resolve([]), // Nur laden, wenn Berechtigung
-        locationApi.getAll(),
-        departmentApi.getAll()
+      const api = useApi();
+      const [rolesRes, locationsRes, departmentsRes] = await Promise.all([
+        api.get('/roles'),
+        api.get('/locations'),
+        api.get('/departments')
       ]);
 
-      setRoleOptions(rolesRes || []);
-      setLocationOptions(locationsRes || []);
-      setDepartmentOptions(departmentsRes || []);
-
+      setRoleOptions(rolesRes.data);
+      setLocationOptions(locationsRes.data);
+      setDepartmentOptions(departmentsRes.data);
     } catch (error) {
-      console.error('Fehler beim Laden der Dropdown-Optionen:', error);
-      setSnackbar({ open: true, message: 'Fehler beim Laden einiger Dropdown-Optionen.', severity: 'error' });
+      console.error('Fehler beim Laden der Optionen:', error);
     }
-  }, [canViewRoles]);
+  }, []);
 
+  // Initialisiere Daten beim Komponenten-Mount
   useEffect(() => {
     loadUserData();
     loadDropdownOptions();

@@ -66,12 +66,12 @@ const Users: React.FC = () => {
     },
     {
       label: 'Aktionen',
-      dataKey: 'id',
+      dataKey: 'actions',
       width: 80,
-      render: (id: string, row: User) => (
+      render: (_value: any, row: User) => (
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <Tooltip title="Details anzeigen">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleViewUser(Number(id)); }}>
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleViewUser(Number(row.id)); }}>
               <VisibilityIcon fontSize="small" />
             </IconButton>
           </Tooltip>
