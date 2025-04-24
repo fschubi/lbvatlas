@@ -9,17 +9,11 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
-  IconButton,
-  Tooltip,
   Snackbar,
   Alert,
   FormControlLabel,
   Switch as MuiSwitch,
   CircularProgress,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
   Chip,
   Grid,
   Link as MuiLink,
@@ -27,12 +21,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  MoreVert as MoreVertIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Visibility as ViewIcon,
   Business as BusinessIcon,
-  Refresh as RefreshIcon,
   Link as LinkIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
@@ -44,6 +33,7 @@ import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import { Manufacturer, ManufacturerCreate, ManufacturerUpdate } from '../../types/settings';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
 import { ApiResponse } from '../../utils/api';
+import { MenuAction } from '../../components/TableContextMenu';
 
 // Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
 interface FormField<T> {
@@ -81,13 +71,6 @@ const Manufacturers: React.FC = () => {
     message: '',
     severity: 'info'
   });
-
-  // Kontextmenü
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    manufacturerId: number;
-  } | null>(null);
 
   // Load manufacturers
   const loadManufacturers = useCallback(async () => {
@@ -169,25 +152,6 @@ const Manufacturers: React.FC = () => {
           size="small"
           variant="outlined"
         />
-      )
-    },
-    {
-      dataKey: 'actions',
-      label: 'Aktionen',
-      width: 120,
-      render: (_, row) => (
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Tooltip title="Bearbeiten">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
-              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Löschen">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
-              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
       )
     }
   ];
@@ -405,48 +369,20 @@ const Manufacturers: React.FC = () => {
     return isValid;
   };
 
-  // Handlefunktionen für das Kontextmenü
-  const handleContextMenu = (event: React.MouseEvent, manufacturerId: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      manufacturerId
-    });
-  };
-
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
-
-  const handleContextMenuView = () => {
-    if (contextMenu) {
-      const manufacturer = manufacturers.find(m => m.id === contextMenu.manufacturerId);
-      if (manufacturer) {
+  // Handhabung der Aktionen aus dem Kontextmenü
+  const handleContextMenuAction = (actionType: MenuAction | string, manufacturer: Manufacturer) => {
+    switch (actionType) {
+      case 'view':
         handleViewManufacturer(manufacturer);
-      }
-      handleContextMenuClose();
-    }
-  };
-
-  const handleContextMenuEdit = () => {
-    if (contextMenu) {
-      const manufacturer = manufacturers.find(m => m.id === contextMenu.manufacturerId);
-      if (manufacturer) {
+        break;
+      case 'edit':
         handleEdit(manufacturer);
-      }
-      handleContextMenuClose();
-    }
-  };
-
-  const handleContextMenuDelete = () => {
-    if (contextMenu) {
-      const manufacturer = manufacturers.find(m => m.id === contextMenu.manufacturerId);
-      if (manufacturer) {
+        break;
+      case 'delete':
         handleDeleteRequest(manufacturer);
-      }
-      handleContextMenuClose();
+        break;
+      default:
+        console.warn(`[Manufacturers] Unbekannte Aktion: ${actionType}`);
     }
   };
 
@@ -481,11 +417,6 @@ const Manufacturers: React.FC = () => {
         >
           Neuer Hersteller
         </Button>
-        <Tooltip title="Daten neu laden">
-          <IconButton onClick={loadManufacturers} color="primary">
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -502,40 +433,13 @@ const Manufacturers: React.FC = () => {
             emptyMessage="Keine Hersteller vorhanden"
             initialSortColumn="name"
             initialSortDirection="asc"
+            onRowClick={handleViewManufacturer}
+            useContextMenu={true}
+            onContextMenuAction={handleContextMenuAction}
+            contextMenuUsePosition={true}
           />
         )}
       </Paper>
-
-      {/* Kontextmenü */}
-      <Menu
-        open={contextMenu !== null}
-        onClose={handleContextMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-      >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
-          </ListItemIcon>
-          <ListItemText primary="Anzeigen" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-          </ListItemIcon>
-          <ListItemText primary="Bearbeiten" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-          </ListItemIcon>
-          <ListItemText primary="Löschen" />
-        </MenuItem>
-      </Menu>
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>

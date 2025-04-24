@@ -26,7 +26,13 @@ import {
   CircularProgress,
   ListItemSecondaryAction,
   ListItemIcon,
-  Checkbox
+  Checkbox,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Autocomplete
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -41,11 +47,17 @@ import {
   VisibilityOff as VisibilityOffIcon,
   Add as AddIcon,
   Group as GroupIcon,
-  PersonAdd as PersonAddIcon
+  PersonAdd as PersonAddIcon,
+  Check as CheckIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import MainLayout from '../layout/MainLayout';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
 import { SelectChangeEvent } from '@mui/material';
+import UserDetailTabs from '../components/users/UserDetailTabs';
+import UserDevicesTab from '../components/users/UserDevicesTab';
+import UserLicensesTab from '../components/users/UserLicensesTab';
+import UserCertificatesTab from '../components/users/UserCertificatesTab';
 
 // Interface für Benutzer
 interface User {
@@ -63,6 +75,10 @@ interface User {
   createdAt: string;
   lastLogin?: string;
   notes?: string;
+  displayName?: string;
+  standort?: string;
+  raum?: string;
+  updatedAt?: string;
 }
 
 // Interface für zugewiesenes Gerät
@@ -472,12 +488,15 @@ const UserDetail: React.FC = () => {
                 onChange={handleTabChange}
                 indicatorColor="primary"
                 textColor="primary"
+                variant="scrollable"
+                scrollButtons="auto"
               >
                 <Tab label="Übersicht" />
                 <Tab label="Geräte" disabled={isNewUser} />
                 <Tab label="Lizenzen" disabled={isNewUser} />
                 <Tab label="Gruppen" disabled={isNewUser} />
                 <Tab label="Aktivitäten" disabled={isNewUser} />
+                <Tab label="Zertifikate" disabled={isNewUser} />
               </Tabs>
             </Paper>
 
@@ -485,281 +504,108 @@ const UserDetail: React.FC = () => {
             <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
               {/* Benutzerdetails */}
               <Paper sx={{ bgcolor: '#1E1E1E', color: 'white', p: 3, mb: 3 }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#90caf9' }}>
-                  Persönliche Informationen
-                </Typography>
-
                 <Grid container spacing={3}>
-                  <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth sx={{ mb: 2 }} disabled={!isEditing}>
-                      <InputLabel id="title-label" sx={{ color: '#aaa' }}>Anrede</InputLabel>
-                      <Select
-                        labelId="title-label"
-                        name="title"
-                        value={user.title}
-                        onChange={handleInputChange}
-                        label="Anrede"
-                        sx={{ color: 'white' }}
-                      >
-                        <MenuItem value="Herr">Herr</MenuItem>
-                        <MenuItem value="Frau">Frau</MenuItem>
-                        <MenuItem value="Divers">Divers</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Vorname"
-                      name="firstName"
-                      value={user.firstName}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      required
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Nachname"
-                      name="lastName"
-                      value={user.lastName}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      required
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Benutzername</Typography>
+                      <Typography variant="body1">{user.username}</Typography>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="E-Mail"
-                      name="email"
-                      value={user.email}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      required
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">E-Mail</Typography>
+                      <Typography variant="body1">{user.email}</Typography>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Telefon"
-                      name="phone"
-                      value={user.phone}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <Divider sx={{ bgcolor: '#333', my: 2 }} />
-                    <Typography variant="h6" sx={{ mb: 2, color: '#90caf9' }}>
-                      Organisatorische Informationen
-                    </Typography>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Vorname</Typography>
+                      <Typography variant="body1">{user.firstName}</Typography>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth sx={{ mb: 2 }} disabled={!isEditing}>
-                      <InputLabel id="department-label" sx={{ color: '#aaa' }}>Abteilung</InputLabel>
-                      <Select
-                        labelId="department-label"
-                        name="department"
-                        value={user.department}
-                        onChange={handleInputChange}
-                        label="Abteilung"
-                        sx={{ color: 'white' }}
-                      >
-                        <MenuItem value="IT">IT</MenuItem>
-                        <MenuItem value="Vertrieb">Vertrieb</MenuItem>
-                        <MenuItem value="Marketing">Marketing</MenuItem>
-                        <MenuItem value="Buchhaltung">Buchhaltung</MenuItem>
-                        <MenuItem value="Entwicklung">Entwicklung</MenuItem>
-                        <MenuItem value="Management">Management</MenuItem>
-                      </Select>
-                    </FormControl>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Nachname</Typography>
+                      <Typography variant="body1">{user.lastName}</Typography>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Position"
-                      name="position"
-                      value={user.position}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <Divider sx={{ bgcolor: '#333', my: 2 }} />
-                    <Typography variant="h6" sx={{ mb: 2, color: '#90caf9' }}>
-                      Systemzugang
-                    </Typography>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Anzeigename</Typography>
+                      <Typography variant="body1">{user.displayName || `${user.firstName} ${user.lastName}`}</Typography>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Benutzername"
-                      name="username"
-                      value={user.username}
-                      onChange={handleInputChange}
-                      fullWidth
-                      disabled={!isEditing}
-                      required
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Rolle</Typography>
+                      <Typography variant="body1">{user.role}</Typography>
+                    </Box>
                   </Grid>
 
-                  {(isNewUser || isEditing) && (
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        label="Passwort"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        fullWidth
-                        required={isNewUser}
-                        InputLabelProps={{ sx: { color: '#aaa' } }}
-                        InputProps={{
-                          endAdornment: (
-                            <IconButton
-                              onClick={togglePasswordVisibility}
-                              edge="end"
-                              sx={{ color: '#aaa' }}
-                            >
-                              {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                            </IconButton>
-                          ),
-                        }}
-                        sx={{
-                          mb: 2,
-                          '& .MuiOutlinedInput-root': {
-                            color: 'white',
-                            '& fieldset': { borderColor: '#444' },
-                            '&:hover fieldset': { borderColor: '#666' },
-                          }
-                        }}
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Abteilung</Typography>
+                      <Typography variant="body1">{user.department || '-'}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Standort</Typography>
+                      <Typography variant="body1">{user.standort || 'Haus A'}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Raum</Typography>
+                      <Typography variant="body1">{user.raum || 'R-309'}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Telefon</Typography>
+                      <Typography variant="body1">{user.phone || '-'}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Status</Typography>
+                      <Chip
+                        label={user.status}
+                        color={user.status === 'Aktiv' ? 'success' : 'default'}
+                        size="small"
+                        sx={{ mt: 0.5 }}
                       />
-                    </Grid>
-                  )}
-
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth sx={{ mb: 2 }} disabled={!isEditing}>
-                      <InputLabel id="role-label" sx={{ color: '#aaa' }}>Rolle</InputLabel>
-                      <Select
-                        labelId="role-label"
-                        name="role"
-                        value={user.role}
-                        onChange={handleInputChange}
-                        label="Rolle"
-                        sx={{ color: 'white' }}
-                      >
-                        <MenuItem value="Administrator">Administrator</MenuItem>
-                        <MenuItem value="Benutzer">Benutzer</MenuItem>
-                        <MenuItem value="Manager">Manager</MenuItem>
-                        <MenuItem value="Techniker">Techniker</MenuItem>
-                        <MenuItem value="Gast">Gast</MenuItem>
-                      </Select>
-                    </FormControl>
+                    </Box>
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth sx={{ mb: 2 }} disabled={!isEditing}>
-                      <InputLabel id="status-label" sx={{ color: '#aaa' }}>Status</InputLabel>
-                      <Select
-                        labelId="status-label"
-                        name="status"
-                        value={user.status}
-                        onChange={handleInputChange}
-                        label="Status"
-                        sx={{ color: 'white' }}
-                      >
-                        <MenuItem value="Aktiv">Aktiv</MenuItem>
-                        <MenuItem value="Inaktiv">Inaktiv</MenuItem>
-                        <MenuItem value="Gesperrt">Gesperrt</MenuItem>
-                        <MenuItem value="Urlaub">Urlaub</MenuItem>
-                      </Select>
-                    </FormControl>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Letzter Login</Typography>
+                      <Typography variant="body1">{user.lastLogin || 'Nie'}</Typography>
+                    </Box>
                   </Grid>
 
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Notizen"
-                      name="notes"
-                      value={user.notes || ''}
-                      onChange={handleInputChange}
-                      fullWidth
-                      multiline
-                      rows={4}
-                      disabled={!isEditing}
-                      InputLabelProps={{ sx: { color: '#aaa' } }}
-                      sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                          color: 'white',
-                          '& fieldset': { borderColor: '#444' },
-                          '&:hover fieldset': { borderColor: '#666' },
-                        }
-                      }}
-                    />
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Erstellt am</Typography>
+                      <Typography variant="body1">{user.createdAt}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Aktualisiert am</Typography>
+                      <Typography variant="body1">{user.updatedAt || user.createdAt}</Typography>
+                    </Box>
                   </Grid>
                 </Grid>
               </Paper>
@@ -1052,6 +898,16 @@ const UserDetail: React.FC = () => {
                     </ListItem>
                   ))}
                 </List>
+              </Paper>
+            </Box>
+
+            {/* Zertifikate-Tab */}
+            <Box sx={{ display: tabValue === 5 ? 'block' : 'none' }}>
+              <Paper sx={{ bgcolor: '#1E1E1E', color: 'white', p: 3 }}>
+                <UserCertificatesTab
+                  userId={Number(id)}
+                  userName={user.firstName + ' ' + user.lastName}
+                />
               </Paper>
             </Box>
           </>

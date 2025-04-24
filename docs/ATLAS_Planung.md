@@ -1,4 +1,3 @@
-
 # 🧭 ATLAS – Advanced Tracking and Logistics Asset System
 
 **Version: Projektplanung – Stand vor der Entwicklung**

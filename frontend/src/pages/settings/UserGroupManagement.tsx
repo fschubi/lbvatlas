@@ -38,6 +38,7 @@ import { userGroupApi, usersApi, ApiResponse } from '../../utils/api';
 import handleApiError from '../../utils/errorHandler';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import { MenuAction } from '../../components/TableContextMenu';
 
 interface SnackbarState {
   open: boolean;
@@ -68,9 +69,9 @@ const UserGroupManagement: React.FC = () => {
   const [groupToDelete, setGroupToDelete] = useState<UserGroup | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'success' });
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const [menuSelectedItem, setMenuSelectedItem] = useState<UserGroup | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState<boolean>(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
 
@@ -306,21 +307,26 @@ const UserGroupManagement: React.FC = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
+  const handleGroupMenuAction = (actionType: MenuAction | string, row: UserGroup) => {
+    switch (actionType) {
+      case 'view':
+        setSelectedGroup(row);
+        break;
+      case 'edit':
+        handleOpenEditDialog('edit', row);
+        break;
+      case 'delete':
+        handleDeleteRequest(row);
+        break;
+      default:
+        console.warn(`[UserGroupManagement] Unbekannte Aktion: ${actionType}`);
+    }
+  };
+
   const groupColumns: AtlasColumn<UserGroup>[] = [
     { label: 'Name', dataKey: 'name', width: 250 },
     { label: 'Beschreibung', dataKey: 'description', width: 400 },
-    { label: 'Mitglieder', dataKey: 'userCount', numeric: true, width: 100, render: (value) => value ?? 0 },
-    { label: 'Aktionen', dataKey: 'actions', width: 120, render: (_value: any, row: UserGroup) => (
-      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-        <IconButton
-          size="small"
-          onClick={(e) => handleMenuOpen(e, row.id)}
-          aria-label="Aktionen"
-        >
-          <MoreVertIcon fontSize="small" />
-        </IconButton>
-      </Box>
-    )}
+    { label: 'Mitglieder', dataKey: 'userCount', numeric: true, width: 100, render: (value) => value ?? 0 }
   ];
 
   const userColumns: AtlasColumn<User>[] = [
@@ -338,53 +344,6 @@ const UserGroupManagement: React.FC = () => {
         </Tooltip>
     )}
   ];
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, id: number) => {
-    console.log("Menu wird geöffnet für Gruppe mit ID:", id);
-    event.preventDefault();
-    event.stopPropagation();
-
-    setMenuAnchorEl(event.currentTarget);
-    setMenuPosition({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      groupId: id
-    });
-
-    setSelectedGroupId(id);
-    const group = groups.find(g => g.id === id) || null;
-    setMenuSelectedItem(group);
-  };
-
-  const handleMenuClose = () => {
-    console.log('Closing menu');
-    setMenuAnchorEl(null);
-    setMenuPosition(null);
-    setMenuSelectedItem(null);
-  };
-
-  const handleViewGroup = () => {
-    console.log("Ansehen-Funktion aufgerufen für Gruppe:", selectedGroupId);
-    handleMenuClose();
-    setSelectedGroup(groups.find(group => group.id === selectedGroupId) || null);
-    setViewDialogOpen(true);
-  };
-
-  const handleEditGroup = () => {
-    console.log('Edit group clicked:', menuSelectedItem?.name);
-    if (menuSelectedItem) {
-      handleOpenEditDialog('edit', menuSelectedItem);
-      handleMenuClose();
-    }
-  };
-
-  const handleDeleteGroup = () => {
-    console.log('Delete group clicked:', menuSelectedItem?.name);
-    if (menuSelectedItem) {
-      handleDeleteRequest(menuSelectedItem);
-      handleMenuClose();
-    }
-  };
 
   if (loading && groups.length === 0) {
     return (
@@ -421,6 +380,9 @@ const UserGroupManagement: React.FC = () => {
            emptyMessage="Keine Benutzergruppen gefunden."
            height={400}
            stickyHeader
+           useContextMenu={true}
+           onContextMenuAction={handleGroupMenuAction}
+           contextMenuUsePosition={true}
         />
       </Paper>
 
@@ -558,50 +520,6 @@ const UserGroupManagement: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-
-      <Menu
-        anchorEl={menuAnchorEl}
-        open={Boolean(menuAnchorEl)}
-        onClose={handleMenuClose}
-        onClick={(e) => e.stopPropagation()}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          menuPosition !== null
-            ? { top: menuPosition.mouseY, left: menuPosition.mouseX }
-            : undefined
-        }
-        PaperProps={{
-          sx: {
-            minWidth: 180,
-            boxShadow: 4,
-            '& .MuiMenuItem-root': {
-              px: 2,
-              py: 1.5,
-            }
-          }
-        }}
-        MenuListProps={{ dense: true }}
-      >
-        <MenuItem onClick={handleViewGroup}>
-          <ListItemIcon>
-            <VisibilityIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Anzeigen" />
-        </MenuItem>
-        <MenuItem onClick={handleEditGroup}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Bearbeiten" />
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={handleDeleteGroup} sx={{ color: 'error.main' }}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" color="error" />
-          </ListItemIcon>
-          <ListItemText primary="Löschen" />
-        </MenuItem>
-      </Menu>
     </Box>
   );
 };

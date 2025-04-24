@@ -1,31 +1,29 @@
 export interface User {
-  id: string;
+  id: number;
   username: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name?: string;
   email: string;
   role: string;
-  department_id?: string;
+  department_id?: number | null;
+  location_id?: number | null;
+  room_id?: number | null;
   title?: string;
-  phone?: string;
+  phone?: string | null;
   address?: string;
   postal_code?: string;
   city?: string;
   created_at?: string;
   updated_at?: string;
-  active?: boolean;
-<<<<<<< HEAD
-<<<<<<< HEAD
+  last_login?: string | null;
+  active: boolean;
+  can_receive_emails?: boolean;
   permissions?: string[];
-  departmentName?: string;
-  locationName?: string;
-  roomName?: string;
-  assignedDevicesCount?: number;
-=======
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
-=======
-  permissions?: Set<string>;
->>>>>>> parent of 077dfb62 (grund benutzer verwaltung steht)
+  department?: { id: number; name: string };
+  location?: { id: number; name: string };
+  room?: { id: number; name: string };
+  assigned_devices_count?: number;
 }
 
 export type Department = {
@@ -35,12 +33,28 @@ export type Department = {
   location_id?: number;
 };
 
+export type Location = {
+  id: number;
+  name: string;
+  description?: string;
+};
+
+export type Room = {
+  id: number;
+  name: string;
+  location_id: number;
+  description?: string;
+};
+
 export interface UserFilters {
   name?: string;
   department?: string;
+  location?: string;
+  room?: string;
   role?: string;
   email?: string;
   search?: string;
+  active?: boolean | string;
 }
 
 export interface UserGroup {
@@ -57,7 +71,6 @@ export interface UserGroup {
 export interface Role {
   id: number;
   name: string;
-<<<<<<< HEAD
   description?: string;
   is_system: boolean;
   created_at?: string;
@@ -73,7 +86,4 @@ export interface Permission {
   module: string;
   action: string;
   category?: string;
-=======
-  label: string;
->>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 }

@@ -172,4 +172,25 @@ router.put('/:id', [
  */
 router.delete('/:id', [authMiddleware, checkRole(['admin'])], UserController.deleteUser);
 
+/**
+ * @route   GET /api/users/:userId/devices
+ * @desc    Geräte abrufen, die einem Benutzer zugeordnet sind
+ * @access  Private (Admin) // Oder je nach Berechtigungskonzept anpassen
+ */
+router.get('/:userId/devices', [authMiddleware, checkRole(['admin'])], UserController.getUserDevices);
+
+/**
+ * @route   GET /api/users/:userId/licenses
+ * @desc    Lizenzen abrufen, die einem Benutzer zugeordnet sind
+ * @access  Private (Admin) // Oder je nach Berechtigungskonzept anpassen
+ */
+router.get('/:userId/licenses', [authMiddleware, checkRole(['admin'])], UserController.getUserLicenses);
+
+/**
+ * @route   GET /api/users/:userId/accessories
+ * @desc    Zubehör abrufen, das einem Benutzer zugeordnet ist
+ * @access  Private (Admin) // Oder je nach Berechtigungskonzept anpassen
+ */
+router.get('/:userId/accessories', [authMiddleware, checkRole(['admin'])], UserController.getUserAccessories);
+
 module.exports = router;

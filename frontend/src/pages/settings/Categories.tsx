@@ -16,46 +16,41 @@ import {
   FormControlLabel,
   Switch as MuiSwitch,
   CircularProgress,
-  Menu,
-  MenuItem,
   ListItemIcon,
   ListItemText,
-  Chip
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
+  SelectChangeEvent
 } from '@mui/material';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
-  MoreVert as MoreVertIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Visibility as ViewIcon,
   Category as CategoryIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
+import TableContextMenu, { MenuAction } from '../../components/TableContextMenu';
 import { categoryApi } from '../../api/api';
 import handleApiError from '../../utils/errorHandler';
 import { Category, CategoryCreate, CategoryUpdate } from '../../types/settings';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
 
-// Add missing type/interface if needed from the file
-interface SelectOption {
-  id: number;
-  label: string;
-}
-
-// Interface für ContextMenu-Status
-interface ContextMenuState {
-  mouseX: number;
-  mouseY: number;
-  item: Category | null;
-}
-
 // Interface für Snackbar-Status
 interface SnackbarState {
   open: boolean;
   message: string;
   severity: 'success' | 'error' | 'info' | 'warning';
+}
+
+// Korrigiere die SelectOption-Schnittstelle
+interface SelectOption {
+  id: number;
+  label: string;
+  value?: number; // Füge das fehlende value-Feld hinzu
 }
 
 const Categories = () => {
@@ -69,11 +64,12 @@ const Categories = () => {
   const [currentCategory, setCurrentCategory] = useState<Category | null>(null);
   const [newCategoryName, setNewCategoryName] = useState<string>('');
   const [newCategoryDescription, setNewCategoryDescription] = useState<string>('');
-  const [newCategoryParentId, setNewCategoryParentId] = useState<number | ''>('');
+  const [newCategoryParentId, setNewCategoryParentId] = useState<number | null>(null);
   const [newCategoryIsActive, setNewCategoryIsActive] = useState<boolean>(true);
-  const [parentCategoryOptions, setParentCategoryOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [parentCategoryOptions, setParentCategoryOptions] = useState<SelectOption[]>([]);
   const [nameError, setNameError] = useState<string>('');
   const [parentError, setParentError] = useState<string>('');
+  const [viewOnly, setViewOnly] = useState<boolean>(false); // Neue State-Variable für Nur-Lese-Modus
 
   // State für Snackbar
   const [snackbar, setSnackbar] = useState<SnackbarState>({
@@ -85,9 +81,6 @@ const Categories = () => {
   // State für ConfirmationDialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
   const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
-
-  // State für ContextMenu
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // State für Suche
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -116,7 +109,7 @@ const Categories = () => {
           }}
           onClick={(e) => {
             e.stopPropagation();
-            handleViewCategory(row);
+            handleViewDetailsOnly(row);
           }}
         >
           {value}
@@ -144,23 +137,10 @@ const Categories = () => {
       render: (value) => value ? new Date(value as string).toLocaleDateString('de-DE') : '-'
     },
     {
-      dataKey: 'actions',
-      label: 'Aktionen',
-      width: 120,
-      render: (_, row) => (
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Tooltip title="Bearbeiten">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
-              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Löschen">
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
-              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      )
+      dataKey: 'parentId',
+      label: 'Elternkategorie',
+      width: 180,
+      render: (value) => getParentCategoryName(value as number | null)
     }
   ];
 
@@ -181,7 +161,7 @@ const Categories = () => {
       if (Array.isArray(fetchedCategories)) { // Prüfe zur Sicherheit
         const options = fetchedCategories.reduce((acc: SelectOption[], cat: Category) => {
             if (cat.isActive) {
-                acc.push({ id: cat.id, label: cat.name });
+                acc.push({ id: cat.id, label: cat.name, value: cat.id });
             }
             return acc;
         }, []);
@@ -217,7 +197,7 @@ const Categories = () => {
     setCurrentCategory(null);
     setNewCategoryName('');
     setNewCategoryDescription('');
-    setNewCategoryParentId('');
+    setNewCategoryParentId(null);
     setNewCategoryIsActive(true);
     setModalOpen(true);
   };
@@ -228,7 +208,7 @@ const Categories = () => {
     setCurrentCategory(category);
     setNewCategoryName(category.name);
     setNewCategoryDescription(category.description || '');
-    setNewCategoryParentId(category.parentId || '');
+    setNewCategoryParentId(category.parentId || null);
     setNewCategoryIsActive(category.isActive ?? true);
     setModalOpen(true);
   };
@@ -275,8 +255,9 @@ const Categories = () => {
    };
 
   // Dialog schließen
-  const handleCloseDialog = () => {
+  const handleCloseModal = () => {
     setModalOpen(false);
+    resetForm();
   };
 
   // Speichern der Kategorie
@@ -298,12 +279,17 @@ const Categories = () => {
         }
     }
 
-    const categoryData: CategoryCreate | CategoryUpdate = {
+    // Erstellen eines typkonformen Objekts - parentId verarbeiten
+    const categoryData = {
       name: newCategoryName.trim(),
       description: newCategoryDescription.trim(),
       isActive: newCategoryIsActive,
-      parentId: typeof newCategoryParentId === 'number' ? newCategoryParentId : null,
-    };
+    } as CategoryCreate | CategoryUpdate;
+
+    // Nur setzen wenn nicht null, sonst weglassen (undefined)
+    if (newCategoryParentId !== null) {
+      categoryData.parentId = newCategoryParentId;
+    }
 
     setLoading(true); // Indicate loading during save
     try {
@@ -337,60 +323,76 @@ const Categories = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  // Handlefunktionen für das Kontextmenü
-  const handleContextMenu = (event: React.MouseEvent, categoryId: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
-      item: categories.find(c => c.id === categoryId) || null
-    });
-  };
-
-  const handleContextMenuClose = () => {
-    setContextMenu(null);
-  };
-
-  const handleContextMenuView = () => {
-    if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.item?.id);
-      if (category) {
-        handleViewCategory(category);
-      }
-      handleContextMenuClose();
-    }
-  };
-
-  const handleContextMenuEdit = () => {
-    if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.item?.id);
-      if (category) {
+  // Handler für Aktionen aus dem Kontextmenü
+  const handleContextMenuAction = (actionType: MenuAction | string, category: Category) => {
+    switch (actionType) {
+      case 'view':
+        handleViewDetailsOnly(category);
+        break;
+      case 'edit':
         handleEdit(category);
-      }
-      handleContextMenuClose();
-    }
-  };
-
-  const handleContextMenuDelete = () => {
-    if (contextMenu) {
-      const category = categories.find(c => c.id === contextMenu.item?.id);
-      if (category) {
+        break;
+      case 'delete':
         handleDeleteRequest(category);
-      }
-      handleContextMenuClose();
+        break;
+      default:
+        console.warn(`Unbekannte Aktion: ${actionType}`);
     }
   };
 
-  // Neue Funktion für die Anzeige der Kategorie beim Klick auf den Namen
-  const handleViewCategory = (category: Category) => {
+  // Separate Funktion für die Nur-Lese-Ansicht
+  const handleViewDetailsOnly = (category: Category) => {
     setIsEditing(false);
+    setViewOnly(true);
     setCurrentCategory(category);
     setNewCategoryName(category.name);
     setNewCategoryDescription(category.description || '');
-    setNewCategoryParentId(category.parentId || '');
+    setNewCategoryParentId(category.parentId || null);
     setNewCategoryIsActive(category.isActive ?? true);
     setModalOpen(true);
+  };
+
+  // Neue Funktion für die Anzeige der Kategorie beim Klick auf den Namen - bearbeitbar
+  const handleViewCategory = (category: Category) => {
+    setIsEditing(false);
+    setViewOnly(false);
+    setCurrentCategory(category);
+    setNewCategoryName(category.name);
+    setNewCategoryDescription(category.description || '');
+    setNewCategoryParentId(category.parentId || null);
+    setNewCategoryIsActive(category.isActive ?? true);
+    setModalOpen(true);
+  };
+
+  // Formular zurücksetzen
+  const resetForm = () => {
+    setIsEditing(false);
+    setViewOnly(false);
+    setCurrentCategory(null);
+    setNewCategoryName('');
+    setNewCategoryDescription('');
+    setNewCategoryParentId(null);
+    setNewCategoryIsActive(true);
+    setNameError('');
+    setParentError('');
+  };
+
+  // Dropdown Wertänderung für Parent-Kategorie
+  const handleParentChange = (event: SelectChangeEvent) => {
+    const value = event.target.value;
+    if (value === '' || value === 'none') {
+      setNewCategoryParentId(null);
+    } else {
+      setNewCategoryParentId(Number(value));
+    }
+    setParentError('');
+  };
+
+  // Funktion um Elternkategorie-Namen zu erhalten
+  const getParentCategoryName = (parentId: number | null | undefined): string => {
+    if (!parentId) return 'Keine';
+    const parent = categories.find(cat => cat.id === parentId);
+    return parent ? parent.name : 'Unbekannt';
   };
 
   return (
@@ -424,11 +426,6 @@ const Categories = () => {
         >
           Neue Kategorie
         </Button>
-        <Tooltip title="Daten neu laden">
-          <IconButton onClick={handleRefresh} color="primary">
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -445,108 +442,118 @@ const Categories = () => {
             emptyMessage="Keine Kategorien vorhanden"
             initialSortColumn="name"
             initialSortDirection="asc"
-            onRowClick={handleViewCategory}
+            onRowClick={handleViewDetailsOnly}
+            useContextMenu={true}
+            onContextMenuAction={handleContextMenuAction}
+            contextMenuUsePosition={true}
           />
         )}
       </Paper>
 
-      {/* Kontextmenü */}
-      <Menu
-        open={contextMenu !== null}
-        onClose={handleContextMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-            : undefined
-        }
-      >
-        <MenuItem onClick={handleContextMenuView}>
-          <ListItemIcon>
-            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
-          </ListItemIcon>
-          <ListItemText primary="Anzeigen" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuEdit}>
-          <ListItemIcon>
-            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
-          </ListItemIcon>
-          <ListItemText primary="Bearbeiten" />
-        </MenuItem>
-        <MenuItem onClick={handleContextMenuDelete}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
-          </ListItemIcon>
-          <ListItemText primary="Löschen" />
-        </MenuItem>
-      </Menu>
-
-      {/* Dialog für Erstellen/Bearbeiten */}
-      <Dialog open={modalOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      {/* Dialog für Erstellen/Bearbeiten/Ansehen */}
+      <Dialog open={modalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {isEditing ? `Kategorie bearbeiten: ${currentCategory?.name}` : 'Neue Kategorie erstellen'}
+          {isEditing ? `Kategorie bearbeiten: ${currentCategory?.name}` :
+           viewOnly ? `Kategorie anzeigen: ${currentCategory?.name}` : 'Neue Kategorie erstellen'}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ pt: 1 }}>
             <TextField
-              label="Name"
               fullWidth
+              margin="normal"
+              label="Name"
               value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              required
+              onChange={(e) => {
+                setNewCategoryName(e.target.value);
+                setNameError('');
+              }}
+              disabled={viewOnly}
+              error={!!nameError}
+              helperText={nameError}
+              autoFocus
             />
             <TextField
-              label="Beschreibung"
               fullWidth
-              multiline
-              rows={3}
+              margin="normal"
+              label="Beschreibung"
               value={newCategoryDescription}
               onChange={(e) => setNewCategoryDescription(e.target.value)}
+              multiline
+              rows={3}
+              disabled={viewOnly}
             />
-            <FormControlLabel
-              control={
-                <MuiSwitch
-                  checked={newCategoryIsActive}
-                  onChange={(e) => setNewCategoryIsActive(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Kategorie aktiv"
-            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel id="parent-category-label">Übergeordnete Kategorie</InputLabel>
+              <Select
+                labelId="parent-category-label"
+                value={newCategoryParentId === null ? '' : newCategoryParentId.toString()}
+                onChange={handleParentChange}
+                disabled={viewOnly}
+                error={!!parentError}
+                label="Übergeordnete Kategorie"
+              >
+                <MenuItem value="">Keine</MenuItem>
+                {categories
+                  .filter(cat => cat.id !== currentCategory?.id) // Filter out current category
+                  .map(category => (
+                    <MenuItem key={category.id} value={category.id.toString()}>
+                      {category.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+              {parentError && (
+                <FormHelperText error>{parentError}</FormHelperText>
+              )}
+            </FormControl>
+            <FormControl fullWidth margin="normal">
+              <FormControlLabel
+                control={
+                  <MuiSwitch
+                    checked={newCategoryIsActive}
+                    onChange={(e) => setNewCategoryIsActive(e.target.checked)}
+                    disabled={viewOnly}
+                    color="primary"
+                  />
+                }
+                label="Aktiv"
+              />
+            </FormControl>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="inherit">
+          <Button onClick={handleCloseModal} color="inherit">
             Abbrechen
           </Button>
-          <Button onClick={handleSave} variant="contained" color="primary" disableElevation>
-            Speichern
-          </Button>
+          {!viewOnly && (
+            <Button
+              onClick={handleSave}
+              variant="contained"
+              color="primary"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Speichern'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
-      {/* Confirmation Dialog for Delete */}
+      {/* Bestätigungsdialog für das Löschen */}
       <ConfirmationDialog
         open={confirmDialogOpen}
-        onClose={handleCloseConfirmDialog}
+        title="Kategorie löschen"
+        message={`Sind Sie sicher, dass Sie die Kategorie "${itemToDelete?.name}" löschen möchten?`}
         onConfirm={executeDelete}
-        title="Kategorie löschen?"
-        message={`Möchten Sie die Kategorie "${itemToDelete?.name}" wirklich endgültig löschen? Dies kann nicht rückgängig gemacht werden.`}
-        confirmText="Löschen"
+        onClose={handleCloseConfirmDialog}
       />
 
       {/* Snackbar für Benachrichtigungen */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
       </Snackbar>

@@ -1,6 +1,7 @@
 import axios from 'axios';
-import { User, Department, UserRole } from '../types/user';
+import { User, Department, Role } from '../types/user';
 import { ApiResponse } from '../types/api';
+import { Certificate } from '../types/certificate';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -25,10 +26,10 @@ export const userService = {
     }
   },
 
-  getUserRoles: async (): Promise<UserRole[]> => {
+  getUserRoles: async (): Promise<Role[]> => {
     try {
-      const response = await axios.get<ApiResponse<UserRole[]>>(`${API_URL}/users/roles`);
-      return response.data.data as UserRole[];
+      const response = await axios.get<ApiResponse<Role[]>>(`${API_URL}/users/roles`);
+      return response.data.data as Role[];
     } catch (error) {
       console.error('Error fetching user roles:', error);
       throw error;
@@ -84,6 +85,37 @@ export const userService = {
       return true;
     } catch (error) {
       console.error('Error changing password:', error);
+      throw error;
+    }
+  },
+
+  // Methoden für Benutzerzertifikate
+  getUserCertificates: async (userId: number): Promise<Certificate[]> => {
+    try {
+      const response = await axios.get<ApiResponse<Certificate[]>>(`${API_URL}/users/${userId}/certificates`);
+      return response.data.data as Certificate[];
+    } catch (error) {
+      console.error(`Error fetching certificates for user ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  assignCertificateToUser: async (userId: number, certificateId: number): Promise<boolean> => {
+    try {
+      await axios.post(`${API_URL}/users/${userId}/certificates`, { certificateId });
+      return true;
+    } catch (error) {
+      console.error(`Error assigning certificate ${certificateId} to user ${userId}:`, error);
+      throw error;
+    }
+  },
+
+  removeCertificateFromUser: async (userId: number, certificateId: number): Promise<boolean> => {
+    try {
+      await axios.delete(`${API_URL}/users/${userId}/certificates/${certificateId}`);
+      return true;
+    } catch (error) {
+      console.error(`Error removing certificate ${certificateId} from user ${userId}:`, error);
       throw error;
     }
   }

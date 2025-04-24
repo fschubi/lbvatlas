@@ -128,6 +128,9 @@ export const usersApi = {
   create: (data: any): Promise<ApiResponse<User>> => apiRequest<User>('/users', 'POST', data),
   update: (id: number, data: any): Promise<ApiResponse<User>> => apiRequest<User>(`/users/${id}`, 'PUT', data),
   delete: (id: number): Promise<ApiResponse<{ message?: string }>> => apiRequest<{ message?: string }>(`/users/${id}`, 'DELETE'),
+  getUserDevices: (userId: number): Promise<ApiResponse<any[]>> => apiRequest<any[]>(`/users/${userId}/devices`),
+  getUserLicenses: (userId: number): Promise<ApiResponse<any[]>> => apiRequest<any[]>(`/users/${userId}/licenses`),
+  getUserAccessories: (userId: number): Promise<ApiResponse<any[]>> => apiRequest<any[]>(`/users/${userId}/accessories`),
 };
 
 export const roleApi = {
@@ -669,7 +672,7 @@ const allApis = {
     networkOutletsApi,
     userGroupApi,
 };
-export default allApis;
 
-export { axiosInstance, apiRequest };
+// Verify if axiosInstance and apiRequest need individual export
+export { axiosInstance, apiRequest }; // Keep this if needed elsewhere
 
