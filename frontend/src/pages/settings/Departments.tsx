@@ -16,10 +16,19 @@ import {
   FormControlLabel,
   Switch as MuiSwitch,
   CircularProgress,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
   Chip
 } from '@mui/material';
 import {
   Add as AddIcon,
+  Refresh as RefreshIcon,
+  MoreVert as MoreVertIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Visibility as ViewIcon,
   Business as BusinessIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
@@ -28,7 +37,6 @@ import handleApiError from '../../utils/errorHandler';
 import { Department, DepartmentCreate, DepartmentUpdate } from '../../types/settings';
 import { toCamelCase } from '../../utils/caseConverter';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
-import { MenuAction } from '../../components/TableContextMenu';
 
 const Departments: React.FC = () => {
   // State für die Daten
@@ -54,6 +62,13 @@ const Departments: React.FC = () => {
     message: '',
     severity: 'info'
   });
+
+  // Neuer State für das Kontextmenü
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    departmentId: number;
+  } | null>(null);
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [departmentToDelete, setDepartmentToDelete] = useState<Department | null>(null);
@@ -102,6 +117,25 @@ const Departments: React.FC = () => {
       label: 'Erstellt am',
       width: 180,
       render: (value) => value ? new Date(value as string).toLocaleDateString('de-DE') : '-'
+    },
+    {
+      dataKey: 'actions',
+      label: 'Aktionen',
+      width: 120,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
     }
   ];
 
@@ -271,25 +305,64 @@ const Departments: React.FC = () => {
     }
   };
 
+  // Aktualisieren der Daten
+  const handleRefresh = () => {
+    loadDepartments();
+  };
+
   // Snackbar schließen
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  // Handler für Kontextmenü-Aktionen
-  const handleContextMenuAction = (actionType: MenuAction | string, department: Department) => {
-    switch (actionType) {
-      case 'view':
-        handleViewDepartment(department);
-        break;
-      case 'edit':
+  // Handlefunktionen für das Kontextmenü
+  const handleContextMenu = (event: React.MouseEvent, departmentId: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      departmentId
+    });
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuView = () => {
+    if (contextMenu) {
+      const department = departments.find(d => d.id === contextMenu.departmentId);
+      if (department) {
+        setEditMode(false);
+        setReadOnly(true);
+        setCurrentDepartment(department);
+        setName(department.name);
+        setDescription(department.description);
+        setIsActive(department.isActive ?? true);
+        setDialogOpen(true);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuEdit = () => {
+    if (contextMenu) {
+      const department = departments.find(d => d.id === contextMenu.departmentId);
+      if (department) {
         handleEdit(department);
-        break;
-      case 'delete':
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuDelete = () => {
+    if (contextMenu) {
+      const department = departments.find(d => d.id === contextMenu.departmentId);
+      if (department) {
         handleDeleteRequest(department);
-        break;
-      default:
-        console.warn(`Unbekannte Aktion: ${actionType}`);
+      }
+      handleContextMenuClose();
     }
   };
 
@@ -337,7 +410,7 @@ const Departments: React.FC = () => {
         </Button>
       </Box>
 
-      {/* Tabelle mit TableContextMenu */}
+      {/* Tabelle */}
       <Paper elevation={3} sx={{ mb: 3, overflow: 'hidden' }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -351,12 +424,40 @@ const Departments: React.FC = () => {
             emptyMessage="Keine Abteilungen vorhanden"
             initialSortColumn="name"
             initialSortDirection="asc"
-            useContextMenu={true}
-            onContextMenuAction={handleContextMenuAction}
-            contextMenuUsePosition={true}
           />
         )}
       </Paper>
+
+      {/* Kontextmenü */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleContextMenuView}>
+          <ListItemIcon>
+            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
+          </ListItemIcon>
+          <ListItemText primary="Anzeigen" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuEdit}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+          </ListItemIcon>
+          <ListItemText primary="Bearbeiten" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuDelete}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+          </ListItemIcon>
+          <ListItemText primary="Löschen" />
+        </MenuItem>
+      </Menu>
 
       {/* Dialog für Erstellen/Bearbeiten */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

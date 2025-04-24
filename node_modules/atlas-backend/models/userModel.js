@@ -393,96 +393,60 @@ const createUser = async (userData) => {
  * Benutzer aktualisieren
  * @param {number} id - Benutzer-ID
  * @param {Object} userData - Zu aktualisierende Benutzerdaten
- * @returns {Promise<Object|null>} - Aktualisiertes Benutzerobjekt oder null
+ * @returns {Promise<Object>} - Aktualisierter Benutzer
  */
 const updateUser = async (id, userData) => {
   try {
-    // Vorhandenen Benutzer laden, um ggf. Vergleiche anzustellen (optional)
-    const currentUser = await getUserById(id);
-    if (!currentUser) {
-      return null; // Oder Fehler werfen
+    // Ermittle aktuelle Daten für Felder, die nicht aktualisiert werden
+    const currentUserQuery = 'SELECT * FROM users WHERE id = $1';
+    const currentUser = await pool.query(currentUserQuery, [id]);
+
+    if (currentUser.rows.length === 0) {
+      throw new Error('Benutzer nicht gefunden');
     }
 
-    const fields = [];
-    const values = [];
-    let valueIndex = 1;
-
-    // Update-Felder dynamisch zusammenbauen
-    if (userData.username && userData.username !== currentUser.username) {
-      // Optional: Prüfen, ob der neue Benutzername bereits existiert
-      const existingUser = await getUserByUsername(userData.username);
-      if (existingUser && existingUser.id !== id) {
-        throw new Error('Benutzername existiert bereits');
-      }
-      fields.push(`username = $${valueIndex++}`);
-      values.push(userData.username);
-    }
-    if (userData.email && userData.email !== currentUser.email) {
-      // Optional: Prüfen, ob die neue E-Mail bereits existiert
-      const existingEmail = await getUserByEmail(userData.email);
-      if (existingEmail && existingEmail.id !== id) {
-        throw new Error('E-Mail existiert bereits');
-      }
-      fields.push(`email = $${valueIndex++}`);
-      values.push(userData.email);
-    }
-    if (userData.first_name) { fields.push(`first_name = $${valueIndex++}`); values.push(userData.first_name); }
-    if (userData.last_name) { fields.push(`last_name = $${valueIndex++}`); values.push(userData.last_name); }
-    if (userData.display_name) { fields.push(`display_name = $${valueIndex++}`); values.push(userData.display_name); }
-    if (userData.role) { fields.push(`role = $${valueIndex++}`); values.push(userData.role); }
-    if (userData.department_id) { fields.push(`department_id = $${valueIndex++}`); values.push(userData.department_id); }
-    if (userData.location_id) { fields.push(`location_id = $${valueIndex++}`); values.push(userData.location_id); }
-    if (userData.room_id) { fields.push(`room_id = $${valueIndex++}`); values.push(userData.room_id); }
-    if (userData.phone) { fields.push(`phone = $${valueIndex++}`); values.push(userData.phone); }
-
-    // Explizites Update für 'active'
-    if (userData.active !== undefined) {
-      fields.push(`active = $${valueIndex++}`);
-      values.push(userData.active);
-    }
-
-    // Explizites Update für 'can_receive_emails'
-    if (userData.can_receive_emails !== undefined) {
-      fields.push(`can_receive_emails = $${valueIndex++}`);
-      values.push(userData.can_receive_emails);
-    }
-
-    // Passwort aktualisieren, falls angegeben
+    // Bereite Passwort vor, falls aktualisiert
+    let hashedPassword = currentUser.rows[0].password_hash;
     if (userData.password) {
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(userData.password, salt);
-      fields.push(`password_hash = $${valueIndex++}`);
-      values.push(passwordHash);
+      hashedPassword = await bcrypt.hash(userData.password, salt);
     }
 
-    // Wenn keine Felder zum Aktualisieren vorhanden sind, direkt zurückgeben
-    if (fields.length === 0) {
-      logger.info(`Keine Änderungen für Benutzer mit ID ${id} übermittelt.`);
-      // Optional: Den aktuellen Benutzer erneut abrufen, um sicherzustellen, dass die Daten aktuell sind
-      return await getUserById(id);
-    }
+    const query = `
+      UPDATE users SET
+        username = $1,
+        password_hash = $2,
+        email = $3,
+        first_name = $4,
+        last_name = $5,
+        display_name = $6,
+        department_id = $7,
+        location_id = $8,
+        room_id = $9,
+        role = $10,
+        active = $11,
+        updated_at = NOW()
+      WHERE id = $12
+      RETURNING id, username, email, first_name, last_name, display_name,
+        department_id, location_id, room_id, role, active, created_at, updated_at
+    `;
 
-    // Immer das updated_at Feld aktualisieren
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    const { rows } = await pool.query(query, [
+      userData.username || currentUser.rows[0].username,
+      hashedPassword,
+      userData.email || currentUser.rows[0].email,
+      userData.first_name || currentUser.rows[0].first_name,
+      userData.last_name || currentUser.rows[0].last_name,
+      userData.display_name || currentUser.rows[0].display_name,
+      userData.department_id !== undefined ? userData.department_id : currentUser.rows[0].department_id,
+      userData.location_id !== undefined ? userData.location_id : currentUser.rows[0].location_id,
+      userData.room_id !== undefined ? userData.room_id : currentUser.rows[0].room_id,
+      userData.role || currentUser.rows[0].role,
+      userData.active !== undefined ? userData.active : currentUser.rows[0].active,
+      id
+    ]);
 
-    const setClause = fields.join(', ');
-    const query = `UPDATE users SET ${setClause} WHERE id = $${valueIndex} RETURNING *`;
-    values.push(id);
-
-    const { rows } = await pool.query(query, values);
-
-    if (rows.length === 0) {
-      return null; // Benutzer wurde während des Updates gelöscht?
-    }
-
-    // Entferne password_hash aus der Rückgabe
-    const { password_hash, ...updatedUser } = rows[0];
-
-    // Hole die Namen für Abteilung, Standort, Raum erneut (optional, aber gut für Konsistenz)
-    const detailedUser = await getUserById(updatedUser.id);
-
-    return detailedUser;
-
+    return rows[0];
   } catch (error) {
     logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${id}:`, error);
     throw error;

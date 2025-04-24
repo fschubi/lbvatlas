@@ -41,7 +41,6 @@ import handleApiError from '../../utils/errorHandler';
 import { Location, LocationCreate, LocationUpdate } from '../../types/settings';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
-import { MenuAction } from '../../components/TableContextMenu';
 
 // Schnittstelle für Formularfelder mit Validierungszustand
 interface FormField<T> {
@@ -143,6 +142,81 @@ const Locations: React.FC = () => {
     }
   };
 
+  // Komponente für das Aktionsmenü in jeder Zeile
+  const ActionMenu = ({ location }: { location: Location }) => {
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const open = Boolean(anchorEl);
+
+    const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      setAnchorEl(event.currentTarget);
+    };
+
+    const handleClose = () => {
+      setAnchorEl(null);
+    };
+
+    // Wrapper-Funktionen, die stopPropagation hinzufügen
+    const handleViewClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleView(location);
+      handleClose();
+    };
+
+    const handleEditClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleEdit(location);
+      handleClose();
+    };
+
+    const handleDeleteClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
+      handleDeleteRequest(location);
+      handleClose();
+    };
+
+    return (
+      <>
+        <IconButton
+          aria-label="Aktionen"
+          aria-controls={open ? `actions-menu-${location.id}` : undefined}
+          aria-haspopup="true"
+          aria-expanded={open ? 'true' : undefined}
+          onClick={handleClick}
+          size="small"
+          edge="end"
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          id={`actions-menu-${location.id}`}
+          anchorEl={anchorEl}
+          open={open}
+          onClose={handleClose}
+        >
+          <MenuItem onClick={handleViewClick} sx={{ minWidth: 160 }}>
+            <ListItemIcon>
+              <ViewIcon fontSize="small" sx={{ color: '#2196f3' }} />
+            </ListItemIcon>
+            <ListItemText>Anzeigen</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={handleEditClick}>
+            <ListItemIcon>
+              <EditIcon fontSize="small" sx={{ color: '#4caf50' }} />
+            </ListItemIcon>
+            <ListItemText>Bearbeiten</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={handleDeleteClick}>
+            <ListItemIcon>
+              <DeleteIcon fontSize="small" sx={{ color: '#f44336' }} />
+            </ListItemIcon>
+            <ListItemText>Löschen</ListItemText>
+          </MenuItem>
+        </Menu>
+      </>
+    );
+  };
+
   // Spalten für die AtlasTable-Komponente
   const columns: AtlasColumn[] = [
     {
@@ -206,6 +280,25 @@ const Locations: React.FC = () => {
       sortable: true,
       filterable: true,
       render: (value) => value || 'Deutschland'
+    },
+    {
+      label: 'Aktionen',
+      dataKey: 'actions',
+      width: 120,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
     }
   ];
 
@@ -307,17 +400,6 @@ const Locations: React.FC = () => {
   // Dialog schließen
   const handleCloseDialog = () => {
     setDialogOpen(false);
-    // Zurücksetzen aller Formularfelder
-    setName({ value: '', error: false, helperText: '' });
-    setDescription('');
-    setAddress('');
-    setCity({ value: '', error: false, helperText: '' });
-    setPostalCode('');
-    setCountry('Deutschland');
-    setViewMode(false);
-    setEditMode(false);
-    setReadOnly(false);
-    setCurrentLocation(null);
   };
 
   // Validierung des Formulars
@@ -371,11 +453,6 @@ const Locations: React.FC = () => {
 
   // Speichern des Standorts
   const handleSave = async () => {
-    // Im View-Modus ist keine Bearbeitung möglich
-    if (viewMode) {
-      return;
-    }
-
     // Formular validieren
     const isValid = await validateForm();
     if (!isValid) {
@@ -451,21 +528,48 @@ const Locations: React.FC = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Handler für Kontextmenü-Aktionen
-  const handleContextMenuAction = (actionType: MenuAction | string, location: any) => {
-    const locationItem = location as Location;
-    switch (actionType) {
-      case 'view':
-        handleView(locationItem);
-        break;
-      case 'edit':
-        handleEdit(locationItem);
-        break;
-      case 'delete':
-        handleDeleteRequest(locationItem);
-        break;
-      default:
-        console.warn(`Unbekannte Aktion: ${actionType}`);
+  // Kontextmenü
+  const handleContextMenu = (event: React.MouseEvent, locationId: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      locationId
+    });
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuView = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleView(location);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuEdit = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleEdit(location);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuDelete = () => {
+    if (contextMenu) {
+      const location = locations.find(l => l.id === contextMenu.locationId);
+      if (location) {
+        handleDeleteRequest(location);
+      }
+      handleContextMenuClose();
     }
   };
 
@@ -498,6 +602,11 @@ const Locations: React.FC = () => {
         >
           Neuer Standort
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={handleRefresh} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle mit Standorten */}
@@ -515,12 +624,40 @@ const Locations: React.FC = () => {
             initialSortColumn="name"
             initialSortDirection="asc"
             onRowClick={handleView}
-            useContextMenu={true}
-            onContextMenuAction={handleContextMenuAction}
-            contextMenuUsePosition={true}
           />
         )}
       </Paper>
+
+      {/* Kontextmenü */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleContextMenuView}>
+          <ListItemIcon>
+            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
+          </ListItemIcon>
+          <ListItemText primary="Anzeigen" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuEdit}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+          </ListItemIcon>
+          <ListItemText primary="Bearbeiten" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuDelete}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+          </ListItemIcon>
+          <ListItemText primary="Löschen" />
+        </MenuItem>
+      </Menu>
 
       {/* Dialog für Erstellen/Bearbeiten/Anzeigen */}
       <Dialog
@@ -573,7 +710,6 @@ const Locations: React.FC = () => {
                 }}
                 InputProps={{
                   disableUnderline: true,
-                  readOnly: viewMode,
                   sx: {
                     borderRadius: '4px',
                     bgcolor: 'rgba(255, 255, 255, 0.09)',
@@ -622,7 +758,6 @@ const Locations: React.FC = () => {
                 }}
                 InputProps={{
                   disableUnderline: true,
-                  readOnly: viewMode,
                   sx: {
                     borderRadius: '4px',
                     bgcolor: 'rgba(255, 255, 255, 0.09)',
@@ -665,8 +800,7 @@ const Locations: React.FC = () => {
                   sx: { color: 'text.primary' }
                 }}
                 InputProps={{
-                  disableUnderline: true,
-                  readOnly: viewMode
+                  disableUnderline: true
                 }}
                 sx={{
                   '& .MuiFilledInput-root': {
@@ -699,8 +833,7 @@ const Locations: React.FC = () => {
                       sx: { color: 'text.primary' }
                     }}
                     InputProps={{
-                      disableUnderline: true,
-                      readOnly: viewMode
+                      disableUnderline: true
                     }}
                     sx={{
                       '& .MuiFilledInput-root': {
@@ -730,7 +863,6 @@ const Locations: React.FC = () => {
                     }}
                     InputProps={{
                       disableUnderline: true,
-                      readOnly: viewMode,
                       startAdornment: (
                         <InputAdornment position="start">
                           <PublicIcon sx={{ color: 'text.secondary' }} />
@@ -770,8 +902,7 @@ const Locations: React.FC = () => {
                   sx: { color: 'text.primary' }
                 }}
                 InputProps={{
-                  disableUnderline: true,
-                  readOnly: viewMode
+                  disableUnderline: true
                 }}
                 sx={{
                   '& .MuiFilledInput-root': {

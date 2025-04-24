@@ -19,12 +19,6 @@ const {
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
-const { validationResult } = require('express-validator');
-
-// Import der benötigten Models (Pfade ggf. anpassen)
-const DeviceModel = require('../models/deviceModel');
-const LicenseModel = require('../models/licenseModel');
-const AccessoryModel = require('../models/accessoryModel');
 
 /**
  * Login-Handler
@@ -103,48 +97,7 @@ const getProfile = async (req, res) => {
  * Passwort ändern
  */
 const changePassword = async (req, res) => {
-  try {
-    // Validierungsergebnisse prüfen (aus Route)
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      // Formatieren der Fehler für eine bessere API-Antwort
-      const formattedErrors = errors.array().map(err => ({ field: err.param, message: err.msg }));
-      return res.status(400).json({ success: false, message: "Validierungsfehler", errors: formattedErrors });
-    }
-
-    const { currentPassword, newPassword } = req.body;
-
-    // Sicherstellen, dass req.user existiert (sollte durch authMiddleware der Fall sein)
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ success: false, message: 'Nicht autorisiert oder Benutzer-ID fehlt.' });
-    }
-    const userId = req.user.id;
-
-    // Benutzer holen (inklusive Passwort-Hash)
-    const user = await getUserByIdModel(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Benutzer nicht gefunden.' });
-    }
-
-    // Aktuelles Passwort überprüfen
-    const isPasswordValid = await verifyPasswordModel(user, currentPassword);
-    if (!isPasswordValid) {
-      return res.status(401).json({ success: false, message: 'Aktuelles Passwort ist ungültig.' });
-    }
-
-    // Neues Passwort hashen (wird innerhalb von updateUserModel gemacht, wenn `password` übergeben wird)
-    // const salt = await bcrypt.genSalt(10);
-    // const newPasswordHash = await bcrypt.hash(newPassword, salt);
-
-    // Passwort im Model aktualisieren, nur das neue Passwort übergeben
-    await updateUserModel(userId, { password: newPassword });
-
-    res.json({ success: true, message: 'Passwort erfolgreich geändert.' });
-
-  } catch (error) {
-    logger.error(`Fehler beim Ändern des Passworts für Benutzer ${req.user?.id}:`, error);
-    res.status(500).json({ success: false, message: 'Serverfehler beim Ändern des Passworts.' });
-  }
+  res.status(501).json({ message: 'Noch nicht implementiert' });
 };
 
 /**
@@ -305,73 +258,67 @@ const updateUser = async (req, res) => {
       password,
       first_name,
       last_name,
-      display_name,
+      gender,
       role,
-      department_id,
-      location_id,
-      room_id,
+      department,
+      location,
+      room,
       phone,
-      active,
-      can_receive_emails
+      is_active
     } = req.body;
 
-    // Validierung (optional, aber empfohlen, z.B. mit express-validator)
-    // ... Validierungslogik hier ...
+    // Prüfen, ob Benutzer existiert
+    const existingUser = await getUserByIdModel(id);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'Benutzer nicht gefunden' });
+    }
 
-    // Datenobjekt für das Model zusammenstellen
-    const userData = {};
-    if (username !== undefined) userData.username = username;
-    if (email !== undefined) userData.email = email;
+    // Prüfen, ob der neue Benutzername bereits existiert (außer für denselben Benutzer)
+    if (username !== existingUser.username) {
+      const userWithUsername = await getUserByUsernameModel(username);
+      if (userWithUsername) {
+        return res.status(400).json({ message: 'Benutzername existiert bereits' });
+      }
+    }
+
+    // Prüfen, ob die neue E-Mail bereits existiert (außer für denselben Benutzer)
+    if (email !== existingUser.email) {
+      const userWithEmail = await getUserByEmailModel(email);
+      if (userWithEmail) {
+        return res.status(400).json({ message: 'E-Mail existiert bereits' });
+      }
+    }
+
+    // Benutzerdaten vorbereiten
+    const userData = {
+      username,
+      email,
+      first_name,
+      last_name,
+      gender,
+      role,
+      department,
+      location,
+      room,
+      phone,
+      active: is_active
+    };
+
+    // Optional Passwort hinzufügen, wenn angegeben
     if (password) {
-       // Zusätzliche Sicherheitsprüfung: Mindestlänge etc.
-       if (password.length < 8) {
-          return res.status(400).json({ success: false, message: 'Neues Passwort muss mindestens 8 Zeichen lang sein.' });
-       }
-       userData.password = password;
-    }
-    if (first_name !== undefined) userData.first_name = first_name;
-    if (last_name !== undefined) userData.last_name = last_name;
-    if (display_name !== undefined) userData.display_name = display_name;
-    if (role !== undefined) userData.role = role;
-    // Sicherstellen, dass IDs als null oder Zahl übergeben werden
-    if (department_id !== undefined) userData.department_id = department_id === '' || department_id === null ? null : parseInt(department_id);
-    if (location_id !== undefined) userData.location_id = location_id === '' || location_id === null ? null : parseInt(location_id);
-    if (room_id !== undefined) userData.room_id = room_id === '' || room_id === null ? null : parseInt(room_id);
-    if (phone !== undefined) userData.phone = phone;
-    if (active !== undefined) userData.active = Boolean(active);
-    if (can_receive_emails !== undefined) {
-      userData.can_receive_emails = Boolean(can_receive_emails);
+      userData.password = password;
     }
 
-    // Prüfen, ob überhaupt Daten zum Aktualisieren vorhanden sind
-    if (Object.keys(userData).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Keine Daten zum Aktualisieren angegeben.'
-      });
-    }
-
+    // Benutzer aktualisieren
     const updatedUser = await updateUserModel(id, userData);
 
-    if (!updatedUser) {
-      // updateUserModel gibt null zurück, wenn der Benutzer nicht gefunden wurde
-      return res.status(404).json({ success: false, message: 'Benutzer nicht gefunden.' });
-    }
-
     res.json({
-      success: true,
-      message: 'Benutzer erfolgreich aktualisiert.',
-      data: updatedUser // Das aktualisierte User-Objekt (ohne Passwort-Hash) zurückgeben
+      message: 'Benutzer erfolgreich aktualisiert',
+      user: updatedUser
     });
-
   } catch (error) {
     logger.error(`Fehler beim Aktualisieren des Benutzers mit ID ${req.params.id}:`, error);
-    // Spezifische Fehlermeldung für unique constraints oder andere erwartete Fehler
-    if (error.message.includes('existiert bereits')) {
-      return res.status(400).json({ success: false, message: error.message });
-    }
-    // Allgemeiner Serverfehler
-    res.status(500).json({ success: false, message: 'Serverfehler beim Aktualisieren des Benutzers.' });
+    res.status(500).json({ message: 'Serverfehler beim Aktualisieren des Benutzers' });
   }
 };
 
@@ -457,63 +404,6 @@ const getRoomsForLocation = async (req, res) => {
   }
 };
 
-/**
- * Zugeordnete Geräte für einen Benutzer abrufen
- */
-const getUserDevices = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    // Sicherstellen, dass die Model-Funktion existiert (ggf. anpassen)
-    if (typeof DeviceModel.findByUserId !== 'function') {
-        logger.warn('DeviceModel.findByUserId ist nicht implementiert.');
-        return res.status(501).json({ success: false, message: 'Funktion zum Abrufen von Benutzergeräten nicht implementiert.' });
-    }
-    const devices = await DeviceModel.findByUserId(userId);
-    res.json({ success: true, data: devices });
-  } catch (error) {
-    logger.error(`Fehler beim Abrufen der Geräte für Benutzer ${req.params.userId}:`, error);
-    res.status(500).json({ success: false, message: 'Serverfehler beim Abrufen der Geräte.' });
-  }
-};
-
-/**
- * Zugeordnete Lizenzen für einen Benutzer abrufen
- */
-const getUserLicenses = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    // Sicherstellen, dass die Model-Funktion existiert (ggf. anpassen)
-     if (typeof LicenseModel.findByUserId !== 'function') {
-        logger.warn('LicenseModel.findByUserId ist nicht implementiert.');
-        return res.status(501).json({ success: false, message: 'Funktion zum Abrufen von Benutzerlizenzen nicht implementiert.' });
-    }
-    const licenses = await LicenseModel.findByUserId(userId);
-    res.json({ success: true, data: licenses });
-  } catch (error) {
-    logger.error(`Fehler beim Abrufen der Lizenzen für Benutzer ${req.params.userId}:`, error);
-    res.status(500).json({ success: false, message: 'Serverfehler beim Abrufen der Lizenzen.' });
-  }
-};
-
-/**
- * Zugeordnetes Zubehör für einen Benutzer abrufen
- */
-const getUserAccessories = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    // Sicherstellen, dass die Model-Funktion existiert (ggf. anpassen)
-    if (typeof AccessoryModel.findByUserId !== 'function') {
-        logger.warn('AccessoryModel.findByUserId ist nicht implementiert.');
-        return res.status(501).json({ success: false, message: 'Funktion zum Abrufen von Benutzerzubehör nicht implementiert.' });
-    }
-    const accessories = await AccessoryModel.findByUserId(userId);
-    res.json({ success: true, data: accessories });
-  } catch (error) {
-    logger.error(`Fehler beim Abrufen des Zubehörs für Benutzer ${req.params.userId}:`, error);
-    res.status(500).json({ success: false, message: 'Serverfehler beim Abrufen des Zubehörs.' });
-  }
-};
-
 module.exports = {
   login,
   getProfile,
@@ -526,8 +416,5 @@ module.exports = {
   updateUser,
   deleteUser,
   getLocations,
-  getRoomsForLocation,
-  getUserDevices,
-  getUserLicenses,
-  getUserAccessories
+  getRoomsForLocation
 };

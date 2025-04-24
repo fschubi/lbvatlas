@@ -9,20 +9,35 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
+  IconButton,
+  Tooltip,
   Snackbar,
   Alert,
   FormControlLabel,
   Switch as MuiSwitch,
   InputAdornment,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  Menu,
+  ListItemIcon,
+  ListItemText,
+  Chip,
   CircularProgress,
   Autocomplete,
   Grid,
-  Chip
+  Divider
 } from '@mui/material';
 import {
   Add as AddIcon,
   Business as BuildingIcon,
-  MeetingRoom as RoomIcon
+  MeetingRoom as RoomIcon,
+  MoreVert as MoreVertIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Visibility as ViewIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import AtlasTable, { AtlasColumn } from '../../components/AtlasTable';
 import { roomApi, locationApi } from '../../utils/api';
@@ -30,7 +45,6 @@ import handleApiError from '../../utils/errorHandler';
 import { toCamelCase, toSnakeCase } from '../../utils/caseConverter';
 import { Room, RoomCreate, RoomUpdate, Location } from '../../types/settings';
 import ConfirmationDialog from '../../components/ConfirmationDialog';
-import { MenuAction } from '../../components/TableContextMenu';
 
 // Definiere FormField direkt hier, da es nur in diesen Seiten genutzt wird
 interface FormField<T> {
@@ -39,7 +53,7 @@ interface FormField<T> {
   helperText: string;
 }
 
-const Rooms = () => {
+const Rooms: React.FC = () => {
   // State für die Daten
   const [rooms, setRooms] = useState<Room[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -69,6 +83,13 @@ const Rooms = () => {
     message: '',
     severity: 'info'
   });
+
+  // Kontextmenü
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    roomId: number;
+  } | null>(null);
 
   // API-Daten laden
   useEffect(() => {
@@ -207,6 +228,25 @@ const Rooms = () => {
           return 'Fehler beim Parsen';
         }
       }
+    },
+    {
+      dataKey: 'actions',
+      label: 'Aktionen',
+      width: 120,
+      render: (_, row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Tooltip title="Bearbeiten">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleEdit(row); }}>
+              <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Löschen">
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(row); }}>
+              <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
     }
   ];
 
@@ -236,6 +276,25 @@ const Rooms = () => {
     setActive(room.active);
     setReadOnly(false);
     setDialogOpen(true);
+  };
+
+  // Löschen eines Raums
+  const handleDelete = async (room: Room) => {
+    if (!window.confirm(`Möchten Sie den Raum "${room.name}" wirklich löschen?`)) return;
+    try {
+      setLoading(true);
+      await roomApi.delete(room.id);
+      loadRooms();
+      setSnackbar({ open: true, message: `Raum "${room.name}" wurde gelöscht.`, severity: 'success' });
+    } catch (error: any) {
+      // Versuche, die spezifische Nachricht aus dem Fehlerobjekt zu extrahieren
+      const specificMessage = error?.data?.message || error?.message;
+      const errorMessage = specificMessage || handleApiError(error); // Fallback auf generische Meldung
+
+      setSnackbar({ open: true, message: `Fehler beim Löschen: ${errorMessage}`, severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Dialog schließen
@@ -342,6 +401,51 @@ const Rooms = () => {
     return isValid;
   };
 
+  // Handlefunktionen für das Kontextmenü
+  const handleContextMenu = (event: React.MouseEvent, roomId: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+      roomId
+    });
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuView = () => {
+    if (contextMenu) {
+      const room = rooms.find(r => r.id === contextMenu.roomId);
+      if (room) {
+        handleViewRoom(room);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuEdit = () => {
+    if (contextMenu) {
+      const room = rooms.find(r => r.id === contextMenu.roomId);
+      if (room) {
+        handleEdit(room);
+      }
+      handleContextMenuClose();
+    }
+  };
+
+  const handleContextMenuDelete = () => {
+    if (contextMenu) {
+      const room = rooms.find(r => r.id === contextMenu.roomId);
+      if (room) {
+        handleDelete(room);
+      }
+      handleContextMenuClose();
+    }
+  };
+
   // Step 1: Prepare for delete confirmation
   const handleDeleteRequest = (room: Room) => {
     setRoomToDelete(room);
@@ -377,23 +481,6 @@ const Rooms = () => {
       setRoomToDelete(null);
    };
 
-   // Handhabung der Aktionen aus dem Kontextmenü
-   const handleContextMenuAction = (actionType: MenuAction | string, room: Room) => {
-     switch (actionType) {
-       case 'view':
-         handleViewRoom(room);
-         break;
-       case 'edit':
-         handleEdit(room);
-         break;
-       case 'delete':
-         handleDeleteRequest(room);
-         break;
-       default:
-         console.warn(`[Rooms] Unbekannte Aktion: ${actionType}`);
-     }
-   };
-
   return (
     <Box sx={{ p: 3, bgcolor: '#121212', minHeight: '100vh', width: '100%' }}>
       {/* Header */}
@@ -425,6 +512,11 @@ const Rooms = () => {
         >
           Neuer Raum
         </Button>
+        <Tooltip title="Daten neu laden">
+          <IconButton onClick={loadRooms} color="primary">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Tabelle */}
@@ -441,13 +533,40 @@ const Rooms = () => {
             emptyMessage="Keine Räume vorhanden"
             initialSortColumn="name"
             initialSortDirection="asc"
-            onRowClick={handleViewRoom}
-            useContextMenu={true}
-            onContextMenuAction={handleContextMenuAction}
-            contextMenuUsePosition={true}
           />
         )}
       </Paper>
+
+      {/* Kontextmenü */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleContextMenuView}>
+          <ListItemIcon>
+            <ViewIcon fontSize="small" sx={{ color: '#90CAF9' }} />
+          </ListItemIcon>
+          <ListItemText primary="Anzeigen" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuEdit}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" sx={{ color: '#4CAF50' }} />
+          </ListItemIcon>
+          <ListItemText primary="Bearbeiten" />
+        </MenuItem>
+        <MenuItem onClick={handleContextMenuDelete}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" sx={{ color: '#F44336' }} />
+          </ListItemIcon>
+          <ListItemText primary="Löschen" />
+        </MenuItem>
+      </Menu>
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

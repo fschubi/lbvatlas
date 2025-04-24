@@ -19,8 +19,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  AlertProps
+  ListItemSecondaryAction
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -38,7 +37,7 @@ import {
 } from '@mui/icons-material';
 import { QRCodeSVG } from 'qrcode.react';
 import AtlasTable, { AtlasColumn } from '../components/AtlasTable';
-import { devicesApi } from '../utils/api';
+import api from '../utils/api';
 import DocumentUploader, { DocumentType, UploadedFile } from '../components/DocumentUploader';
 import DocumentPreview from '../components/DocumentPreview';
 
@@ -133,7 +132,7 @@ const DeviceDetails: React.FC = () => {
   const [formData, setFormData] = useState<any>(null);
   const [history] = useState<DeviceHistory[]>(generateMockHistory(15));
   const [documents, setDocuments] = useState<DeviceDocument[]>(generateMockDocuments(8));
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertProps['severity'] }>({
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
     severity: 'success'
@@ -171,14 +170,11 @@ const DeviceDetails: React.FC = () => {
 
   useEffect(() => {
     const loadDevice = async () => {
-      if (!deviceId) {
-        navigate('/devices');
-        return;
-      }
       try {
         setLoading(true);
-        // Convert deviceId to number before passing to API
-        const response = await devicesApi.getById(Number(deviceId));
+
+        // API-Aufruf zum Laden des Geräts
+        const response = await api.devices.getDeviceById(deviceId || '');
         setDevice(response.data);
         setFormData(response.data);
 
@@ -194,7 +190,11 @@ const DeviceDetails: React.FC = () => {
       }
     };
 
-    loadDevice();
+    if (deviceId) {
+      loadDevice();
+    } else {
+      navigate('/devices');
+    }
   }, [deviceId, navigate]);
 
   // Lade die Gerätehistorie beim Tab-Wechsel
@@ -218,7 +218,7 @@ const DeviceDetails: React.FC = () => {
       setHistoryLoading(true);
 
       // In einer realen API würde hier ein Aufruf wie folgt stehen:
-      // const response = await devicesApi.getDeviceHistory(deviceId);
+      // const response = await api.devices.getDeviceHistory(deviceId);
       // setDeviceHistory(response.data);
 
       // Da wir noch keine vollständige API haben, verwenden wir die Mock-Daten
@@ -244,7 +244,7 @@ const DeviceDetails: React.FC = () => {
       setDocumentsLoading(true);
 
       // In einer realen API würde hier ein Aufruf wie folgt stehen:
-      // const response = await devicesApi.getDeviceDocuments(deviceId);
+      // const response = await api.devices.getDeviceDocuments(deviceId);
       // setDeviceDocuments(response.data);
 
       // Da wir noch keine vollständige API haben, verwenden wir die Mock-Daten
@@ -265,7 +265,10 @@ const DeviceDetails: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    setFormData({
+      ...formData,
+      [name]: value
+    });
   };
 
   const handleEditMode = () => {
@@ -278,36 +281,38 @@ const DeviceDetails: React.FC = () => {
   };
 
   const handleSaveChanges = async () => {
-    if (!deviceId) {
-      console.error('Fehler: Keine deviceId zum Speichern vorhanden.');
-      setSnackbar({ open: true, message: 'Speichern fehlgeschlagen: Keine Geräte-ID.', severity: 'error' });
-      return;
-    }
     try {
       setLoading(true);
-      // Use devicesApi directly and convert deviceId to number
-      await devicesApi.update(Number(deviceId), formData);
-      setDevice(formData);
+
+      // API-Aufruf zum Aktualisieren des Geräts
+      const response = await api.devices.updateDevice(deviceId || '', formData);
+
+      // Aktualisiere Gerätedaten mit der Antwort vom Server
+      setDevice(response.data);
       setEditMode(false);
+
       setSnackbar({
         open: true,
-        message: 'Änderungen erfolgreich gespeichert!',
+        message: 'Gerätedaten erfolgreich gespeichert',
         severity: 'success'
       });
-      setLoading(false);
     } catch (err) {
-      console.error('Fehler beim Speichern der Änderungen:', err);
+      console.error('Fehler beim Speichern der Gerätedaten:', err);
       setSnackbar({
         open: true,
-        message: 'Fehler beim Speichern der Änderungen.',
+        message: 'Fehler beim Speichern der Gerätedaten',
         severity: 'error'
       });
+    } finally {
       setLoading(false);
     }
   };
 
   const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
   };
 
   const handleGoBack = () => {
@@ -346,31 +351,23 @@ const DeviceDetails: React.FC = () => {
     },
   ];
 
-  const handleViewDocument = (doc: DeviceDocument) => {
-    setSelectedDocument(doc);
-    setPreviewOpen(true);
+  const handleViewDocument = (id: string) => {
+    // Finde das ausgewählte Dokument
+    const doc = deviceDocuments.find(doc => doc.id === id);
+    if (doc) {
+      setSelectedDocument(doc);
+      setPreviewOpen(true);
+    }
   };
 
   // Vorschau schließen
   const handleClosePreview = () => {
     setPreviewOpen(false);
-    setSelectedDocument(null);
   };
 
-  const handleDownloadDocument = (doc: DeviceDocument) => {
-    // Ersetze dies durch den tatsächlichen API-Aufruf zum Herunterladen
-    const url = getDocumentUrl(doc);
-    if (url !== '#') {
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', doc.name); // Setzt den Dateinamen für den Download
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setSnackbar({ open: true, message: `Download für "${doc.name}" gestartet.`, severity: 'info' });
-    } else {
-      setSnackbar({ open: true, message: `Keine gültige URL zum Herunterladen für "${doc.name}" gefunden.`, severity: 'warning' });
-    }
+  const handleDownloadDocument = (id: string) => {
+    // In einer echten Anwendung würden wir hier den Download starten
+    alert(`Dokument ${id} herunterladen`);
   };
 
   // Dokument löschen mit API-Aufruf
@@ -380,7 +377,7 @@ const DeviceDetails: React.FC = () => {
         setDocumentsLoading(true);
 
         // In einer realen API würde hier ein Aufruf wie folgt stehen:
-        // await devicesApi.deleteDeviceDocument(deviceId, id);
+        // await api.devices.deleteDeviceDocument(deviceId, id);
 
         // Da wir noch keine vollständige API haben, simulieren wir den Löschvorgang
         setTimeout(() => {
@@ -407,49 +404,49 @@ const DeviceDetails: React.FC = () => {
 
   // Dokument hochladen mit API-Aufruf
   const handleUploadComplete = async (files: UploadedFile[]) => {
-    if (!deviceId) {
-      setSnackbar({ open: true, message: 'Keine Geräte-ID vorhanden, Upload nicht möglich.', severity: 'error' });
-      return;
-    }
-
-    setDocumentsLoading(true);
-    console.log('Starte Upload für Dateien:', files);
-
     try {
-      const uploadPromises = files.map(file => {
-        const formData = new FormData();
-        formData.append('file', file.file);
-        formData.append('documentType', file.type || 'Sonstiges'); // Optional: Dokumententyp senden
+      setDocumentsLoading(true);
 
-        // Verwende den richtigen API-Endpunkt für den Upload
-        // return devicesApi.uploadDeviceDocument(deviceId, formData);
-        console.log(`Simuliere Upload für: ${file.file.name} (Type: ${file.type})`);
-        // Simulierter API-Aufruf
-        return new Promise<void>((resolve) => setTimeout(() => {
-          console.log(`Upload simuliert für: ${file.file.name}`);
-          resolve();
-        }, 800));
+      // In einer realen API würde hier ein Aufruf wie folgt stehen:
+      // const uploadPromises = files.map(file => {
+      //   const formData = new FormData();
+      //   formData.append('file', file.file);
+      //   formData.append('type', file.type);
+      //   return api.devices.uploadDeviceDocument(deviceId, formData);
+      // });
+      // await Promise.all(uploadPromises);
+      // const response = await api.devices.getDeviceDocuments(deviceId);
+      // setDeviceDocuments(response.data);
+
+      // Da wir noch keine vollständige API haben, simulieren wir den Upload
+      setTimeout(() => {
+        const newDocuments: DeviceDocument[] = files.map(file => ({
+          id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          name: file.file.name,
+          type: file.type,
+          size: `${Math.round(file.file.size / 1024)} KB`,
+          uploadDate: new Date().toLocaleDateString('de-DE'),
+          uploadedBy: 'Max Mustermann',
+        }));
+
+        setDeviceDocuments(prev => [...newDocuments, ...prev]);
+        setDocumentsLoading(false);
+
+        setSnackbar({
+          open: true,
+          message: `${files.length} Dokument(e) erfolgreich hochgeladen`,
+          severity: 'success'
+        });
+      }, 1000);
+    } catch (err) {
+      console.error('Fehler beim Hochladen der Dokumente:', err);
+      setSnackbar({
+        open: true,
+        message: 'Fehler beim Hochladen der Dokumente',
+        severity: 'error'
       });
-
-      await Promise.all(uploadPromises);
-
-      console.log('Alle Uploads abgeschlossen. Lade Dokumentenliste neu.');
-      setSnackbar({ open: true, message: 'Dokument(e) erfolgreich hochgeladen.', severity: 'success' });
-      setUploadDialogOpen(false); // Schließe den Dialog
-      await loadDeviceDocuments(); // Lade die Dokumentenliste neu
-
-    } catch (error) {
-      console.error('Fehler beim Hochladen der Dokumente:', error);
-      setSnackbar({ open: true, message: 'Fehler beim Hochladen der Dokumente.', severity: 'error' });
-    } finally {
       setDocumentsLoading(false);
-      console.log('Dokumenten-Upload-Prozess beendet.');
     }
-  };
-
-  // Define the missing handleCloseUploadDialog function
-  const handleCloseUploadDialog = () => {
-    setUploadDialogOpen(false);
   };
 
   if (loading && !device) {
@@ -976,7 +973,7 @@ const DeviceDetails: React.FC = () => {
                       <IconButton
                         edge="end"
                         aria-label="anzeigen"
-                        onClick={() => handleViewDocument(doc)}
+                        onClick={() => handleViewDocument(doc.id)}
                         sx={{ color: 'primary.main' }}
                       >
                         <VisibilityIcon />
@@ -984,7 +981,7 @@ const DeviceDetails: React.FC = () => {
                       <IconButton
                         edge="end"
                         aria-label="herunterladen"
-                        onClick={() => handleDownloadDocument(doc)}
+                        onClick={() => handleDownloadDocument(doc.id)}
                         sx={{ color: 'primary.main' }}
                       >
                         <DownloadIcon />
@@ -1047,7 +1044,7 @@ const DeviceDetails: React.FC = () => {
       {/* Upload-Dialog */}
       <DocumentUploader
         open={uploadDialogOpen}
-        onClose={handleCloseUploadDialog}
+        onClose={() => setUploadDialogOpen(false)}
         onUploadComplete={handleUploadComplete}
         isModal={true}
       />

@@ -1,6 +1,7 @@
 export interface User {
-  id: number;
+  id: string;
   username: string;
+<<<<<<< HEAD
   display_name?: string;
   email: string;
   role: string;
@@ -58,6 +59,33 @@ export interface UserRole {
   name: string;
   description?: string;
   permissions: string[];
+=======
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+  department_id?: string;
+  title?: string;
+  phone?: string;
+  address?: string;
+  postal_code?: string;
+  city?: string;
+  created_at?: string;
+  updated_at?: string;
+  active?: boolean;
+<<<<<<< HEAD
+<<<<<<< HEAD
+  permissions?: string[];
+  departmentName?: string;
+  locationName?: string;
+  roomName?: string;
+  assignedDevicesCount?: number;
+=======
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
+=======
+  permissions?: Set<string>;
+>>>>>>> parent of 077dfb62 (grund benutzer verwaltung steht)
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
 }
 
 export type Department = {
@@ -67,33 +95,18 @@ export type Department = {
   location_id?: number;
 };
 
-export type Location = {
-  id: number;
-  name: string;
-  description?: string;
-};
-
-export type Room = {
-  id: number;
-  name: string;
-  location_id: number;
-  description?: string;
-};
-
 export interface UserFilters {
   name?: string;
   department?: string;
-  location?: string;
-  room?: string;
   role?: string;
   email?: string;
   search?: string;
-  active?: boolean | string;
 }
 
 export interface Role {
   id: number;
   name: string;
+<<<<<<< HEAD
   description?: string;
   is_system: boolean;
   created_at?: string;
@@ -109,4 +122,7 @@ export interface Permission {
   module: string;
   action: string;
   category?: string;
+=======
+  label: string;
+>>>>>>> parent of beb137d8 (rollen und gruppen Verwaltung live)
 }

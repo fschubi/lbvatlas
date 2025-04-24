@@ -32,7 +32,6 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import TableContextMenu, { MenuAction } from './TableContextMenu';
 
 export interface AtlasColumn<T = any> {
   dataKey: string;
@@ -64,10 +63,6 @@ export interface AtlasTableProps<T = any> {
   onEdit?: (row: T) => void;
   onDelete?: (row: T) => void;
   onView?: (row: T) => void;
-  useContextMenu?: boolean;
-  onContextMenuAction?: (actionType: MenuAction | string, row: T) => void;
-  contextMenuActions?: any[];
-  contextMenuUsePosition?: boolean;
 }
 
 const AtlasTable = <T extends { id: number | string }>({
@@ -88,11 +83,7 @@ const AtlasTable = <T extends { id: number | string }>({
   loading = false,
   onEdit,
   onDelete,
-  onView,
-  useContextMenu = false,
-  onContextMenuAction,
-  contextMenuActions,
-  contextMenuUsePosition = false
+  onView
 }: AtlasTableProps<T>) => {
   // Verwende height wenn gesetzt, sonst heightPx
   const tableHeight = height || heightPx;
@@ -518,21 +509,50 @@ const AtlasTable = <T extends { id: number | string }>({
             </TableCell>
           );
         })}
-        {/* Action columns - Hinzufügen einer Spalte für die Aktionsschaltflächen im Header */}
-        {(onEdit || onDelete || onView || useContextMenu) && (
-          <TableCell
-            align="center"
-            sx={{
-              width: 70,
-              color: 'white',
-              fontWeight: 'bold',
-              bgcolor: '#232323',
-              borderBottom: '1px solid #333',
-              whiteSpace: 'nowrap',
-              padding: densePadding ? '8px 8px' : '16px 16px'
-            }}
-          >
-            Aktionen
+        {/* Action columns */}
+        {(onEdit || onDelete || onView) && (
+          <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+            {onEdit && (
+              <Tooltip title="Bearbeiten">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(row);
+                  }}
+                  sx={{ mr: 1 }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            {onView && (
+              <Tooltip title="Anzeigen">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onView(row);
+                  }}
+                  sx={{ mr: 1 }}
+                >
+                  <ViewIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            {onDelete && (
+              <Tooltip title="Löschen">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(row);
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </TableCell>
         )}
       </TableRow>
@@ -541,31 +561,37 @@ const AtlasTable = <T extends { id: number | string }>({
 
   // Zeilen für die Tabelle
   const rowContent = (_index: number, row: T) => {
+    // **** NEUE PRÜFUNG ****
     // Sicherstellen, dass das row-Objekt existiert, bevor wir versuchen, Zellen zu rendern
     if (!row) {
         console.warn('[AtlasTable] rowContent received undefined row at index', _index);
-        return null;
+        return null; // Rendere nichts, wenn die Zeile undefiniert ist
     }
+    // **** ENDE NEUE PRÜFUNG ****
 
-    // Hilfs-Funktion für den Zugriff auf verschachtelte Eigenschaften
+    // Generische Typannahme entfernen und spezifischer werden, falls möglich.
+    // Statt `row[column.dataKey as keyof T]` direkten Zugriff oder Typprüfung verwenden.
+    // Dies erfordert möglicherweise Anpassungen je nach Struktur von T.
+    // Beispiel für robustere Handhabung (optional, je nach Komplexität):
     const getCellValue = (dataKey: string) => {
         const keys = dataKey.split('.');
         let value: any = row;
         try {
             for (const key of keys) {
-                if (value === null || value === undefined) return '';
+                if (value === null || value === undefined) return ''; // Frühzeitiger Ausstieg
                 value = value[key];
             }
-            return value ?? '';
+            return value ?? ''; // Gib leeren String zurück, wenn Wert null/undefined ist
         } catch (e) {
             console.error(`[AtlasTable] Error accessing key "${dataKey}" in row:`, row, e);
-            return '';
+            return ''; // Fehlerfall
         }
     };
 
     return (
       <>
         {columns.map((column) => {
+           // Hole den Wert sicher
            const cellValue = getCellValue(column.dataKey);
            return (
              <TableCell
@@ -576,52 +602,46 @@ const AtlasTable = <T extends { id: number | string }>({
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                     maxWidth: column.width ? `${column.width}px` : undefined,
+                    // Füge Tooltip nur hinzu, wenn Text tatsächlich überläuft (erfordert komplexere Logik oder immer anzeigen)
                 }}
              >
                {column.render
-                 ? column.render(cellValue, row)
-                 : String(cellValue)
+                 ? column.render(cellValue, row) // Übergibt den sicher geholten Wert und die Zeile
+                 : String(cellValue) // Rendert den sicher geholten Wert
                 }
              </TableCell>
            );
         })}
 
-        {/* Kontextmenü-Spalte - wird hinzugefügt, wenn mindestens eine der Aktionen aktiviert ist oder useContextMenu = true */}
-        {(useContextMenu || onView || onEdit || onDelete) && (
-            <TableCell align="center" sx={{ padding: '0 4px', width: 70 }}>
-                {useContextMenu && onContextMenuAction ? (
-                    <TableContextMenu
-                        row={row}
-                        onAction={onContextMenuAction}
-                        actions={contextMenuActions}
-                        usePosition={contextMenuUsePosition}
-                    />
-                ) : (
-                    // Fallback auf die alten Aktionen, wenn useContextMenu nicht aktiviert ist
-                    <>
-                        {onView && (
-                            <Tooltip title="Anzeigen">
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView(row); }}>
-                                    <ViewIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                        {onEdit && (
-                            <Tooltip title="Bearbeiten">
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(row); }}>
-                                    <EditIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                        {onDelete && (
-                            <Tooltip title="Löschen">
-                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete(row); }}>
-                                    <DeleteIcon fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                    </>
-                )}
+        {/* Actions Columns - NACH der Map-Schleife, damit 'row' verfügbar ist */}
+         {onView && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Anzeigen">
+                    {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView(row); }}>
+                        <ViewIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </TableCell>
+        )}
+        {onEdit && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Bearbeiten">
+                     {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(row); }}>
+                        <EditIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </TableCell>
+        )}
+        {onDelete && (
+            <TableCell align="center" sx={{ padding: '0 4px' }}>
+                <Tooltip title="Löschen">
+                     {/* 'row' ist hier im Gültigkeitsbereich von rowContent verfügbar */}
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete(row); }}>
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
             </TableCell>
         )}
       </>
