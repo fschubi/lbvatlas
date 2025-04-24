@@ -2,6 +2,7 @@ export interface User {
   id: string;
   username: string;
 <<<<<<< HEAD
+<<<<<<< HEAD
   display_name?: string;
   email: string;
   role: string;
@@ -64,6 +65,12 @@ export interface UserRole {
   last_name: string;
   email: string;
   role: string;
+=======
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
   department_id?: string;
   title?: string;
   phone?: string;
@@ -85,6 +92,9 @@ export interface UserRole {
 =======
   permissions?: Set<string>;
 >>>>>>> parent of 077dfb62 (grund benutzer verwaltung steht)
+<<<<<<< HEAD
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
+=======
 >>>>>>> parent of 7b3be34f (benutzer verwaltung)
 }
 
@@ -101,6 +111,20 @@ export interface UserFilters {
   role?: string;
   email?: string;
   search?: string;
+<<<<<<< HEAD
+=======
+}
+
+export interface UserGroup {
+  id: number;
+  name: string;
+  description: string;
+  added_at?: string;
+  added_by?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  userCount?: number;
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
 }
 
 export interface Role {

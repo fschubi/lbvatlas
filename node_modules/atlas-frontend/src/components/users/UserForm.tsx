@@ -13,6 +13,7 @@ import {
   MenuItem,
   FormControlLabel,
 <<<<<<< HEAD
+<<<<<<< HEAD
   Switch,
   CircularProgress,
   Typography,
@@ -119,6 +120,29 @@ export const UserForm: React.FC<UserFormProps> = ({
   roles,
   loading = false
 }) => {
+=======
+  Switch
+} from '@mui/material';
+import { User, Role } from '../../types/user';
+
+interface UserFormProps {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (userData: Partial<User>) => void;
+  user?: User;
+  roles: Role[];
+  loading?: boolean;
+}
+
+export const UserForm: React.FC<UserFormProps> = ({
+  open,
+  onClose,
+  onSubmit,
+  user,
+  roles,
+  loading = false
+}) => {
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
   const [formData, setFormData] = React.useState<Partial<User>>({
     username: '',
     name: '',
@@ -179,6 +203,9 @@ export const UserForm: React.FC<UserFormProps> = ({
       role_id &&
       (!isCreateMode || (password && password === confirmPassword))
     );
+<<<<<<< HEAD
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
+=======
 >>>>>>> parent of 7b3be34f (benutzer verwaltung)
   };
 
@@ -191,6 +218,7 @@ export const UserForm: React.FC<UserFormProps> = ({
   }
 
   return (
+<<<<<<< HEAD
 <<<<<<< HEAD
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Box component="form" onSubmit={handleSubmit}>
@@ -377,6 +405,25 @@ export const UserForm: React.FC<UserFormProps> = ({
                 value={formData.username}
                 onChange={handleChange('username')}
                 required
+=======
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <form onSubmit={handleSubmit}>
+        <DialogTitle>
+          {user ? 'Benutzer bearbeiten' : 'Neuen Benutzer erstellen'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                autoFocus
+                label="Benutzername"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={formData.username}
+                onChange={handleChange('username')}
+                required
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
                 disabled={loading}
               />
             </Grid>
@@ -466,11 +513,15 @@ export const UserForm: React.FC<UserFormProps> = ({
           <Button onClick={onClose} disabled={loading}>
             Abbrechen
           </Button>
+<<<<<<< HEAD
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
+=======
 >>>>>>> parent of 7b3be34f (benutzer verwaltung)
           <Button
             type="submit"
             variant="contained"
             color="primary"
+<<<<<<< HEAD
 <<<<<<< HEAD
             disabled={isLoading}
             sx={{ minWidth: 120 }}
@@ -481,6 +532,8 @@ export const UserForm: React.FC<UserFormProps> = ({
       </Box>
     </Paper>
 =======
+=======
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
             disabled={!isFormValid() || loading}
           >
             {user ? 'Aktualisieren' : 'Erstellen'}
@@ -488,6 +541,9 @@ export const UserForm: React.FC<UserFormProps> = ({
         </DialogActions>
       </form>
     </Dialog>
+<<<<<<< HEAD
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
+=======
 >>>>>>> parent of 7b3be34f (benutzer verwaltung)
   );
 };

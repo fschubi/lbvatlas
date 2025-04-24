@@ -191,6 +191,7 @@ const Users: React.FC = () => {
     {
       label: 'Status',
 <<<<<<< HEAD
+<<<<<<< HEAD
       dataKey: 'active',
       width: 80,
       render: (value: boolean | undefined) => (
@@ -210,6 +211,8 @@ const Users: React.FC = () => {
           </Tooltip>
         </Box>
 =======
+=======
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
       dataKey: 'is_active',
       width: 100,
       render: (value: boolean) => (
@@ -218,6 +221,9 @@ const Users: React.FC = () => {
           color={value ? 'success' : 'error'}
           size="small"
         />
+<<<<<<< HEAD
+>>>>>>> parent of 7b3be34f (benutzer verwaltung)
+=======
 >>>>>>> parent of 7b3be34f (benutzer verwaltung)
       )
     }
